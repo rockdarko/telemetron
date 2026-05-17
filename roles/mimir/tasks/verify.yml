@@ -1,0 +1,130 @@
+---
+# roles/mimir/tasks/verify.yml
+# Pre-poll Mimir readiness, curl-probe /ready, then assert all three
+# required MinIO buckets are reachable via a one-shot mc container.
+#
+# Mirrors the canonical roles/tempo/tasks/verify.yml conditional
+# readiness shape (D-10a + W7 + W8 + D-32). The bucket-trinity
+# assertion is Mimir-specific (BACK-04 + Pitfall G -- the three buckets
+# MUST be distinct AND reachable; if any one is missing, Mimir would
+# refuse to start when remote_write hits in Phase 3).
+#
+# NOTE per RESEARCH Finding 8: a synthetic remote_write push is curl-
+# unfriendly (snappy-compressed protobuf). The Phase 2 verify gates at
+# "/ready returns 200" + "three buckets reachable". The end-to-end
+# remote_write smoke is Phase 6 OPS-07 (with Prometheus online).
+
+# Step 1a: poll HEALTHCHECK status (when healthcheck enabled).
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :9009 directly (D-30 no host publish).
+- name: Wait for Mimir container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ mimir_container_name }}"
+  register: mimir_health_check
+  until: >-
+    mimir_health_check.container is defined
+    and mimir_health_check.container.State is defined
+    and mimir_health_check.container.State.Health is defined
+    and mimir_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ mimir_health_retries }}"
+  delay: "{{ mimir_health_delay }}"
+  changed_when: false
+  when: mimir_healthcheck_enabled | bool
+  tags:
+    - mimir
+    - mimir-verify
+
+# Step 1b: poll container running state (when healthcheck disabled).
+# PITFALLS Pitfall B context -- distroless image with no health binary.
+- name: Wait for Mimir container to reach running state
+  community.docker.docker_container_info:
+    name: "{{ mimir_container_name }}"
+  register: mimir_running_check
+  until: >-
+    mimir_running_check.container is defined
+    and mimir_running_check.container.State is defined
+    and mimir_running_check.container.State.Running is true
+  retries: "{{ mimir_health_retries }}"
+  delay: "{{ mimir_health_delay }}"
+  changed_when: false
+  when: not (mimir_healthcheck_enabled | bool)
+  tags:
+    - mimir
+    - mimir-verify
+
+# Step 1c: in-network curl probe of /ready (BOTH paths -- final readiness gate).
+# This is the authoritative readiness check when the Docker HEALTHCHECK
+# is a binary-alive proxy or absent. When the Docker HEALTHCHECK is the
+# native -health binary, this is a belt-and-suspenders second check that
+# also confirms the HTTP API is bound on the bridge. Mimir /ready
+# returns 200 with body `ready` when fully started.
+- name: Curl-probe Mimir /ready endpoint in-network
+  community.docker.docker_container:
+    name: "{{ mimir_container_name }}-verify-ready"
+    image: "{{ mimir_curl_image }}:{{ mimir_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ mimir_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" http://{{ mimir_container_name }}:{{ mimir_http_port }}/ready 2>/dev/null) ;
+          if [ "$CODE" = "200" ] ; then echo "ready_ok=200" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "mimir /ready never returned 200 within 60s" ;
+        exit 1
+  register: mimir_verify_ready
+  failed_when: mimir_verify_ready.status is defined and mimir_verify_ready.status != 0
+  changed_when: false
+  tags:
+    - mimir
+    - mimir-verify
+
+# Step 2: bucket-trinity assertion (BACK-04 + Pitfall G).
+# Confirms all three required buckets exist and are reachable via the
+# Mimir vault credentials (which alias to MinIO root creds per D-27).
+# Per W8: mc ls --json is the documented stable interface; we don't
+# need objects in the buckets at Phase 2 time, just bucket existence
+# and credential validity. set -e short-circuits the rest on first
+# failure, pointing at the bad bucket without ambiguity.
+#
+# A synthetic remote_write push is intentionally OMITTED from Phase 2
+# per RESEARCH Finding 8 -- the Prometheus remote_write protocol is
+# snappy-compressed protobuf, not curl-friendly to construct from a
+# shell one-liner. The end-to-end remote_write smoke happens in Phase 3
+# (when Prometheus comes online) and Phase 6 OPS-07.
+- name: Assert all three required Mimir buckets are reachable
+  community.docker.docker_container:
+    name: "{{ mimir_container_name }}-verify-buckets"
+    image: "{{ mimir_mc_image }}:{{ mimir_mc_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ mimir_network }}"
+    env:
+      MC_HOST_local: "http://{{ vault_mimir_s3_access_key }}:{{ vault_mimir_s3_secret_key }}@minio:9000"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -e ;
+        mc ls --json local/{{ mimir_blocks_bucket }} >/dev/null ;
+        mc ls --json local/{{ mimir_ruler_bucket }} >/dev/null ;
+        mc ls --json local/{{ mimir_alerts_bucket }} >/dev/null ;
+        echo "mimir_bucket_trinity_ok"
+  register: mimir_verify_buckets
+  failed_when: mimir_verify_buckets.status is defined and mimir_verify_buckets.status != 0
+  changed_when: false
+  tags:
+    - mimir
+    - mimir-verify

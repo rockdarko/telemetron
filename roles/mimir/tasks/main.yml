@@ -1,0 +1,109 @@
+---
+# roles/mimir/tasks/main.yml
+# Mimir monolithic deploy + in-network verify.
+# Mirrors the canonical roles/{minio,loki,tempo}/tasks/main.yml shape.
+# Conditional healthcheck approach matches tempo (RESEARCH Pitfall B):
+# distroless image with no native -health flag, so the default is a
+# binary-alive proxy (mimir -version); operator can flip to Outcome C
+# (mimir_healthcheck_enabled: false) without touching the role.
+
+- name: Ensure Mimir config directory exists on host
+  ansible.builtin.file:
+    path: "{{ mimir_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - mimir
+    - mimir-config
+
+- name: Render Mimir config
+  ansible.builtin.template:
+    src: mimir.yaml.j2
+    dest: "{{ mimir_config_dir }}/mimir.yaml"
+    mode: "0600"
+  notify: restart mimir
+  tags:
+    - mimir
+    - mimir-config
+
+- name: Ensure Mimir data volume exists
+  community.docker.docker_volume:
+    name: "{{ mimir_data_volume }}"
+    state: present
+  tags:
+    - mimir
+
+- name: Pull Mimir image
+  community.docker.docker_image:
+    name: "{{ mimir_image }}:{{ mimir_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - mimir
+
+- name: Run Mimir container (with conditional healthcheck)
+  community.docker.docker_container:
+    name: "{{ mimir_container_name }}"
+    image: "{{ mimir_image }}:{{ mimir_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ mimir_restart_policy }}"
+    memory: "{{ mimir_memory_limit }}"
+    user: "{{ mimir_container_user }}"
+    command:
+      - "-config.file=/etc/mimir/mimir.yaml"
+      - "-target=all"
+    networks:
+      - name: "{{ mimir_network }}"
+        aliases:
+          - "{{ mimir_container_name }}"
+    # Per D-30 / D-12: zero host publish by default. Operators reach
+    # Mimir from the workstation via SSH local-forward (ssh -L 9009:...);
+    # Phase 3 Prometheus remote_write traffic stays on the telemetron
+    # Docker bridge.
+    published_ports: >-
+      {{
+        (
+          [ mimir_http_port | string + ':' + mimir_http_port | string ]
+          if mimir_publish_host is sameas true else
+          [ '127.0.0.1:' + mimir_http_port | string + ':' + mimir_http_port | string ]
+          if mimir_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      - source: "{{ mimir_data_volume }}"
+        target: "{{ mimir_data_path }}"
+        type: volume
+    volumes:
+      - "{{ mimir_config_dir }}/mimir.yaml:/etc/mimir/mimir.yaml:ro"
+    # Distroless image; CMD form (not CMD-SHELL).
+    # See RESEARCH.md Finding 6 + PITFALLS Pitfall B. The actual command
+    # form is set in defaults/main.yml per image probe (Outcome B
+    # confirmed for grafana/mimir:3.0.6: no native -health flag;
+    # /bin/mimir -version is the binary-alive proxy). When
+    # mimir_healthcheck_enabled is false, the healthcheck key is
+    # omitted entirely via Ansible's `omit` magic value -- OPS-06
+    # compliance is then satisfied by verify.yml's State.Running poll
+    # plus the in-network /ready curl probe.
+    healthcheck: "{{ mimir_container_healthcheck if (mimir_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ mimir_tz }}"
+  vars:
+    mimir_container_healthcheck:
+      test: "{{ mimir_healthcheck_test }}"
+      interval: "{{ mimir_healthcheck_interval }}"
+      timeout: "{{ mimir_healthcheck_timeout }}"
+      retries: "{{ mimir_healthcheck_retries }}"
+      start_period: "{{ mimir_healthcheck_start_period }}"
+  tags:
+    - mimir
+    - mimir-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/{loki,tempo}/tasks/main.yml
+# pattern -- verify is included from main; not a separate playbook.
+- name: Verify Mimir end-to-end (readiness + bucket-trinity assertion)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - mimir
+    - mimir-verify
