@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-foundation-storage-02-PLAN.md
-last_updated: "2026-05-17T14:07:57.572Z"
+status: verifying
+stopped_at: Completed 01-foundation-storage-03-PLAN.md
+last_updated: "2026-05-17T14:24:23.409Z"
 last_activity: 2026-05-17
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 01 (foundation-storage) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
+Plan: 3 of 3
+Status: Phase complete — ready for verification
 Last activity: 2026-05-17
 
 Progress: [░░░░░░░░░░] 0%
@@ -53,6 +53,8 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-foundation-storage P02 | 4 | 3 tasks | 8 files |
+| Phase 01-foundation-storage P01 | 8min | 3 tasks | 4 files |
+| Phase 01-foundation-storage P03 | 8min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -68,6 +70,12 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 01-foundation-storage]: telemetron Docker bridge network created in playbook pre_tasks tagged [always, network], not in any role (D-04)
 - [Phase 01-foundation-storage]: Five MinIO buckets in storage.yml (loki-chunks, tempo-traces, mimir-blocks, mimir-ruler, mimir-alerts) consumed by Phase 2 roles
 - [Phase 01-foundation-storage]: vault_<role>_<purpose> naming pattern established; vault.yml gitignored; vault.yml.example committed with CHANGE_ME placeholders
+- [Phase 01-foundation-storage]: Drop application_web_docker from M1: reverse-proxy-agnostic design; network plumbing moves to playbook pre_tasks (D-01, D-04)
+- [Phase 01-foundation-storage]: Drop postgres from M1: Grafana uses embedded SQLite; FOUND-03 removed from REQUIREMENTS.md (D-02)
+- [Phase 01-foundation-storage]: M1 role count is 14: alertmanager, fluentbit, grafana, hook_router, karma, loki, mimir, minio, nfsd, node_exporter, opentelemetry, prometheus, promlens, tempo (D-03)
+- [Phase 01-foundation-storage]: Per-role port-acceptance gates established in Phase 1 (D-21): grep, image-pin, vault, idempotency, healthcheck+restart, README schema — canonical reference in roles/README.md
+- [Phase 01-foundation-storage]: ansible.cfg with roles_path=roles is required at project root for ansible-playbook to find roles/ from any working directory -- established in Plan 03 (confirmed by syntax-check failure without it)
+- [Phase 01-foundation-storage]: minio role canonical patterns established (D-10a docker_container_info HEALTHCHECK poll, W6 single-handler, W7 changed_when:false for mc tasks, W8 mc ls --json verify, OPS-03 README schema) -- Phase 2-6 roles mirror this template
 
 ### Pending Todos
 
@@ -79,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-17T14:07:57.568Z
-Stopped at: Completed 01-foundation-storage-02-PLAN.md
+Last session: 2026-05-17T14:24:23.406Z
+Stopped at: Completed 01-foundation-storage-03-PLAN.md
 Resume file: None

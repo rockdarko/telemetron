@@ -21,8 +21,9 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### Foundation (FOUND)
 
-- [ ] **FOUND-01**: Operator can run the playbook against a target host and have a single user-defined Docker bridge network (`telemetron`) created with named volumes for every component that needs persistent state. The `telemetron` Docker bridge network is created in `playbooks/deploy_docker.yml` pre_tasks via `community.docker.docker_network`. No shared base role — each role is self-contained and joins the network in its own `docker_container` task.
-- [ ] **FOUND-02**: Operator can run the playbook and have a working MinIO server reachable on `:9000` (S3 API) and `:9001` (console), pinned to `minio/minio:RELEASE.2025-04-22T22-12-26Z`. MinIO is started with bucket bootstrap blocking on `mc mb --ignore-existing` for `loki-chunks`, `tempo-traces`, `mimir-blocks`, `mimir-ruler`, and `mimir-alerts`. Downstream roles do not start before bootstrap exits successfully.
+- [x] **FOUND-01**: Operator can run the playbook against a target host and have a single user-defined Docker bridge network (`telemetron`) created with named volumes for every component that needs persistent state. The `telemetron` Docker bridge network is created in `playbooks/deploy_docker.yml` pre_tasks via `community.docker.docker_network`. No shared base role — each role is self-contained and joins the network in its own `docker_container` task.
+- [x] **FOUND-02**: Operator can run the playbook and have a working MinIO server reachable on `:9000` (S3 API) and `:9001` (console), pinned to `minio/minio:RELEASE.2025-04-22T22-12-26Z`. MinIO is started with bucket bootstrap blocking on `mc mb --ignore-existing` for `loki-chunks`, `tempo-traces`, `mimir-blocks`, `mimir-ruler`, and `mimir-alerts`. Downstream roles do not start before bootstrap exits successfully.
+
 ### Backends (BACK)
 
 - [ ] **BACK-01**: Operator can run the playbook and have Loki running in monolithic mode (`-target=all`, `grafana/loki:3.7.2`), backed by the `loki-chunks` MinIO bucket, with its persistent volume covering `/loki/compactor/markers/` (marker-file persistence is required for cleanup).
@@ -72,11 +73,11 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### Cross-cutting operational (OPS)
 
-- [ ] **OPS-01**: All container images are pinned to explicit tags — no `:latest` anywhere. Image references live in role `defaults/main.yml` and are documented per-role.
+- [x] **OPS-01**: All container images are pinned to explicit tags — no `:latest` anywhere. Image references live in role `defaults/main.yml` and are documented per-role.
 - [x] **OPS-02**: All secrets (Grafana admin password, MinIO access key + secret, Jenkins token, shared webhook secret) are loaded via Ansible vault using the naming convention `vault_<role>_<purpose>`. `.vault_pass` is in `.gitignore`. `vault.yml.example` lives in `inventory/example-homelab/` as a template.
-- [ ] **OPS-03**: Every role's tasks pass `ansible-lint` and yaml-syntax-checks. Each role README documents its variables, modes, defaults, and tags.
-- [ ] **OPS-04**: Running `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` a second time on an already-converged host returns `changed=0`. Templates iterate sorted dict keys (`{% for k in d.keys() | sort %}`) to avoid non-deterministic ordering; container restarts use handlers, not `state: restarted`.
-- [ ] **OPS-05**: Every role passes a per-role port-acceptance grep gate: zero matches for the regex `inspq|qc\.ca|montreal|québec|vault_inspq_` and zero non-ASCII characters in committed files. This gate is documented in `roles/README.md` as part of the port checklist.
+- [x] **OPS-03**: Every role's tasks pass `ansible-lint` and yaml-syntax-checks. Each role README documents its variables, modes, defaults, and tags.
+- [x] **OPS-04**: Running `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` a second time on an already-converged host returns `changed=0`. Templates iterate sorted dict keys (`{% for k in d.keys() | sort %}`) to avoid non-deterministic ordering; container restarts use handlers, not `state: restarted`.
+- [x] **OPS-05**: Every role passes a per-role port-acceptance grep gate: zero matches for the regex `inspq|qc\.ca|montreal|québec|vault_inspq_` and zero non-ASCII characters in committed files. This gate is documented in `roles/README.md` as part of the port checklist.
 - [x] **OPS-06**: Every component container has a Docker `HEALTHCHECK` and a `restart: unless-stopped` policy by default. Timezone defaults to `Etc/UTC` everywhere.
 - [ ] **OPS-07**: M1 completion smoke test — push a synthetic log, push a synthetic metric, push a synthetic trace. Within 60 seconds, the log appears in Grafana Loki Explore, the metric is queryable from Prometheus and from Mimir, and the trace appears in Tempo Explore — all queried via the bundled datasource UIDs.
 
