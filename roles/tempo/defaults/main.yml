@@ -1,0 +1,137 @@
+---
+# roles/tempo/defaults/main.yml
+# Tempo role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/tempo.yml.
+#
+# Tempo 2.10.5 monolithic mode (-target=all). Storage backend: MinIO S3
+# (tempo-traces bucket bootstrapped by roles/minio in Phase 1). OTLP
+# receivers on internal-only alt ports :14317 (gRPC) and :14318 (HTTP)
+# so the Phase 3 OTel Collector can claim the standard :4317/:4318
+# without clash (CONTEXT.md D-29 + BACK-05).
+
+# --- Image pin (OPS-01: pin every image tag explicitly) ---
+# Tempo 2.10.5 (2026-04-23) -- latest stable; v3.0 is pre-release.
+# See: https://github.com/grafana/tempo/releases/tag/v2.10.5
+# Note: no floating-tag references anywhere in this role.
+tempo_image: grafana/tempo
+tempo_image_tag: "2.10.5"
+
+# --- Container identity ---
+# DNS name on the telemetron network. Phase 3 OTel Collector forwards
+# OTLP traces to http://{{ tempo_container_name }}:14318 over the bridge.
+tempo_container_name: tempo
+
+# --- Host port publishing (D-30) ---
+# Default: zero host publish. Operator access via SSH local-forward:
+#   ssh -L 3200:localhost:3200 <host>
+# OTLP alt ports :14317 / :14318 are intentionally never host-published
+# (they exist for in-bridge OTel Collector -> Tempo traffic only;
+# external OTLP terminates at the OTel Collector on :4317/:4318 in
+# Phase 3).
+tempo_publish_host: "{{ tempo_publish_host | default(false) }}"
+
+# --- Port matrix (D-28, D-29, D-31) ---
+# HTTP API on :3200 (Grafana datasource reaches here in Phase 5).
+# gRPC on :9096 (D-28 explicit -- default 9095 clashes with Loki).
+# OTLP gRPC on :14317 (D-29 / BACK-05 alt port).
+# OTLP HTTP on :14318 (D-29 / BACK-05 alt port).
+tempo_http_port: 3200
+tempo_grpc_port: 9096
+tempo_otlp_grpc_port: 14317
+tempo_otlp_http_port: 14318
+
+# --- Storage layout (D-16, D-17, D-18) ---
+# One named Docker volume covers wal/, traces/, generator/wal/, generator/traces/
+# at the /var/tempo container root.
+tempo_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_tempo_data"
+tempo_data_path: /var/tempo
+
+# Host-side config directory (D-18 flat layout).
+tempo_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/tempo"
+
+# --- S3 backend (D-39, RESEARCH Finding 4) ---
+# NOTE: Tempo's S3 endpoint format is DIFFERENT from Loki -- no http://
+# prefix; the `insecure: true` flag signals plain HTTP. forcepathstyle
+# (single word) is the Tempo key; Loki uses s3forcepathstyle.
+tempo_s3_endpoint: "minio:9000"
+tempo_s3_bucket: tempo-traces
+tempo_s3_region: us-east-1
+tempo_s3_force_path_style: true
+tempo_s3_insecure: true
+
+# --- Retention (D-34, BACK-03, PITFALLS Pitfall 10) ---
+# DUAL-KNOB retention -- BOTH must be set or retention silently fails
+# (Pitfall 10 from PITFALLS.md). Default block_retention 168h = 7d
+# (matches telemetron_default_trace_retention). compacted_block_retention
+# is the deletion phase; 1h is upstream-typical for a homelab.
+tempo_block_retention: 168h
+tempo_compacted_block_retention: 1h
+
+# --- Metrics-generator (D-38, RESEARCH Finding 1 -- resolved to path b) ---
+# Enable processor-only operation: service-graphs + span-metrics +
+# local-blocks processors persist generated metrics to a local WAL,
+# NOT remote-write'd to Mimir. This decouples Tempo's startup from
+# Mimir availability. Full Grafana service-graph view requires remote
+# write to Mimir -- queued for a future hardening milestone (deferred
+# per CONTEXT.md "Deferred Ideas").
+tempo_metrics_generator_enabled: true
+
+# --- Compactor tuning (Claude's Discretion per D-39) ---
+# Single-host monolithic homelab. Block ranges shorter than upstream
+# default to keep compactor cycle time predictable for small volume.
+tempo_compactor_block_ranges_period: 5m
+
+# --- Healthcheck approach (RESEARCH Finding 6, PITFALLS Pitfall B) ---
+# Tempo 2.10.5 is distroless (gcr.io/distroless/static-debian12) --
+# no shell. The native `-health` binary may or may not be present in
+# this tag (RESEARCH MEDIUM confidence). The executor probes the image
+# at execute time and tunes the values below per outcome:
+#   Outcome A: native -health flag present
+#     -> tempo_healthcheck_test: ["CMD", "/tempo", "-health"]
+#   Outcome B: only -version (binary-alive proxy) available (default)
+#     -> tempo_healthcheck_test: ["CMD", "/tempo", "-version"]
+#   Outcome C: no healthcheck-capable flag at all
+#     -> tempo_healthcheck_enabled: false (HEALTHCHECK omitted entirely)
+# In all three outcomes, the verify task's authoritative readiness gate
+# is the in-network curl probe of /ready (Step 1c in verify.yml).
+tempo_healthcheck_enabled: true     # operator can disable if needed
+tempo_healthcheck_interval: 15s
+tempo_healthcheck_timeout: 5s
+tempo_healthcheck_retries: 5
+tempo_healthcheck_start_period: 60s
+
+# Default healthcheck command -- binary-alive proxy (Outcome B from the
+# image probe). The executor MAY override to ["CMD", "/tempo", "-health"]
+# if the probe shows the native flag is supported (Outcome A), or set
+# tempo_healthcheck_enabled: false to skip entirely (Outcome C).
+tempo_healthcheck_test: ["CMD", "/tempo", "-version"]
+
+# --- Verify pre-poll (D-10a) ---
+# 90s total budget = 45 retries x 2s. Tempo cold-start is slower than
+# Loki because of WAL replay; bumped from Loki's 60s default.
+tempo_health_retries: 45
+tempo_health_delay: 2
+
+# --- Restart policy (OPS-06) ---
+tempo_restart_policy: unless-stopped
+
+# --- Resource limits ---
+# Tempo monolithic on a homelab: 1GB fits per PITFALLS sizing table.
+tempo_memory_limit: 1g
+
+# --- Container user ---
+# Tempo image runs as 1000:0 per upstream default (Claude's Discretion D-39).
+tempo_container_user: "1000:0"
+
+# --- Network ---
+# Created by playbooks/deploy_docker.yml pre_tasks.
+tempo_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06) ---
+tempo_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Curl image pin for the verify push and /ready probe one-shots ---
+# curlimages/curl is a small busybox-shell + curl image; pin explicitly
+# per OPS-01 -- no floating-tag references anywhere.
+tempo_curl_image: curlimages/curl
+tempo_curl_image_tag: "8.10.1"

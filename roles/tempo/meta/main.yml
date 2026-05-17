@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: tempo
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Grafana Tempo 2.10.5 in monolithic mode against MinIO S3
+    (tempo-traces bucket). Trace backend for Telemetron's observability
+    plane; OTLP receivers on internal-only alt ports :14317/:14318.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - traces
+    - tempo
+    - grafana
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin

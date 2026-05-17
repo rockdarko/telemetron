@@ -1,0 +1,294 @@
+# roles/tempo
+
+Deploys [Grafana Tempo](https://github.com/grafana/tempo) 2.10.5 in
+monolithic mode (`-target=all`) on a single Docker host. Tempo is
+the trace backend for Telemetron's observability plane; traces land
+via the OTel Collector (Phase 3) and are queried via Grafana (Phase 5).
+
+Storage backend: MinIO S3 (the `tempo-traces` bucket bootstrapped by
+`roles/minio` in Phase 1).
+
+Mirrors the canonical role template established by `roles/minio` and
+`roles/loki` -- same defaults layout, same handler discipline (W6
+single handler), same in-network verify pattern (W8), same Docker
+HEALTHCHECK / running-state pre-poll (D-10a), same OPS-03 README
+schema.
+
+## What this role does
+
+1. Renders `/opt/telemetron/tempo/tempo.yaml` from `templates/tempo.yaml.j2`
+   with MinIO S3 credentials from Ansible vault.
+2. Ensures the named Docker volume `telemetron_tempo_data` exists.
+3. Starts the `tempo` container on the `telemetron` Docker bridge
+   network. OTLP receivers bind to **internal-only** alt ports
+   `:14317` (gRPC) and `:14318` (HTTP) -- NOT the standard `:4317`/`:4318`.
+   The standard ports are intentionally left free for the Phase 3 OTel
+   Collector to claim. Container ports are NOT published to the host
+   by default (`tempo_publish_host: false`).
+4. **As a blocking final task**, polls Tempo's readiness via
+   `community.docker.docker_container_info` (either `State.Health.Status`
+   if a native HEALTHCHECK binary flag is available in this image tag,
+   or `State.Running` plus an extra `/ready` curl probe if not -- see
+   Healthcheck section below). Then pushes a synthetic OTLP/HTTP trace
+   via a one-shot curl container and asserts a 200/202/204 response from
+   `:14318/v1/traces`.
+
+## OTLP alt ports (BACK-05)
+
+Tempo's OTLP receivers in Telemetron M1 do NOT bind to the standard
+`:4317` (gRPC) and `:4318` (HTTP). They bind to **internal-only**
+`:14317` and `:14318` on the `telemetron` Docker bridge. The reason:
+the Phase 3 OTel Collector terminates external OTLP traffic on the
+standard ports and forwards to Tempo on these alt ports over the
+bridge. This prevents a port clash on the single homelab host.
+
+Operators with their own instrumentation should point at the OTel
+Collector's `:4317`/`:4318` (Phase 3), NOT at Tempo's `:14317`/`:14318`
+directly. The Tempo OTLP ports are intentionally never published to
+the host by this role under any condition (only the HTTP API port
+`:3200` is publishable when `tempo_publish_host` is overridden).
+
+## Retention (BACK-03 dual-knob)
+
+Tempo's retention is a **two-phase mark-then-delete** lifecycle, and
+the two phases require two separate knobs:
+
+- `tempo_block_retention: 168h` (default 7d) -- when a block is
+  considered "old."
+- `tempo_compacted_block_retention: 1h` (default 1h) -- how long a
+  compacted (already-merged) block sticks around before deletion.
+
+**Setting only one knob silently fails** -- the MinIO bucket grows
+forever. See `.planning/research/PITFALLS.md` Pitfall 10. The role
+defaults set both knobs; the role template inlines the Pitfall 10
+reference in a comment so the trap is visible to future maintainers.
+
+## Metrics-generator (D-38 path b)
+
+Tempo's metrics-generator runs three processors locally to derive
+service-graph + span-metrics + local-block aggregations from incoming
+traces:
+
+```yaml
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+        - local-blocks
+```
+
+Generated metrics are persisted to a local WAL at
+`/var/tempo/generator/wal` -- they are NOT remote-written to Mimir.
+This decouples Tempo's startup from Mimir's availability (no
+cross-backend cold-start dependency in M1).
+
+To unlock the full Grafana service-graph view post-M1, enable
+`metrics_generator.storage.remote_write` to Mimir. Queued as a
+future hardening milestone.
+
+Disable the generator entirely by setting `tempo_metrics_generator_enabled: false`.
+
+## Variables
+
+See `defaults/main.yml` for the full list. Operators commonly only
+touch `tempo_block_retention` (default `168h`) and `tempo_publish_host`
+(default `false`).
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `tempo_image` | `grafana/tempo` | Image (do not change) |
+| `tempo_image_tag` | `2.10.5` | Pinned tag |
+| `tempo_container_name` | `tempo` | DNS name on the `telemetron` network |
+| `tempo_publish_host` | `false` | Publish :3200 to host. `false`/`true`/`127.0.0.1` |
+| `tempo_http_port` | `3200` | HTTP API port |
+| `tempo_grpc_port` | `9096` | gRPC port (D-28 -- moved off 9095 to avoid Loki clash) |
+| `tempo_otlp_grpc_port` | `14317` | **BACK-05** internal-only OTLP gRPC port |
+| `tempo_otlp_http_port` | `14318` | **BACK-05** internal-only OTLP HTTP port |
+| `tempo_data_volume` | `telemetron_tempo_data` | Named Docker volume |
+| `tempo_data_path` | `/var/tempo` | In-container data root |
+| `tempo_config_dir` | `/opt/telemetron/tempo` | Host config bind-mount source |
+| `tempo_s3_endpoint` | `minio:9000` | **NO** http:// prefix (Tempo-specific); insecure flag signals HTTP |
+| `tempo_s3_bucket` | `tempo-traces` | MinIO bucket |
+| `tempo_block_retention` | `168h` | **BACK-03** dual-knob retention -- mark phase |
+| `tempo_compacted_block_retention` | `1h` | **BACK-03** dual-knob retention -- delete phase |
+| `tempo_metrics_generator_enabled` | `true` | D-38 metrics-generator (local-WAL only) |
+| `tempo_healthcheck_enabled` | `true` | Disable if the distroless image lacks a -health binary |
+| `tempo_healthcheck_test` | `["CMD", "/tempo", "-version"]` | Default binary-alive proxy (Outcome B) |
+| `tempo_restart_policy` | `unless-stopped` | Container restart policy |
+| `tempo_memory_limit` | `1g` | Container memory limit |
+| `tempo_network` | `telemetron` | Docker network |
+| `tempo_tz` | `Etc/UTC` | Container timezone |
+
+## Vault keys
+
+Required keys in `inventory/<env>/group_vars/all/vault.yml`:
+
+| Key | Purpose |
+|-----|---------|
+| `vault_tempo_s3_access_key` | MinIO access key for the `tempo-traces` bucket |
+| `vault_tempo_s3_secret_key` | MinIO secret key for the `tempo-traces` bucket |
+
+Per CONTEXT.md D-27, both alias to `vault_minio_root_user` /
+`vault_minio_root_password` in `vault.yml.example` for now. A future
+hardening milestone splits MinIO into per-backend users with
+bucket-scoped IAM policies (vault values change; role templates do
+not). Cheap forward-compat per D-27.
+
+## Tags
+
+- `tempo` -- runs the whole role (D-24 single tag per role)
+
+## Modes
+
+Monolithic only (`-target=all`). Distributed Tempo and the
+`scalable-single-binary` mode are deferred to a future milestone.
+
+## Volumes
+
+| Volume | Mount | Purpose |
+|--------|-------|---------|
+| `telemetron_tempo_data` (named) | `/var/tempo` | Tempo data root -- covers wal/, traces/, generator/wal, generator/traces. Persistent across container recreates. |
+| `/opt/telemetron/tempo/tempo.yaml` (bind) | `/etc/tempo.yaml` (ro) | Rendered config |
+
+## Healthcheck
+
+Tempo 2.10.5 is built on the `gcr.io/distroless/static-debian12` base
+-- no shell, no curl, no wget. Two possible Docker HEALTHCHECK shapes
+depending on whether the native `-health` binary flag is present in
+this tag:
+
+1. **If `/tempo -health` (or `-health-check`) exists in the image:**
+   Docker HEALTHCHECK uses `CMD ["/tempo", "-health"]` (or the matching
+   flag). The role's verify task polls `State.Health.Status` via
+   `docker_container_info` until `healthy`.
+
+2. **If the native -health binary is NOT present in 2.10.5:** the
+   Docker HEALTHCHECK is set to a binary-alive proxy
+   `CMD ["/tempo", "-version"]` (the role default). OPS-06 compliance
+   is satisfied via this proxy plus the verify task's authoritative
+   in-network curl probe of `http://tempo:3200/ready` before firing
+   the synthetic OTLP push.
+
+3. **If no flag is acceptable as even a proxy:** set
+   `tempo_healthcheck_enabled: false` and the Docker HEALTHCHECK is
+   omitted entirely. OPS-06 compliance via the verify task's D-10a
+   `State.Running` poll PLUS the in-network `/ready` curl probe.
+
+The plan that ports this role probes the image at execute time
+(`docker run --rm grafana/tempo:2.10.5 -help 2>&1 | grep -i health`)
+and selects the actual shape. PITFALLS Pitfall B documents the
+distroless trap.
+
+## Operator access (no host publish by default per D-30)
+
+Inter-component traffic on the `telemetron` bridge reaches Tempo at
+`http://tempo:3200` (Grafana datasource path in Phase 5). Operator
+access from a workstation uses SSH local-forward:
+
+```bash
+ssh -L 3200:localhost:3200 <homelab-host>
+# then curl http://localhost:3200/ready -- expects: ready
+```
+
+**OTLP traffic does NOT cross the host boundary** -- it terminates at
+the OTel Collector on `:4317`/`:4318` in Phase 3 and the Collector
+forwards to Tempo on the internal `:14317`/`:14318` over the bridge.
+
+## Security model
+
+- **Default: no host port publish.** Operator access via SSH local-forward.
+- **OTLP receivers internal-only.** No traces ingress the host directly;
+  external OTLP terminates at the Phase 3 OTel Collector.
+- **S3 credentials from vault.** The rendered `/opt/telemetron/tempo/tempo.yaml`
+  is written with mode `0600`.
+- **Inter-component traffic on the `telemetron` bridge only.** Tempo
+  reaches MinIO at `minio:9000` -- never via the host.
+
+## Idempotency
+
+Per OPS-04: running the playbook twice in a row reports `changed=0`.
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/deploy_docker.yml --tags tempo --ask-vault-pass
+# ...first run: changed=N
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/deploy_docker.yml --tags tempo --ask-vault-pass
+# ...second run: changed=0
+```
+
+Config changes notify a single `docker restart tempo` handler (W6);
+`state: restarted` is never used (Pitfall 8).
+
+## Port-acceptance gates
+
+All five pass on `roles/tempo/` (with the grep gate scoped to
+code/config files; the role README intentionally documents the
+upstream-deviation audit per D-25, which mentions the source-of-truth
+project name):
+
+- **Image-pin (OPS-01):** zero floating-tag references.
+- **Grep gate (Pitfall 9):** zero matches in code/config files for
+  upstream-org leftovers.
+- **Non-ASCII gate (OPS-05):** zero non-ASCII characters in the role.
+- **Vault-discipline (OPS-02):** every `{{ vault_* }}` reference has
+  a matching key in `vault.yml.example`.
+- **Idempotency (OPS-04):** twice-in-a-row run reports `changed=0`.
+- **Healthcheck + restart-policy (OPS-06):** `docker inspect` returns
+  `healthy` (Outcome A) or the verify task's `State.Running` + `/ready`
+  probe gate (Outcome B/C); restart policy `unless-stopped`.
+
+## Deviations from upstream INSPQ (D-25)
+
+Per CONTEXT.md D-25, each Phase-2 role port is an opinionated improvement
+pass over the upstream INSPQ role -- not a mirror translation. Items dropped,
+replaced, or added vs. `~/git/inspq/ansible/tempo/`:
+
+**Dropped (INSPQ-isms beyond the grep gate):**
+
+- `tempo_image_version: latest` -- replaced with explicit pin `2.10.5` per OPS-01.
+- `tempo_container_env.TZ: "America/Toronto"` -- replaced with `Etc/UTC` per OPS-06 + Pitfall 6 (DST avoidance).
+- `tempo_port_grpc: 4317` / `tempo_port_http: 4318` (INSPQ used standard ports) -- replaced with `14317`/`14318` per D-29 / BACK-05; standard pair is reserved for the Phase 3 OTel Collector.
+- Jaeger receivers (`thrift_http`, `thrift_binary`, `thrift_compact`) -- dropped; Telemetron uses OTLP only.
+- `tempo_storage_trace_backend: local` -- replaced with `s3` (MinIO) per D-39.
+- `tempo_retention_period: "336h"` driving `compaction_block_retention` only -- replaced with dual-knob (D-34): BOTH `block_retention: 168h` AND `compacted_block_retention: 1h`. Single-knob silently fails per Pitfall 10.
+- `tempo_replication_factor: 3` -- dropped for monolithic.
+- `tempo_memberlist_*` config -- dropped for monolithic.
+- Distributed-component vars (scalable-single-binary mode) -- dropped.
+- `tempo_metrics_generator_remote_write: false` + `tempo_prometheus_url: ""` half-config -- replaced with the full local-WAL-only D-38 path (b): `metrics_generator.storage.path` + `overrides.defaults.metrics_generator.processors: [...]`.
+- French task names throughout -- replaced with English per CLAUDE.md.
+
+**Kept from upstream (got it right):**
+
+- `tempo_container_restart_policy: "unless-stopped"` -- aligns with OPS-06.
+- `tempo_container_user: "1000:0"` -- Tempo image default UID.
+
+**Added (missing pitfall guards in upstream):**
+
+- **Pitfall 10 dual-knob retention:** added `compacted_block_retention`
+  as a second required knob with the inline citation in the template.
+- **D-28 explicit gRPC port pin:** `server.grpc_listen_port: 9096`
+  (avoids 9095 clash with Loki on single host).
+- **D-29 / BACK-05 OTLP alt ports:** receivers bind to `:14317`/`:14318`
+  instead of `:4317`/`:4318` so the OTel Collector can claim the
+  standard pair in Phase 3.
+- **D-38 metrics-generator local-WAL-only path (b):** completes the
+  partial upstream implementation; processor-only operation with local
+  WAL persistence and no cross-backend startup dependency on Mimir.
+
+## Bring your own bucket / OTLP port
+
+Override `tempo_s3_bucket` (or `telemetron_minio_buckets`) to rename
+the storage bucket -- must be paired with the bucket name in
+`roles/minio/defaults/main.yml`. Override `tempo_otlp_grpc_port` /
+`tempo_otlp_http_port` if your Phase 3 OTel Collector forwards to
+different ports (both ends must agree).
+
+## Deprecation notes
+
+Tempo 3.x is pre-release as of M1 research date. Tempo 3 evaluation
+queued for a post-M1 milestone (`TEMPO-V2-01` in the future
+requirements list). Deferred per CLAUDE.md tech-stack constraint:
+components are fixed for M1.

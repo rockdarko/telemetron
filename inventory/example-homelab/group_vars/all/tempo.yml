@@ -1,0 +1,26 @@
+---
+# Telemetron -- Tempo operator knobs (Phase 2, D-30, D-34, D-38)
+# Role-specific overrides for the `tempo` role.
+# See roles/tempo/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Operator access via SSH local-forward:
+#   ssh -L 3200:localhost:3200 <host>
+# OTLP alt ports :14317 / :14318 are never host-published in any case
+# (D-29 -- internal-only; OTel Collector forwards to them from :4317/:4318).
+tempo_publish_host: false
+
+# Dual-knob retention (BACK-03 + D-34 + PITFALLS Pitfall 10).
+# BOTH knobs must be set or retention silently fails. The role default
+# already sets both; this file surfaces them for operator visibility.
+#
+# Default 168h = 7d (matches telemetron_default_trace_retention).
+# Override directly here for non-default retention:
+#   tempo_block_retention: 336h    # 14 days
+tempo_block_retention: 168h
+tempo_compacted_block_retention: 1h
+
+# Metrics-generator (D-38 -- local-WAL-only path b).
+# Set to false to disable service-graph + span-metrics processors
+# entirely. When true (default), generated metrics persist to a local
+# WAL inside the tempo container -- no remote_write to Mimir.
+tempo_metrics_generator_enabled: true

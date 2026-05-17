@@ -1,0 +1,66 @@
+# {{ ansible_managed }}
+# roles/tempo/templates/tempo.yaml.j2 -- rendered by roles/tempo.
+# DO NOT EDIT BY HAND -- changes here are overwritten by ansible-playbook.
+#
+# Tempo 2.10.5 monolithic mode (-target=all). See RESEARCH.md Finding 4
+# for the verified config shape. Pitfall references inline -- the comments
+# are load-bearing documentation.
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: {{ tempo_http_port }}
+  grpc_listen_port: {{ tempo_grpc_port }}   # CONTEXT.md D-28 -- explicit pin (default 9095 clashes with Loki)
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:{{ tempo_otlp_grpc_port }}"   # CONTEXT.md D-29 / BACK-05 -- internal-only alt port
+        http:
+          endpoint: "0.0.0.0:{{ tempo_otlp_http_port }}"   # CONTEXT.md D-29 / BACK-05 -- internal-only alt port
+
+{% if tempo_metrics_generator_enabled %}
+metrics_generator:
+  storage:
+    path: {{ tempo_data_path }}/generator/wal   # CONTEXT.md D-38 path (b) -- local WAL only; cross-backend write to Mimir intentionally absent (RESEARCH Finding 1)
+  traces_storage:
+    path: {{ tempo_data_path }}/generator/traces
+
+{% endif %}
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: {{ tempo_s3_bucket }}
+      endpoint: {{ tempo_s3_endpoint }}   # Tempo S3 endpoint format: NO http:// prefix; insecure flag signals HTTP
+      access_key: "{{ vault_tempo_s3_access_key }}"
+      secret_key: "{{ vault_tempo_s3_secret_key }}"
+      insecure: {{ tempo_s3_insecure | string | lower }}
+      forcepathstyle: {{ tempo_s3_force_path_style | string | lower }}   # MinIO requires path-style; Tempo key is `forcepathstyle` (single word)
+      region: {{ tempo_s3_region }}
+    wal:
+      path: {{ tempo_data_path }}/wal
+    local:
+      path: {{ tempo_data_path }}/traces
+
+compactor:
+  compaction:
+    # DUAL-KNOB retention -- BOTH must be set or retention silently fails.
+    # See PITFALLS.md Pitfall 10 (Tempo + MinIO retention silently doing nothing).
+    # CONTEXT.md D-34 / BACK-03.
+    block_retention: {{ tempo_block_retention }}
+    compacted_block_retention: {{ tempo_compacted_block_retention }}
+    block_ranges_period: {{ tempo_compactor_block_ranges_period }}
+
+{% if tempo_metrics_generator_enabled %}
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+        - local-blocks   # CONTEXT.md D-38 path (b) -- local-only; no cross-backend forwarding
+{% endif %}
