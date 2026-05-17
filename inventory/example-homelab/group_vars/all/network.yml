@@ -1,0 +1,20 @@
+---
+# Telemetron -- shared network knobs (Phase 1, D-04, D-12, D-14, D-15)
+# Consumed by playbooks/deploy_docker.yml pre_tasks and every role's
+# community.docker.docker_container task.
+
+# Single user-defined Docker bridge network. Every component container
+# attaches to this network and discovers peers by container name (DNS).
+# Created by playbooks/deploy_docker.yml pre_tasks; never by any role.
+telemetron_network: telemetron
+
+# Default for every role: do NOT publish container ports to the host.
+# Inter-component traffic happens over the telemetron bridge network.
+# Operator access is via `ssh -L <port>:localhost:<port> <host>` or `docker exec`.
+# Each role exposes its own <role>_publish_host knob to override per-service.
+telemetron_publish_default: false
+
+# Container timezone. Etc/UTC eliminates DST landmines (see PITFALLS.md
+# Pitfall 6: Fluent Bit timestamp drift). Operators MAY override per-role
+# but the homelab default is UTC everywhere.
+telemetron_tz: Etc/UTC

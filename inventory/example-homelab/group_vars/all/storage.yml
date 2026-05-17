@@ -1,0 +1,36 @@
+---
+# Telemetron -- shared storage knobs (Phase 1, D-15, D-16, D-17, D-18)
+# Consumed by every role's container volume / config-bind-mount paths.
+
+# Named-volume prefix. Every component's data volume is named
+# `<telemetron_volume_prefix>_<role>_data` (e.g. telemetron_minio_data,
+# telemetron_loki_data). Prefix avoids clashes if the homelab host runs
+# other Docker stacks. Renaming the prefix renames every volume -- only
+# do this on a fresh install.
+telemetron_volume_prefix: telemetron
+
+# Host-side config directory tree. Every role writes its Jinja-rendered
+# configs to /opt/telemetron/<role>/<file> (flat layout, no nested
+# `config/` subdir per D-18) and bind-mounts them read-only into the
+# container at the canonical container path.
+telemetron_config_root: /opt/telemetron
+
+# MinIO bucket names (consumed by Phase 1 minio role bucket-bootstrap
+# AND by Phase 2 loki/tempo/mimir roles for their S3 endpoint config).
+# Renaming any bucket here MUST be paired with renaming in the backend
+# role's S3 config -- same name on both ends.
+telemetron_minio_buckets:
+  - loki-chunks      # Phase 2: loki role consumes this
+  - tempo-traces     # Phase 2: tempo role consumes this
+  - mimir-blocks     # Phase 2: mimir role consumes this (blocks store)
+  - mimir-ruler      # Phase 2: mimir role consumes this (ruler store; Mimir refuses to start sharing buckets across stores)
+  - mimir-alerts     # Phase 2: mimir role consumes this (alertmanager store; same)
+
+# Retention defaults (homelab-sized). Each backend role surfaces its own
+# retention knob (loki_retention_period, tempo_block_retention,
+# mimir_blocks_retention_period) -- these are placeholders for Phase 2
+# to override. Phase 1 does not consume them; they live here so the
+# inventory shows the full surface from day one.
+telemetron_default_log_retention: 14d
+telemetron_default_metric_retention: 30d
+telemetron_default_trace_retention: 7d

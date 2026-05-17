@@ -1,0 +1,18 @@
+---
+# Telemetron -- MinIO operator knobs (Phase 1, D-13, D-14)
+# Role-specific overrides for the `minio` role.
+# See roles/minio/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Neither :9000 (S3 API) nor :9001 (console)
+# is exposed on the host. Inter-component traffic stays on the telemetron
+# Docker bridge network (e.g. Loki reaches MinIO at http://minio:9000).
+# Operator accesses the console via SSH local-forward:
+#   ssh -L 9001:localhost:9001 <host>
+# Override to `true` to publish to all interfaces, or to `127.0.0.1` to
+# publish to loopback only.
+minio_publish_host: false
+
+# Container name on the telemetron network. Other roles reference MinIO
+# at http://{{ minio_container_name }}:9000 -- do not change unless you
+# also update every Phase 2 backend role's S3 endpoint config.
+minio_container_name: minio

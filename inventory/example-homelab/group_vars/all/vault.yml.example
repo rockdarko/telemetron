@@ -1,0 +1,32 @@
+---
+# Telemetron -- example vault file
+#
+# USAGE:
+#   1. Copy this file:
+#        cp inventory/example-homelab/group_vars/all/vault.yml.example \
+#           inventory/example-homelab/group_vars/all/vault.yml
+#   2. Replace every CHANGE_ME with a strong random value (32+ chars).
+#   3. Encrypt the file:
+#        ansible-vault encrypt inventory/example-homelab/group_vars/all/vault.yml
+#   4. Supply the vault password to ansible-playbook via --ask-vault-pass,
+#      --vault-password-file <path>, or ANSIBLE_VAULT_PASSWORD_FILE env var.
+#
+# NAMING CONVENTION: vault_<role>_<purpose> per OPS-02.
+# Every {{ vault_* }} reference in a role MUST have a matching key here.
+#
+# GIT HYGIENE: this .example file IS committed (placeholders only).
+# The real vault.yml is in .gitignore -- DO NOT commit a populated vault file.
+
+# --- Phase 1: MinIO ---
+# Consumed by: roles/minio (server root credentials + bucket-bootstrap mc container)
+# Both keys must be set; both are injected as env vars on the MinIO server container
+# and the one-shot mc bootstrap container. Per D-09 these root credentials are
+# reused by Loki/Tempo/Mimir for now (per-backend access-key topology is deferred).
+vault_minio_root_user: CHANGE_ME       # MinIO root username (>= 3 chars)
+vault_minio_root_password: CHANGE_ME   # MinIO root password (>= 8 chars, recommend 32+)
+
+# --- Phase 2+ keys will be added here as their roles land ---
+# (Examples for future planning visibility -- do NOT add real values yet:)
+# vault_grafana_admin_password: CHANGE_ME   # Phase 5 -- Grafana admin login
+# vault_jenkins_api_token: CHANGE_ME        # Phase 4 -- hook_router outbound auth to Jenkins
+# vault_alertmanager_webhook_secret: CHANGE_ME  # Phase 4 -- shared secret on hook_router inbound
