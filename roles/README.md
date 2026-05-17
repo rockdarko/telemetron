@@ -7,7 +7,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | Role                     | Component                                         | Ported |
 |--------------------------|---------------------------------------------------|:------:|
 | `application_web_docker` | shared utility role used as a base                | ☐ |
-| `alert_manager`          | alert routing (rename to `alertmanager` on port?) | ☐ |
+| `alertmanager`           | alert routing                                     | ☐ |
 | `fluentbit`              | log shipping                                      | ☐ |
 | `grafana`                | dashboards, datasources, provisioning             | ☐ |
 | `haproxy`                | distributed-mode load balancing                   | ☐ |
@@ -20,7 +20,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `mongodb`                | dependency for some components                    | ☐ |
 | `nfsd`                   | NFS for legacy log ingestion (optional)           | ☐ |
 | `opentelemetry`          | OTel Collector                                    | ☐ |
-| `postgresql-docker`      | Postgres for Grafana (rename to `postgres`?)      | ☐ |
+| `postgres`               | Postgres (for Grafana, etc.)                      | ☐ |
 | `prometheus`             | short-term metrics + alerting eval                | ☐ |
 | `promlens`               | PromQL editor                                     | ☐ |
 | `tempo`                  | trace backend (monolithic + distributed)          | ☐ |
@@ -32,7 +32,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 1. Copy from upstream checkout (`~/git/inspq/ansible/<role>/` at time of fork).
 2. Translate French → English (READMEs, comments, task `name:` strings, variable doc).
 3. Strip INSPQ-isms (vault paths, internal domains, NFS share assumptions, Quebec-gov cert chains).
-4. Normalize naming where flagged (`alert_manager` → `alertmanager`?, `postgresql-docker` → `postgres`?).
+4. Apply locked naming normalizations (`alert_manager` → `alertmanager`, `postgresql-docker` → `postgres`).
 5. Add a `roles/<role>/README.md` documenting variables, modes, defaults.
 6. Wire into `playbooks/deploy_docker.yml` and/or `playbooks/deploy_kube.yml`.
 7. Tick the box above.
