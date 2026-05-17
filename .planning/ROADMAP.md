@@ -13,7 +13,7 @@ Telemetron M1 — "Port to clean-slate, Docker, homelab-first" — ports 14 Ansi
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Storage** - MinIO with bucket bootstrap gate (5 required buckets), `telemetron` Docker bridge network created in playbook pre_tasks, inventory `group_vars/all/` skeleton, vault discipline, grep + idempotency gates established (completed 2026-05-17)
-- [ ] **Phase 2: Telemetry Backends** - Loki, Tempo, and Mimir running in monolithic mode against MinIO with correct retention defaults and Tempo's OTLP ports moved off the standard 4317/4318
+- [x] **Phase 2: Telemetry Backends** - Loki, Tempo, and Mimir running in monolithic mode against MinIO with correct retention defaults and Tempo's OTLP ports moved off the standard 4317/4318 (completed 2026-05-17)
 - [ ] **Phase 3: Ingest Plane** - Prometheus scraping + remote_writing to Mimir with baseline alert rules, OTel Collector accepting OTLP on 4317/4318 and fanning out to all three backends, Fluent Bit shipping host logs through OTel to Loki, node_exporter exposing host metrics
 - [ ] **Phase 4: Alert Plane** - Alertmanager configured with sane group/repeat intervals, hook router Flask source under `hooks/router/` with allowlist + rate limit + vault-supplied Jenkins token, sample Jenkinsfile runbooks under `hooks/jobs/`, `hook_router` role wiring the webhook
 - [ ] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Storage | 3/3 | Complete   | 2026-05-17 |
-| 2. Telemetry Backends | 2/3 | In Progress | - |
+| 2. Telemetry Backends | 3/3 | Complete   | 2026-05-17 |
 | 3. Ingest Plane | 0/TBD | Not started | - |
 | 4. Alert Plane | 0/TBD | Not started | - |
 | 5. UI Plane | 0/TBD | Not started | - |
