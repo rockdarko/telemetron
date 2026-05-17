@@ -1,0 +1,100 @@
+---
+# roles/minio/defaults/main.yml
+# MinIO role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/minio.yml.
+#
+# NOTE on the MinIO image pin: the community version of MinIO was archived
+# by the upstream project in early 2026 (repo archived; community Docker
+# images no longer published). This role pins the last published community
+# release. The role README explains the situation in full; a future
+# milestone will evaluate Garage / SeaweedFS as a replacement.
+
+# --- Image pins (OPS-01: pin every image tag explicitly) ---
+# MinIO server image -- last published community release (2025-04-22).
+# See: https://github.com/minio/minio (archived 2026)
+minio_image: minio/minio
+minio_image_tag: "RELEASE.2025-04-22T22-12-26Z"
+
+# mc (MinIO Client) image -- paired with the server pin. Used only by the
+# one-shot bootstrap container that creates buckets.
+minio_mc_image: minio/mc
+minio_mc_image_tag: "RELEASE.2025-04-22T16-23-26Z"
+
+# --- Container identity ---
+# Container name on the telemetron network. Other roles reach MinIO at
+# http://{{ minio_container_name }}:9000 -- coordinate any change here
+# with every Phase 2 backend role's S3 endpoint config.
+minio_container_name: "{{ minio_container_name | default('minio') }}"
+
+# --- Host port publishing (D-13, D-14, Security Mistakes from PITFALLS.md) ---
+# Default: zero host publish. Inter-component traffic stays on the
+# telemetron Docker bridge network. Console access via SSH local-forward.
+# Override to `true` (publishes to 0.0.0.0) or `127.0.0.1` (loopback only)
+# in inventory/<env>/group_vars/all/minio.yml -- see operator README.
+minio_publish_host: "{{ minio_publish_host | default(false) }}"
+minio_api_port: 9000
+minio_console_port: 9001
+
+# --- Storage layout (D-16, D-17, D-18) ---
+# Named Docker volume covering MinIO's full data root (/data inside the
+# container). One volume = full data root; Pitfall 12 (Loki marker loss)
+# shape applies to every stateful role.
+minio_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_minio_data"
+minio_data_path: /data
+
+# Host-side config directory (D-18: flat layout, no nested config/ subdir).
+# The rendered env file lives here and is bind-mounted into the container.
+minio_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/minio"
+
+# --- Bucket list (consumed by tasks/bootstrap.yml) ---
+# Pulled from inventory storage.yml when present; defaults provided here
+# so the role works standalone for testing.
+minio_buckets: "{{ telemetron_minio_buckets | default([
+  'loki-chunks',
+  'tempo-traces',
+  'mimir-blocks',
+  'mimir-ruler',
+  'mimir-alerts',
+]) }}"
+
+# --- Bootstrap pre-poll (D-10 / D-10a amendment) ---
+# The mc bootstrap container only runs after MinIO's Docker HEALTHCHECK
+# reports `healthy` (status polled via community.docker.docker_container_info).
+# These knobs control the pre-poll timing -- defaults are 30 retries
+# at 2-second intervals (60s total budget for MinIO to come up).
+minio_health_retries: 30
+minio_health_delay: 2
+
+# --- Healthcheck (OPS-06) ---
+# Docker HEALTHCHECK -- the MinIO image ships its own; we declare it
+# explicitly so `docker inspect --format '{{.State.Health.Status}}'`
+# reflects MinIO readiness, not just "container running." The bootstrap
+# pre-poll (tasks/bootstrap.yml) reads Status.Health.Status via
+# docker_container_info and waits for `healthy` before firing mc.
+minio_healthcheck_test: "CMD-SHELL curl -sf http://127.0.0.1:{{ minio_api_port }}/minio/health/ready || exit 1"
+minio_healthcheck_interval: 30s
+minio_healthcheck_timeout: 5s
+minio_healthcheck_retries: 3
+minio_healthcheck_start_period: 30s
+
+# --- Restart policy (OPS-06) ---
+# `unless-stopped`: survives host reboots; operator deliberate stops
+# aren't fought by the Docker daemon.
+minio_restart_policy: unless-stopped
+
+# --- Resource limits (homelab-safe; tune per environment) ---
+# MinIO RAM use scales with active connections; 512m fits a homelab.
+minio_memory_limit: 512m
+
+# --- Network ---
+# Created by playbooks/deploy_docker.yml pre_tasks; this role does NOT
+# create the network -- it only attaches to it.
+minio_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (D-15 / OPS-06) ---
+minio_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Browser redirect (Claude's Discretion per CONTEXT.md) ---
+# Empty string disables the console redirect; override only if console
+# is exposed and you want a non-default redirect target.
+minio_browser_redirect_url: ""

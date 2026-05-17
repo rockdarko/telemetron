@@ -1,0 +1,15 @@
+---
+# roles/minio/handlers/main.yml
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>` (preserves container state), NEVER
+# `state: restarted` (which force-recreates the container and is
+# non-idempotent).
+#
+# MinIO env-var changes require a container restart (no SIGHUP reload
+# path), so the env-file template notifies this handler.
+
+- name: Docker restart minio
+  ansible.builtin.command:
+    cmd: "docker restart {{ minio_container_name }}"
+  changed_when: true
+  listen: restart minio

@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: minio
+  author: Rock Martel-Langlois
+  description: >
+    Deploys MinIO S3-compatible object storage on Docker, with bucket
+    bootstrap as a blocking final task. Backing store for Telemetron's
+    Loki, Tempo, and Mimir roles.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - storage
+    - minio
+    - s3
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin
