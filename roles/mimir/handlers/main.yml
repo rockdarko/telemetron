@@ -1,0 +1,15 @@
+---
+# roles/mimir/handlers/main.yml
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>`. The module-level state parameter is never
+# used for restarts -- force-recreate is non-idempotent.
+#
+# Mimir config changes (storage, limits, retention, querier tuning)
+# require a container restart; the config-file template notifies this
+# handler.
+
+- name: Docker restart mimir
+  ansible.builtin.command:
+    cmd: "docker restart {{ mimir_container_name }}"
+  changed_when: true
+  listen: restart mimir

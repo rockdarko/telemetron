@@ -1,0 +1,15 @@
+---
+# Telemetron -- Mimir operator knobs (Phase 2, D-30, D-35)
+# Role-specific overrides for the `mimir` role.
+# See roles/mimir/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Operator access via SSH local-forward:
+#   ssh -L 9009:localhost:9009 <host>
+mimir_publish_host: false
+
+# Metric retention (BACK-04 + D-35). Surfaced again here so operators
+# see the override path without grep-hunting defaults/main.yml. The
+# role default aliases to telemetron_default_metric_retention (30d)
+# from storage.yml. Override directly here for non-default retention:
+#   mimir_compactor_blocks_retention_period: 90d
+mimir_compactor_blocks_retention_period: "{{ telemetron_default_metric_retention | default('30d') }}"

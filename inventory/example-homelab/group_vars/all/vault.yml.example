@@ -40,6 +40,14 @@ vault_loki_s3_secret_key: "{{ vault_minio_root_password }}"
 vault_tempo_s3_access_key: "{{ vault_minio_root_user }}"
 vault_tempo_s3_secret_key: "{{ vault_minio_root_password }}"
 
+# --- Phase 2: Mimir S3 credentials (D-27) ---
+# Consumed by: roles/mimir (S3 access to all three mimir-* buckets:
+# mimir-blocks, mimir-ruler, mimir-alerts -- Mimir refuses to start
+# sharing buckets across these stores, per BACK-04 / Pitfall G).
+# Values alias to the Phase-1 MinIO root credentials for now (D-27).
+vault_mimir_s3_access_key: "{{ vault_minio_root_user }}"
+vault_mimir_s3_secret_key: "{{ vault_minio_root_password }}"
+
 # --- Phase 2+ additional keys will be added here as their roles land ---
 # (Examples for future planning visibility -- do NOT add real values yet:)
 # vault_grafana_admin_password: CHANGE_ME   # Phase 5 -- Grafana admin login

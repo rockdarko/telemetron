@@ -1,0 +1,78 @@
+# {{ ansible_managed }}
+# roles/mimir/templates/mimir.yaml.j2 -- rendered by roles/mimir.
+# DO NOT EDIT BY HAND -- changes here are overwritten by ansible-playbook.
+#
+# Mimir 3.0.6 monolithic mode (-target=all). See RESEARCH.md Finding 3
+# for the verified config shape. Pitfall references inline -- the
+# comments are load-bearing documentation.
+
+target: all
+multitenancy_enabled: {{ mimir_multitenancy_enabled | string | lower }}   # CONTEXT.md D-26 -- single tenant `anonymous`
+
+server:
+  http_listen_port: {{ mimir_http_port }}
+  grpc_listen_port: {{ mimir_grpc_port }}   # CONTEXT.md D-28 -- explicit pin (default 9095 clashes with Loki; 9096 with Tempo)
+  log_level: warn
+
+ingester:
+  ring:
+    replication_factor: 1
+    kvstore:
+      store: inmemory
+
+common:
+  storage:
+    backend: s3
+    s3:
+      endpoint: {{ mimir_s3_endpoint }}   # Mimir S3 endpoint format: NO http:// prefix
+      access_key_id: "{{ vault_mimir_s3_access_key }}"
+      secret_access_key: "{{ vault_mimir_s3_secret_key }}"
+      insecure: {{ mimir_s3_insecure | string | lower }}
+      region: {{ mimir_s3_region }}
+
+# Three distinct buckets (CONTEXT.md D-39 + BACK-04 + PITFALLS Pitfall G):
+# Mimir refuses to start when these stores share a bucket+prefix.
+blocks_storage:
+  backend: s3
+  s3:
+    bucket_name: {{ mimir_blocks_bucket }}
+  tsdb:
+    dir: {{ mimir_data_path }}/tsdb
+    out_of_order_time_window: {{ mimir_ooo_time_window }}
+  bucket_store:
+    sync_dir: {{ mimir_data_path }}/tsdb-sync
+    sync_interval: {{ mimir_bucket_store_sync_interval }}   # CONTEXT.md D-36 + PITFALLS Pitfall 11
+
+ruler_storage:
+  backend: s3
+  s3:
+    bucket_name: {{ mimir_ruler_bucket }}
+
+alertmanager_storage:
+  backend: s3
+  s3:
+    bucket_name: {{ mimir_alerts_bucket }}
+
+compactor:
+  data_dir: {{ mimir_data_path }}/compactor
+  blocks_retention_period: {{ mimir_compactor_blocks_retention_period }}   # CONTEXT.md D-35 + BACK-04
+  cleanup_interval: {{ mimir_compactor_cleanup_interval }}   # CONTEXT.md D-36 + PITFALLS Pitfall 11
+
+ruler:
+  rule_path: {{ mimir_data_path }}/ruler/rules
+  # alertmanager_url is set in Phase 4 when the alertmanager role lands.
+  # Intentionally omitted from M1 to keep the Phase 2 config self-contained.
+
+alertmanager:
+  data_dir: {{ mimir_data_path }}/alertmanager
+  # external_url intentionally NOT set (upstream-hostname-embedding
+  # pattern dropped per CONTEXT.md D-25).
+
+querier:
+  query_store_after: {{ mimir_query_store_after }}   # CONTEXT.md D-36 + PITFALLS Pitfall 11
+  # Longer than block-lands-in-storage window; shorter than Prometheus
+  # local retention (Phase 3 sets to 24h+).
+
+limits:
+  max_global_series_per_user: {{ mimir_max_global_series_per_user }}     # CONTEXT.md D-36 + PITFALLS Pitfall 3 (homelab)
+  max_global_series_per_metric: {{ mimir_max_global_series_per_metric }} # CONTEXT.md D-36 + PITFALLS Pitfall 3 (homelab)

@@ -1,0 +1,143 @@
+---
+# roles/mimir/defaults/main.yml
+# Mimir role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/mimir.yml.
+#
+# Mimir 3.0.6 monolithic mode (-target=all). Storage backend: MinIO S3
+# with THREE DISTINCT BUCKETS -- Mimir refuses to start sharing
+# prefixes across blocks_storage / ruler_storage / alertmanager_storage
+# (PITFALLS.md Pitfall G + BACK-04).
+
+# --- Image pin (OPS-01: pin every image tag explicitly) ---
+# Mimir 3.0.6 (2026-04-20) -- v3.0 line is current stable.
+# See: https://github.com/grafana/mimir/releases/tag/mimir-3.0.6
+mimir_image: grafana/mimir
+mimir_image_tag: "3.0.6"
+
+# --- Container identity ---
+# DNS name on the telemetron network. Phase 3 Prometheus remote_writes
+# to http://{{ mimir_container_name }}:9009/api/v1/push.
+mimir_container_name: mimir
+
+# --- Host port publishing (D-30) ---
+# Default: zero host publish. Operator access via SSH local-forward:
+#   ssh -L 9009:localhost:9009 <host>
+mimir_publish_host: "{{ mimir_publish_host | default(false) }}"
+
+# --- Port matrix (D-28, D-31) ---
+# HTTP API on :9009 (metrics push, /ready, /metrics, /api/v1/*).
+# gRPC on :9097 (D-28 explicit -- default 9095 clashes with Loki;
+# :9096 is taken by Tempo).
+mimir_http_port: 9009
+mimir_grpc_port: 9097
+
+# --- Storage layout (D-16, D-17, D-18, RESEARCH Finding 7) ---
+# One named Docker volume covers tsdb/, tsdb-sync/, compactor/,
+# alertmanager/, ruler/rules at the /data container root.
+mimir_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_mimir_data"
+mimir_data_path: /data
+
+# Host-side config directory (D-18 flat layout).
+mimir_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/mimir"
+
+# --- S3 backend (D-39, RESEARCH Finding 3) ---
+# NOTE: Mimir's common.storage.s3.endpoint format omits the http://
+# prefix; insecure: true signals plain HTTP. Matches Tempo's convention
+# and differs from Loki's. See RESEARCH Open Question #2 -- the safe
+# answer is `minio:9000` no scheme.
+mimir_s3_endpoint: "minio:9000"
+mimir_s3_region: us-east-1
+mimir_s3_insecure: true
+
+# --- Three distinct buckets (BACK-04, Pitfall G, RESEARCH Finding 3) ---
+# Mimir refuses to start with shared bucket+prefix across these three
+# storage stores. The Phase 1 minio role bootstrapped all three buckets
+# already; this role just references them.
+mimir_blocks_bucket: mimir-blocks
+mimir_ruler_bucket: mimir-ruler
+mimir_alerts_bucket: mimir-alerts
+
+# --- Retention (D-35, BACK-04) ---
+# Compactor-driven block retention. Default 30d matches
+# telemetron_default_metric_retention. Override in inventory/mimir.yml.
+mimir_compactor_blocks_retention_period: "{{ telemetron_default_metric_retention | default('30d') }}"
+
+# --- Monolithic tuning (D-36, PITFALLS Pitfall 11 + Pitfall 3) ---
+# All five knobs explicit and inline-commented in the template.
+mimir_max_global_series_per_user: 500000      # Pitfall 3 homelab limit
+mimir_max_global_series_per_metric: 100000    # Pitfall 3 homelab limit
+mimir_query_store_after: 12h                  # Pitfall 11 -- longer than block-lands window
+mimir_bucket_store_sync_interval: 5m          # Pitfall 11 -- monolithic single-host
+mimir_compactor_cleanup_interval: 5m          # Pitfall 11 -- monolithic single-host
+
+# --- OOO time window (Claude's Discretion per D-39) ---
+# Sensible homelab default. Protects against data loss on restart when
+# remote_write has buffered samples.
+mimir_ooo_time_window: 30m
+
+# --- Multitenancy (D-26) ---
+# Single-tenant `anonymous`. Phase 3 Prometheus does not send
+# X-Scope-OrgID header. Flipping this to true in a future hardening
+# phase requires updating every Phase-3 producer's tenant config.
+mimir_multitenancy_enabled: false
+
+# --- Healthcheck approach (RESEARCH Finding 6, PITFALLS Pitfall B) ---
+# Mimir 3.0.6 is distroless (gcr.io/distroless/static-debian12) -- no
+# shell. No native `-health` binary flag as of research (issue #9034
+# closed unresolved). Same pattern as Tempo (Plan 02-02):
+#   Outcome A: native -health flag present
+#     -> mimir_healthcheck_test: ["CMD", "/bin/mimir", "-health"]
+#   Outcome B: only -version (binary-alive proxy) available (default)
+#     -> mimir_healthcheck_test: ["CMD", "/bin/mimir", "-version"]
+#   Outcome C: no healthcheck-capable flag at all
+#     -> mimir_healthcheck_enabled: false (HEALTHCHECK omitted entirely)
+# In all three outcomes, the verify task's authoritative readiness gate
+# is the in-network curl probe of /ready (Step 1c in verify.yml).
+#
+# Image probe at Phase-2 Plan-03 execute time:
+#   docker run --rm grafana/mimir:3.0.6 -help 2>&1 | grep -i health
+# -> returned no match. Outcome B applies; -version exits 0 with a
+# version banner ("Mimir, version 3.0.6 ..."), valid binary-alive proxy.
+mimir_healthcheck_enabled: true
+mimir_healthcheck_test: ["CMD", "/bin/mimir", "-version"]
+mimir_healthcheck_interval: 15s
+mimir_healthcheck_timeout: 5s
+mimir_healthcheck_retries: 5
+mimir_healthcheck_start_period: 60s
+
+# --- Verify pre-poll (D-10a) ---
+# 90s total budget. Mimir cold-start is moderate -- TSDB initialization
+# plus S3 bucket sync.
+mimir_health_retries: 45
+mimir_health_delay: 2
+
+# --- Restart policy (OPS-06) ---
+mimir_restart_policy: unless-stopped
+
+# --- Resource limits ---
+# Mimir ingester is the memory hog (active series in memory).
+# 2GB fits homelab single-tenant per PITFALLS sizing.
+mimir_memory_limit: 2g
+
+# --- Container user (RESEARCH Finding 7) ---
+# Mimir 3.x image runs as UID 472 per upstream default.
+mimir_container_user: "472:472"
+
+# --- Network ---
+# Created by playbooks/deploy_docker.yml pre_tasks; this role attaches.
+mimir_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06; PITFALLS Pitfall 6 Etc/UTC default) ---
+mimir_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- mc image pins for the bucket-trinity verify one-shot ---
+# Used by tasks/verify.yml to assert all three mimir-* buckets are
+# reachable via the D-27-aliased mimir vault credentials.
+mimir_mc_image: minio/mc
+mimir_mc_image_tag: "RELEASE.2025-04-22T16-23-26Z"
+
+# --- Curl image pin for the /ready probe one-shot ---
+# curlimages/curl is a small busybox-shell + curl image; pin explicitly
+# per OPS-01 -- no floating-tag references anywhere.
+mimir_curl_image: curlimages/curl
+mimir_curl_image_tag: "8.10.1"
