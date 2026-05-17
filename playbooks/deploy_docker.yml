@@ -32,13 +32,13 @@
         - always
         - network
 
-  roles: []
-  # Phase 1 plan 03 wires in the minio role here:
-  #   - role: minio
-  #     tags: [minio]
-  #
-  # Subsequent phase plans extend this list in dependency order:
-  #   Phase 2: loki, tempo, mimir
+  roles:
+    - role: minio
+      tags:
+        - minio
+  # Subsequent phase plans extend this list in dependency order
+  # (D-05 dependency tree):
+  #   Phase 2: loki, tempo, mimir (after minio -- depend on its buckets)
   #   Phase 3: prometheus, opentelemetry, fluentbit, node_exporter
   #   Phase 4: alertmanager, hook_router
   #   Phase 5: grafana, karma, promlens
