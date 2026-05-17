@@ -1,0 +1,115 @@
+---
+# roles/minio/tasks/bootstrap.yml
+# Pre-poll MinIO's Docker HEALTHCHECK status, then run a one-shot mc
+# container to create all required buckets. Blocks the playbook on
+# non-zero exit.
+#
+# Direct mitigation for PITFALLS.md Pitfall 1 (MinIO bucket / LTM race).
+
+# Step 1: poll the container's Docker HEALTHCHECK status until it
+# reports `healthy`. Per D-10a (amendment to D-10): we read the
+# status via the docker_container_info module rather than firing
+# ansible.builtin.uri against :9000, because D-13's no-host-publish
+# model means the control host cannot reach the MinIO API directly.
+# The HEALTHCHECK itself (defined in tasks/main.yml) is what proves
+# MinIO is answering /minio/health/ready inside the container.
+- name: Wait for MinIO container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ minio_container_name }}"
+  register: minio_health_check
+  until: >-
+    minio_health_check.container is defined
+    and minio_health_check.container.State is defined
+    and minio_health_check.container.State.Health is defined
+    and minio_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ minio_health_retries }}"
+  delay: "{{ minio_health_delay }}"
+  changed_when: false
+  tags:
+    - minio
+    - minio-bootstrap
+
+# Step 2: one-shot mc container that creates every bucket.
+# Per D-07: detach=false + auto_remove=true => Ansible blocks on exit
+# and the container is GC'd after. Non-zero exit aborts the playbook.
+# Per D-09: root credentials reused (per-backend keys deferred to a
+# future hardening phase).
+#
+# Bucket list is iterated via `{% for b in minio_buckets | sort %}` --
+# per D-20 we sort for deterministic output.
+#
+# SECURITY (I12): MC_HOST_<alias>=http://user:pw@host:port is the
+# required mc credential format. The URL embeds vault credentials and
+# IS visible via `docker inspect` for the lifetime of this container.
+# `auto_remove: true` destroys the container on exit (typically <5s),
+# bounding the docker-inspect exposure window to the bootstrap run
+# only (per D-09). See roles/minio/README.md "Security model" section.
+#
+# IDEMPOTENCY (W7): we set `changed_when: false` on this task. The
+# The `--ignore-existing` flag means mc exits 0 in BOTH create and
+# already-exists cases -- there is no way to distinguish "we created
+# buckets" from "they were already there" from the mc exit code. The
+# verify task below is the source of truth for "buckets exist"; this
+# task is "ensure they exist" and is not a state-mutation worth
+# reporting as changed. This is what makes the second playbook run
+# report changed=0 (OPS-04).
+- name: Bootstrap required buckets via one-shot mc container
+  community.docker.docker_container:
+    name: "{{ minio_container_name }}-bootstrap"
+    image: "{{ minio_mc_image }}:{{ minio_mc_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ minio_network }}"
+    env:
+      MC_HOST_local: "http://{{ vault_minio_root_user }}:{{ vault_minio_root_password }}@{{ minio_container_name }}:{{ minio_api_port }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc mb --ignore-existing
+        {% for b in minio_buckets | sort %}local/{{ b }} {% endfor %}
+  register: minio_bootstrap_result
+  failed_when: minio_bootstrap_result.status is defined and minio_bootstrap_result.status != 0
+  changed_when: false
+  tags:
+    - minio
+    - minio-bootstrap
+
+# Step 3: verify (cheap read-back -- mc ls with JSON output per W8).
+# If the bucket list doesn't match all expected buckets, fail loud.
+# Per W8: JSON is mc's documented stable interface; column parsing of
+# text output is fragile. sed extracts the "key" field (busybox-compat --
+# works inside the minio/mc alpine-based image without jq or GNU coreutils).
+# We use `diff` against a sorted expected list -- any missing or extra
+# bucket causes diff to exit 1 and the playbook fails.
+- name: Verify all required buckets exist
+  community.docker.docker_container:
+    name: "{{ minio_container_name }}-verify"
+    image: "{{ minio_mc_image }}:{{ minio_mc_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ minio_network }}"
+    env:
+      MC_HOST_local: "http://{{ vault_minio_root_user }}:{{ vault_minio_root_password }}@{{ minio_container_name }}:{{ minio_api_port }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc ls --json local/ |
+        sed -n 's/.*"key":"\([^"]*\)\/".*/\1/p' |
+        sort -u >/tmp/got;
+        printf '%s\n' {% for b in minio_buckets | sort %}{{ b }} {% endfor %} |
+        sort -u >/tmp/want;
+        diff /tmp/want /tmp/got
+  register: minio_bucket_verify
+  failed_when: minio_bucket_verify.status is defined and minio_bucket_verify.status != 0
+  changed_when: false
+  tags:
+    - minio
+    - minio-bootstrap
