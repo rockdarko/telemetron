@@ -26,8 +26,8 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### Backends (BACK)
 
-- [ ] **BACK-01**: Operator can run the playbook and have Loki running in monolithic mode (`-target=all`, `grafana/loki:3.7.2`), backed by the `loki-chunks` MinIO bucket, with its persistent volume covering `/loki/compactor/markers/` (marker-file persistence is required for cleanup).
-- [ ] **BACK-02**: Operator can configure Loki log retention via a single `group_vars/` variable (`loki_retention_period`). Default ships sane (e.g. 14d) and is documented in `roles/loki/README.md`.
+- [x] **BACK-01**: Operator can run the playbook and have Loki running in monolithic mode (`-target=all`, `grafana/loki:3.7.2`), backed by the `loki-chunks` MinIO bucket, with its persistent volume covering `/loki/compactor/markers/` (marker-file persistence is required for cleanup).
+- [x] **BACK-02**: Operator can configure Loki log retention via a single `group_vars/` variable (`loki_retention_period`). Default ships sane (e.g. 14d) and is documented in `roles/loki/README.md`.
 - [ ] **BACK-03**: Operator can run the playbook and have Tempo running in monolithic mode (`grafana/tempo:2.10.5`), backed by the `tempo-traces` MinIO bucket. Defaults set **both** `block_retention` and `compacted_block_retention` so retention actually takes effect (single-value retention silently fails).
 - [ ] **BACK-04**: Operator can run the playbook and have Mimir running in monolithic mode (`-target=all`, `grafana/mimir:3.0.6`), backed by **three distinct** MinIO buckets (`mimir-blocks`, `mimir-ruler`, `mimir-alerts`) — Mimir refuses to start when these share a bucket+prefix. Defaults include `max_global_series_per_user: 500000` and `query_store_after` tuned for a single-host monolithic run.
 - [ ] **BACK-05**: Tempo's OTLP receivers bind to internal-only alt ports (14317 gRPC / 14318 HTTP), not the standard 4317/4318. External OTLP traffic terminates at the OTel Collector. Documented in `roles/tempo/README.md`.
