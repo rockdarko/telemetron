@@ -19,7 +19,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `opentelemetry`          | OTel Collector                                    | ☐ |
 | `prometheus`             | short-term metrics + alerting eval                | ☐ |
 | `promlens`               | PromQL editor                                     | ☐ |
-| `tempo`                  | trace backend (monolithic mode)                   | ☐ |
+| `tempo`                  | trace backend (monolithic mode)                   | ☑ |
 
 **Dropped from upstream**: `graylog` (legacy aggregator no longer needed), `mongodb` (Graylog's metadata store; no remaining consumer), `mcp` (observability MCP server; not core to the plane), `haproxy` (only useful in distributed mode, which is deferred to a future milestone), `application_web_docker` (Apache vhost pairing binds operators to a single reverse-proxy choice; Telemetron is reverse-proxy-agnostic), and `postgres` (Grafana uses embedded SQLite on a persistent volume for single-host homelab use; Postgres returns only if HA Grafana lands in a later milestone).
 
