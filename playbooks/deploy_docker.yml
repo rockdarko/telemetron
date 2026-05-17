@@ -1,0 +1,45 @@
+---
+# Telemetron -- M1 deploy orchestrator (Docker target)
+#
+# Brings up the Telemetron observability plane on a single Docker host.
+# Phase 1 ships the foundation: the `telemetron` Docker bridge network
+# (created in pre_tasks below) plus the MinIO role with its bucket-bootstrap
+# gate. Phases 2-6 add the rest of the 14 roles.
+#
+# Per-role targeted re-runs use --tags <role>:
+#   ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml --tags minio
+#
+# Usage:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/deploy_docker.yml \
+#                    --ask-vault-pass
+
+- name: Telemetron -- deploy to Docker host
+  hosts: telemetron
+  gather_facts: true
+  become: false
+
+  collections:
+    - community.docker
+
+  pre_tasks:
+    - name: Ensure the telemetron Docker bridge network exists
+      community.docker.docker_network:
+        name: "{{ telemetron_network }}"
+        driver: bridge
+        state: present
+      tags:
+        - always
+        - network
+
+  roles: []
+  # Phase 1 plan 03 wires in the minio role here:
+  #   - role: minio
+  #     tags: [minio]
+  #
+  # Subsequent phase plans extend this list in dependency order:
+  #   Phase 2: loki, tempo, mimir
+  #   Phase 3: prometheus, opentelemetry, fluentbit, node_exporter
+  #   Phase 4: alertmanager, hook_router
+  #   Phase 5: grafana, karma, promlens
+  #   Phase 6: nfsd (opt-in via enable_nfsd flag)
