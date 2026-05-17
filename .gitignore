@@ -1,0 +1,26 @@
+# Ansible
+*.retry
+.ansible/
+.vault_pass
+roles/local/
+ops/local/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Editors / OS
+*.swp
+*.swo
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Secrets / local
+*.env
+.env.local
