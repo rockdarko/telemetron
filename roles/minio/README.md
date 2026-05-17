@@ -150,8 +150,8 @@ ansible-playbook -i inventory/example-homelab \
 ```
 
 Container restarts on env-file change use a handler that runs
-`docker restart minio` -- never `state: restarted` (which force-recreates
-the container and is non-idempotent per Pitfall 8).
+`docker restart minio` -- the module-level state parameter is never used
+for restarts (force-recreate is non-idempotent per Pitfall 8).
 
 ## Port-acceptance gates
 
