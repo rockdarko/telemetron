@@ -1,0 +1,98 @@
+---
+# roles/loki/tasks/verify.yml
+# Pre-poll Loki's Docker HEALTHCHECK, push a synthetic log line via
+# in-network curl one-shot, then assert an object key landed in MinIO's
+# loki-chunks bucket via a one-shot mc container.
+#
+# Mirrors the canonical roles/minio/tasks/bootstrap.yml pattern (D-10a +
+# W7 + W8 + D-32). Failure of any step fails the playbook.
+
+# Step 1: poll Loki's Docker HEALTHCHECK status until `healthy`.
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :3100 directly (D-30 no host publish).
+- name: Wait for Loki container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ loki_container_name }}"
+  register: loki_health_check
+  until: >-
+    loki_health_check.container is defined
+    and loki_health_check.container.State is defined
+    and loki_health_check.container.State.Health is defined
+    and loki_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ loki_health_retries }}"
+  delay: "{{ loki_health_delay }}"
+  changed_when: false
+  tags:
+    - loki
+    - loki-verify
+
+# Step 2: synthetic log push via one-shot curl container.
+# Mirrors W8 (one-shot push + assert) from minio/tasks/bootstrap.yml.
+# curlimages/curl is pinned via loki_curl_image_tag (OPS-01).
+# Per W7: changed_when: false -- this is a read-shaped verification,
+# not a state mutation worth reporting as changed.
+# Per D-32: failed_when on non-zero exit fails the playbook.
+- name: Push synthetic log line to Loki (in-network verify)
+  community.docker.docker_container:
+    name: "{{ loki_container_name }}-verify-push"
+    image: "{{ loki_curl_image }}:{{ loki_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ loki_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        TS=$(date +%s%N) ;
+        STATUS=$(curl -sS -o /dev/null -w "%{http_code}"
+        -X POST http://{{ loki_container_name }}:{{ loki_http_port }}/loki/api/v1/push
+        -H "Content-Type: application/json"
+        --data-raw "{\"streams\":[{\"stream\":{\"job\":\"telemetron-verify\",\"host\":\"verify\"},\"values\":[[\"$TS\",\"telemetron loki verify OK\"]]}]}") ;
+        echo "loki_push_status=$STATUS" ;
+        case "$STATUS" in 200|204) exit 0 ;; *) exit 1 ;; esac
+  register: loki_verify_push
+  failed_when: loki_verify_push.status is defined and loki_verify_push.status != 0
+  changed_when: false
+  tags:
+    - loki
+    - loki-verify
+
+# Step 3: assert an object key landed in minio/loki-chunks within ~30s.
+# Loki flushes chunks on idle period or chunk_target_size; the verify
+# one-shot retries with a sleep to bound the wait. The mc container is
+# the same pinned image used by roles/minio/tasks/bootstrap.yml.
+# Per W8: mc ls --json is the documented stable interface.
+- name: Assert loki-chunks bucket received an object
+  community.docker.docker_container:
+    name: "{{ loki_container_name }}-verify-bucket"
+    image: "{{ loki_mc_image }}:{{ loki_mc_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ loki_network }}"
+    env:
+      MC_HOST_local: "http://{{ vault_loki_s3_access_key }}:{{ vault_loki_s3_secret_key }}@minio:9000"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 15 ] ; do
+          COUNT=$(mc ls --json --recursive local/{{ loki_s3_bucket }} 2>/dev/null | wc -l) ;
+          if [ "$COUNT" -gt 0 ] ; then echo "objects_found=$COUNT" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "no objects landed in {{ loki_s3_bucket }} within 30s" ;
+        exit 1
+  register: loki_verify_bucket
+  failed_when: loki_verify_bucket.status is defined and loki_verify_bucket.status != 0
+  changed_when: false
+  tags:
+    - loki
+    - loki-verify

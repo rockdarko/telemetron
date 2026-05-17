@@ -1,0 +1,96 @@
+---
+# roles/loki/tasks/main.yml
+# Loki monolithic deploy + in-network verify.
+# Mirrors the canonical roles/minio/tasks/main.yml structure (D-32, OPS-06).
+# Per D-23: this role is wired into playbooks/deploy_docker.yml after minio.
+
+- name: Ensure Loki config directory exists on host
+  ansible.builtin.file:
+    path: "{{ loki_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - loki
+    - loki-config
+
+- name: Render Loki config
+  ansible.builtin.template:
+    src: loki.yaml.j2
+    dest: "{{ loki_config_dir }}/loki.yaml"
+    mode: "0600"
+  notify: restart loki
+  tags:
+    - loki
+    - loki-config
+
+- name: Ensure Loki data volume exists
+  community.docker.docker_volume:
+    name: "{{ loki_data_volume }}"
+    state: present
+  tags:
+    - loki
+
+- name: Pull Loki image
+  community.docker.docker_image:
+    name: "{{ loki_image }}:{{ loki_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - loki
+
+- name: Run Loki container
+  community.docker.docker_container:
+    name: "{{ loki_container_name }}"
+    image: "{{ loki_image }}:{{ loki_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ loki_restart_policy }}"
+    memory: "{{ loki_memory_limit }}"
+    user: "{{ loki_container_user }}"
+    command:
+      - "-config.file=/etc/loki/loki.yaml"
+      - "-target=all"
+    networks:
+      - name: "{{ loki_network }}"
+        aliases:
+          - "{{ loki_container_name }}"
+    # Per D-30 / D-12: zero host publish by default. Only publish if
+    # the operator explicitly sets loki_publish_host to true or 127.0.0.1.
+    published_ports: >-
+      {{
+        (
+          [ loki_http_port | string + ':' + loki_http_port | string ]
+          if loki_publish_host is sameas true else
+          [ '127.0.0.1:' + loki_http_port | string + ':' + loki_http_port | string ]
+          if loki_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      - source: "{{ loki_data_volume }}"
+        target: "{{ loki_data_path }}"
+        type: volume
+    volumes:
+      - "{{ loki_config_dir }}/loki.yaml:/etc/loki/loki.yaml:ro"
+    # CMD form -- the image is distroless (no shell). Loki 3.7.2 ships
+    # /usr/bin/loki -health (binary-native). See RESEARCH.md Finding 6
+    # and PITFALLS Pitfall A.
+    healthcheck:
+      test: "{{ loki_healthcheck_test }}"
+      interval: "{{ loki_healthcheck_interval }}"
+      timeout: "{{ loki_healthcheck_timeout }}"
+      retries: "{{ loki_healthcheck_retries }}"
+      start_period: "{{ loki_healthcheck_start_period }}"
+    env:
+      TZ: "{{ loki_tz }}"
+  tags:
+    - loki
+    - loki-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/minio/tasks/main.yml
+# pattern -- verify is included from main; not a separate playbook.
+- name: Verify Loki end-to-end (synthetic push + bucket assert)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - loki
+    - loki-verify
