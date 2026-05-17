@@ -36,9 +36,12 @@
     - role: minio
       tags:
         - minio
+    - role: loki
+      tags:
+        - loki
   # Subsequent phase plans extend this list in dependency order
   # (D-05 dependency tree):
-  #   Phase 2: loki, tempo, mimir (after minio -- depend on its buckets)
+  #   Phase 2: tempo, mimir (after loki -- same wave; share no files)
   #   Phase 3: prometheus, opentelemetry, fluentbit, node_exporter
   #   Phase 4: alertmanager, hook_router
   #   Phase 5: grafana, karma, promlens
