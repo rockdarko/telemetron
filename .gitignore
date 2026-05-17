@@ -21,7 +21,7 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Agentic / AI tooling — local-only, doesn't pertain to the project itself
+# Agentic / AI tooling - local-only, doesn't pertain to the project itself
 .planning/
 .claude/
 .cursor/
@@ -31,6 +31,15 @@ GEMINI.md
 .cursorrules
 .codex
 .aider*
+
+# --- Ansible vault (OPS-02, Phase 1 D-15) ---
+# Real vault files are NEVER committed. The .example template IS committed.
+# Naming convention: vault_<role>_<purpose>.
+inventory/*/group_vars/all/vault.yml
+inventory/*/group_vars/*/vault.yml
+inventory/*/vault.yml
+.vault_password
+ansible-vault-password.txt
 
 # Secrets / local
 *.env
