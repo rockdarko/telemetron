@@ -1,0 +1,77 @@
+# {{ ansible_managed }}
+# roles/loki/templates/loki.yaml.j2 -- rendered by roles/loki.
+# DO NOT EDIT BY HAND -- changes here are overwritten by ansible-playbook.
+#
+# Loki 3.7.2 monolithic mode (-target=all). See RESEARCH.md Finding 2 for
+# the verified config shape. Pitfall references inline -- do not strip
+# the comments; they are the load-bearing documentation for future
+# maintenance edits.
+
+auth_enabled: false   # CONTEXT.md D-26 -- single tenant; no X-Scope-OrgID
+
+server:
+  http_listen_port: {{ loki_http_port }}
+  grpc_listen_port: {{ loki_grpc_port }}   # CONTEXT.md D-28 -- explicit pin (Tempo/Mimir move off 9095)
+  grpc_server_max_recv_msg_size: 10485760
+  grpc_server_max_send_msg_size: 10485760
+
+common:
+  path_prefix: {{ loki_data_path }}
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  max_chunk_age: {{ loki_max_chunk_age }}
+  chunk_idle_period: {{ loki_chunk_idle_period }}
+  chunk_target_size: {{ loki_chunk_target_size }}
+  chunk_retain_period: {{ loki_chunk_retain_period }}
+  wal:
+    enabled: false   # monolithic; no distributed WAL needed
+
+schema_config:
+  configs:
+    - from: "{{ loki_schema_from }}"
+      store: tsdb
+      object_store: s3
+      schema: {{ loki_schema_version }}
+      index:
+        prefix: {{ loki_schema_index_prefix }}
+        period: 24h   # 24h is required for compactor retention support
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: {{ loki_data_path }}/tsdb-index
+    cache_location: {{ loki_data_path }}/tsdb-cache
+  aws:
+    endpoint: {{ loki_s3_endpoint }}   # Loki format: http:// prefix included
+    bucketnames: {{ loki_s3_bucket }}
+    access_key_id: "{{ vault_loki_s3_access_key }}"
+    secret_access_key: "{{ vault_loki_s3_secret_key }}"
+    region: {{ loki_s3_region }}
+    s3forcepathstyle: {{ loki_s3_force_path_style | string | lower }}
+    insecure: {{ loki_s3_insecure | string | lower }}
+
+compactor:
+  # Default loki_compactor_working_directory: /loki/compactor (covered by persistent volume).
+  working_directory: {{ loki_compactor_working_directory }}   # PITFALLS Pitfall 12 -- on persistent volume
+  delete_request_store: s3   # required for S3 backend in Loki 3.x
+  retention_enabled: {{ loki_compactor_retention_enabled | string | lower }}
+  retention_delete_delay: {{ loki_compactor_retention_delete_delay }}
+  retention_delete_worker_count: {{ loki_compactor_retention_delete_worker_count }}
+
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: {{ loki_reject_old_samples_max_age }}
+  allow_structured_metadata: true
+  max_entries_limit_per_query: {{ loki_max_entries_limit_per_query }}
+  volume_enabled: true
+  retention_period: {{ loki_retention_period }}   # BACK-02 single knob (CONTEXT.md D-33)
+  # D-37 label discipline (PITFALLS Pitfall 4):
+  max_streams_per_user: {{ loki_max_streams_per_user }}
+  max_label_value_length: {{ loki_max_label_value_length }}
+  max_label_names_per_series: {{ loki_max_label_names_per_series }}

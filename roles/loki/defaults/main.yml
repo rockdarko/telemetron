@@ -1,0 +1,134 @@
+---
+# roles/loki/defaults/main.yml
+# Loki role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/loki.yml.
+#
+# Loki 3.7.2 monolithic mode (-target=all). Storage backend: MinIO S3
+# (loki-chunks bucket bootstrapped by roles/minio in Phase 1). Single
+# tenant only (auth_enabled: false per CONTEXT.md D-26).
+
+# --- Image pin (OPS-01: pin every image tag explicitly) ---
+# Loki 3.7.2 (2026-05-13) -- latest stable; TSDB schema default.
+# See: https://github.com/grafana/loki/releases/tag/v3.7.2
+loki_image: grafana/loki
+loki_image_tag: "3.7.2"
+
+# --- Container identity ---
+# Container name on the telemetron network. Other roles reach Loki at
+# http://{{ loki_container_name }}:3100. Future phases (Grafana, OTel,
+# Fluent Bit) consume this DNS name -- coordinate any change.
+loki_container_name: loki
+
+# --- Host port publishing (D-30, D-12, D-14) ---
+# Default: zero host publish. Inter-component traffic stays on the
+# telemetron Docker bridge network. Operator access via SSH local-forward:
+#   ssh -L 3100:localhost:3100 <host>
+# Override to `true` (publishes to 0.0.0.0) or `127.0.0.1` (loopback only)
+# in inventory/<env>/group_vars/all/loki.yml.
+loki_publish_host: "{{ loki_publish_host | default(false) }}"
+
+# --- Port matrix (D-28, D-31) ---
+# Loki HTTP API on :3100. Loki gRPC on :9095 (explicitly pinned per D-28;
+# Tempo moves to 9096, Mimir to 9097 -- all three default 9095 and would
+# collide on a single host).
+loki_http_port: 3100
+loki_grpc_port: 9095
+
+# --- Storage layout (D-16, D-17, D-18, Pitfall 12) ---
+# One named Docker volume covers MinIO chunks-related local state:
+# tsdb-index, tsdb-cache, and -- critically -- compactor/markers/.
+# See PITFALLS.md Pitfall 12 (marker file loss on container recreate).
+loki_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_loki_data"
+loki_data_path: /loki
+
+# Host-side config directory (D-18 flat layout). Rendered Jinja config
+# lives here; bind-mounted read-only into the container.
+loki_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/loki"
+
+# --- S3 backend (D-39, RESEARCH Finding 2) ---
+# MinIO endpoint on the telemetron bridge -- Loki's storage_config.aws.endpoint
+# uses the http:// prefix (Loki-specific format; Tempo/Mimir omit scheme).
+# MinIO requires s3forcepathstyle: true; insecure: true keeps plain HTTP.
+loki_s3_endpoint: "http://minio:9000"
+loki_s3_bucket: loki-chunks
+loki_s3_region: us-east-1
+loki_s3_force_path_style: true
+loki_s3_insecure: true
+
+# --- Retention (D-33, BACK-02) ---
+# Compactor-driven retention (Loki 3.x; table_manager is dead code).
+# The single operator-facing knob; default ships at 14d via
+# telemetron_default_log_retention. Surfaced again in the inventory
+# loki.yml so operators see the override path without grep-hunting.
+loki_retention_period: "{{ telemetron_default_log_retention | default('14d') }}"
+loki_compactor_retention_enabled: true
+loki_compactor_retention_delete_delay: 2h
+loki_compactor_retention_delete_worker_count: 150
+loki_compactor_working_directory: /loki/compactor
+
+# --- Limits (D-37, PITFALLS Pitfall 4) ---
+# Loki rejects loudly when label discipline breaks. Fluent Bit's
+# complementary source-side allowlist ships in Phase 3.
+loki_max_streams_per_user: 5000
+loki_max_label_value_length: 2048
+loki_max_label_names_per_series: 15
+loki_reject_old_samples_max_age: 168h
+loki_max_entries_limit_per_query: 1000
+
+# --- Ingester chunking (Claude's Discretion per D-39; PITFALLS Performance Traps) ---
+loki_chunk_idle_period: 30m
+loki_chunk_target_size: 1572864
+loki_chunk_retain_period: 30s
+loki_max_chunk_age: 2h
+
+# --- Schema (D-39, RESEARCH Finding 2) ---
+# TSDB schema (Loki 2.8+ default; supersedes BoltDB-shipper).
+# `from` is an arbitrary past date -- v13 is the active TSDB schema.
+loki_schema_from: "2023-01-01"
+loki_schema_version: v13
+loki_schema_index_prefix: tsdb_index_
+
+# --- Verify pre-poll (D-10a, RESEARCH Finding 6 Loki -health binary) ---
+# The verify one-shot only runs after Loki's Docker HEALTHCHECK reports
+# `healthy` (polled via community.docker.docker_container_info).
+# 60s total budget = 30 retries x 2s.
+loki_health_retries: 30
+loki_health_delay: 2
+
+# --- Healthcheck (OPS-06, RESEARCH Finding 6) ---
+# Loki 3.7.2 ships /usr/bin/loki -health (binary-native; the image is
+# distroless -- no shell, so CMD-SHELL wget patterns from older guides
+# do NOT work). See PITFALLS Pitfall A in RESEARCH.md.
+loki_healthcheck_test: ["CMD", "/usr/bin/loki", "-health"]
+loki_healthcheck_interval: 10s
+loki_healthcheck_timeout: 5s
+loki_healthcheck_retries: 5
+loki_healthcheck_start_period: 30s
+
+# --- Restart policy (OPS-06) ---
+loki_restart_policy: unless-stopped
+
+# --- Resource limits (homelab-safe; tune per environment) ---
+# Loki ingester is the memory hog; 1G fits a homelab single-tenant.
+loki_memory_limit: 1g
+
+# --- Container identity follow-ups ---
+loki_container_user: "1000:0"
+
+# --- Network ---
+# Created by playbooks/deploy_docker.yml pre_tasks; this role attaches.
+loki_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06; PITFALLS Pitfall 6 Etc/UTC default) ---
+loki_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- mc image pins for the verify one-shot (mirrors roles/minio defaults) ---
+# Used by tasks/verify.yml to assert objects landed in loki-chunks.
+loki_mc_image: minio/mc
+loki_mc_image_tag: "RELEASE.2025-04-22T16-23-26Z"
+
+# --- Curl image pin for the verify push one-shot ---
+# curlimages/curl is a small busybox-shell + curl image; pin explicitly
+# per OPS-01 -- no floating-tag references anywhere.
+loki_curl_image: curlimages/curl
+loki_curl_image_tag: "8.10.1"

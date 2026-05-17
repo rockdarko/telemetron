@@ -1,0 +1,214 @@
+# roles/loki
+
+Deploys [Grafana Loki](https://github.com/grafana/loki) 3.7.2 in
+monolithic mode (`-target=all`) on a single Docker host. Loki is the
+log backend for Telemetron's observability plane; logs land via OTel
+Collector / Fluent Bit (Phase 3) and are queried via Grafana (Phase 5).
+
+Storage backend: MinIO S3 (the `loki-chunks` bucket bootstrapped by
+`roles/minio` in Phase 1).
+
+Mirrors the canonical role template established by `roles/minio` --
+same defaults layout, same handler discipline (W6 single handler),
+same Docker HEALTHCHECK pre-poll (D-10a), same in-network verify
+pattern (W8).
+
+## What this role does
+
+1. Renders `/opt/telemetron/loki/loki.yaml` from `templates/loki.yaml.j2`
+   with MinIO S3 credentials pulled from Ansible vault.
+2. Ensures the named Docker volume `telemetron_loki_data` exists.
+3. Starts the `loki` container on the `telemetron` Docker bridge
+   network, with a Docker `HEALTHCHECK` (`/usr/bin/loki -health`) and
+   `restart: unless-stopped`. Container port `3100` is NOT published
+   to the host by default (`loki_publish_host: false`).
+4. **As a blocking final task**, polls Loki's Docker HEALTHCHECK via
+   `community.docker.docker_container_info` until `healthy`, then
+   pushes a synthetic log line via a one-shot curl container and
+   asserts that an object key landed in `loki-chunks` via a one-shot
+   `mc` container.
+
+## Variables
+
+See `defaults/main.yml` for the full list. Operators commonly only
+touch `loki_retention_period` (default `14d`) and `loki_publish_host`
+(default `false`).
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `loki_image` | `grafana/loki` | Image (do not change) |
+| `loki_image_tag` | `3.7.2` | Pinned tag |
+| `loki_container_name` | `loki` | DNS name on the `telemetron` network |
+| `loki_publish_host` | `false` | Publish :3100 to host. `false`/`true`/`127.0.0.1` |
+| `loki_http_port` | `3100` | HTTP API port |
+| `loki_grpc_port` | `9095` | gRPC port (D-28 explicit pin) |
+| `loki_data_volume` | `telemetron_loki_data` | Named Docker volume |
+| `loki_data_path` | `/loki` | In-container data root (covers compactor/markers/) |
+| `loki_config_dir` | `/opt/telemetron/loki` | Host config bind-mount source |
+| `loki_retention_period` | `14d` (via telemetron_default_log_retention) | **BACK-02** retention knob |
+| `loki_compactor_working_directory` | `/loki/compactor` | Pitfall 12 -- on persistent volume |
+| `loki_max_streams_per_user` | `5000` | D-37 / Pitfall 4 |
+| `loki_max_label_value_length` | `2048` | D-37 / Pitfall 4 |
+| `loki_max_label_names_per_series` | `15` | D-37 / Pitfall 4 |
+| `loki_s3_endpoint` | `http://minio:9000` | MinIO endpoint (note: scheme included for Loki) |
+| `loki_s3_bucket` | `loki-chunks` | MinIO bucket |
+| `loki_healthcheck_test` | `["CMD", "/usr/bin/loki", "-health"]` | Native binary; image is distroless |
+| `loki_restart_policy` | `unless-stopped` | Container restart policy |
+| `loki_memory_limit` | `1g` | Container memory limit |
+| `loki_network` | `telemetron` | Docker network |
+| `loki_tz` | `Etc/UTC` | Container timezone |
+
+## Vault keys
+
+Required keys in `inventory/<env>/group_vars/all/vault.yml`:
+
+| Key | Purpose |
+|-----|---------|
+| `vault_loki_s3_access_key` | MinIO access key for the `loki-chunks` bucket |
+| `vault_loki_s3_secret_key` | MinIO secret key for the `loki-chunks` bucket |
+
+Per CONTEXT.md D-27, both keys are aliased to `vault_minio_root_user` /
+`vault_minio_root_password` in `vault.yml.example` for now. A future
+hardening milestone will split MinIO into per-backend users with
+bucket-scoped IAM policies; only `vault.yml` changes -- the role
+templates do not.
+
+## Tags
+
+- `loki` -- runs the whole role (D-24 single tag per role)
+
+## Modes
+
+Single mode only in M1: monolithic (`-target=all`). Single-tenant
+(`auth_enabled: false` per D-26 -- no `X-Scope-OrgID` header needed
+anywhere; all data lives in tenant `fake`). Distributed Loki and
+multi-tenant operation are deferred to a future milestone.
+
+## Volumes
+
+| Volume | Mount | Purpose |
+|--------|-------|---------|
+| `telemetron_loki_data` (named) | `/loki` | Loki data root -- covers tsdb-index, tsdb-cache, chunks, compactor/ (incl. markers/). Persistent across container recreates. Pitfall 12 mitigation -- marker files survive recreate. |
+| `/opt/telemetron/loki/loki.yaml` (bind) | `/etc/loki/loki.yaml` (ro) | Rendered config |
+
+## Healthcheck
+
+The Loki image is distroless (no shell). The Docker HEALTHCHECK uses
+Loki's native `-health` binary flag introduced in Loki 3.6+:
+
+```
+HEALTHCHECK: ["CMD", "/usr/bin/loki", "-health"]
+```
+
+Verify with:
+
+```bash
+docker inspect loki --format '{{.State.Health.Status}}'   # expects: healthy
+```
+
+The verify subtask polls this same HEALTHCHECK status via
+`community.docker.docker_container_info` (reading
+`result.container.State.Health.Status`) before pushing the synthetic
+payload, so first-deploy timing races are eliminated without
+requiring host port publishing.
+
+## Operator access (no host publish by default per D-30)
+
+Inter-component traffic on the `telemetron` bridge reaches Loki at
+`http://loki:3100`. Operator access from a workstation uses SSH
+local-forward:
+
+```bash
+ssh -L 3100:localhost:3100 <homelab-host>
+# then browse to http://localhost:3100/ready -- expects: ready
+```
+
+## Security model
+
+- **Default: no host port publish.** Operator access via SSH local
+  forward.
+- **S3 credentials from vault.** The rendered `/opt/telemetron/loki/loki.yaml`
+  is written with mode `0600` and contains the resolved vault values
+  at rest. If you trust the host's filesystem permissions but not
+  the host itself, this is the same posture as the minio role's
+  env file. Future hardening: per-backend MinIO users with bucket-scoped
+  IAM (deferred from M1 per D-27).
+- **Inter-component traffic on the `telemetron` bridge only.** Loki
+  reaches MinIO at `http://minio:9000` -- never via the host.
+
+## Idempotency
+
+Per OPS-04: running the playbook twice in a row reports `changed=0`.
+Verify with:
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/deploy_docker.yml --tags loki --ask-vault-pass
+# ...first run: changed=N
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/deploy_docker.yml --tags loki --ask-vault-pass
+# ...second run: changed=0
+```
+
+Container restarts on config change use a handler that runs
+`docker restart loki` -- the module-level state parameter is never
+used for restarts (Pitfall 8).
+
+## Port-acceptance gates
+
+This role passes all five gates documented in `roles/README.md`:
+
+- **Grep gates (Pitfall 9):** zero matches for INSPQ leftovers; zero
+  non-ASCII characters in `roles/loki/`.
+- **Image-pin gate:** zero floating-tag references.
+- **Vault-discipline gate:** every `{{ vault_* }}` reference has a
+  matching key in `vault.yml.example`.
+- **Idempotency gate:** twice-in-a-row playbook run reports `changed=0`.
+- **Healthcheck + restart-policy gate:** `docker inspect` returns
+  `healthy` and `unless-stopped`.
+
+## Deviations from upstream INSPQ (D-25)
+
+Per CONTEXT.md D-25, each Phase-2 role port is an opinionated improvement
+pass over the upstream INSPQ role -- not a mirror translate. Items dropped,
+replaced, or added vs. `~/git/inspq/ansible/loki/`:
+
+**Dropped (INSPQ-isms beyond grep gate):**
+
+- `loki_image_version: "latest"` -- replaced with explicit pin `3.7.2` per OPS-01.
+- `loki_container_env.TZ: "America/Toronto"` -- replaced with `Etc/UTC` per OPS-06 + Pitfall 6 (DST avoidance).
+- `loki_tenant_id: inspq` -- dropped; `auth_enabled: false` means no tenant header.
+- `loki_alertmanager_url: "http://localhost:9093"` -- omitted from M1; Phase 4 lands the alertmanager URL.
+- `loki_mode: "monolithic"` conditional logic -- simplified; M1 ships monolithic only.
+- `loki_container_restart_policy: "always"` -- replaced with `unless-stopped` per OPS-06.
+- LVM tasks (`loki_lvm`, `loki_vg`, `loki_lv_name`) -- dropped; named Docker volume covers storage.
+- `loki_memberlist_join_members` -- dropped; monolithic doesn't need memberlist.
+- Bloom filter / pattern ingester / distributed component vars -- dropped from M1 defaults.
+- `loki_network_mode: bridge` + custom network logic -- simplified; always uses the `telemetron` bridge per D-04.
+- INSPQ table_manager retention vars -- dropped (Loki 3.x uses compactor retention).
+- INSPQ S3 bucket name `loki` -- replaced with Phase-1 `loki-chunks` (Pitfall F).
+- French task names throughout -- replaced with English per CLAUDE.md.
+
+**Replaced with better defaults:**
+
+- INSPQ used `schema_config.configs[0].from: 2023-01-01` for v13 TSDB -- kept (reasonable past date).
+- INSPQ used `loki_container_user: "1000:0"` -- kept (Loki image's default UID).
+
+**Added (missing pitfall guards in upstream):**
+
+- **Pitfall 12 (compactor marker-file loss):** added `loki_compactor_working_directory: /loki/compactor` so markers live on the persistent volume.
+- **Pitfall 4 (label discipline):** added D-37 limits (`max_streams_per_user`, `max_label_value_length`, `max_label_names_per_series`).
+- **D-28 (gRPC port clash):** added explicit `loki_grpc_port: 9095` rather than relying on the implicit default.
+
+## Bring your own bucket name
+
+Override `loki_s3_bucket` (or the upstream `telemetron_minio_buckets`
+list in `storage.yml`) to rename the bucket. Renaming MUST be paired
+with renaming in `roles/minio/defaults/main.yml` (or
+`telemetron_minio_buckets`) -- both ends speak the same name.
+
+## Deprecation notes
+
+None for the loki role itself. Loki is the locked log backend per
+CLAUDE.md tech-stack constraints; alternatives (Quickwit, OpenObserve)
+are explicitly out of M1 scope.

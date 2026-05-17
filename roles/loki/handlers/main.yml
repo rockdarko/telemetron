@@ -1,0 +1,16 @@
+---
+# roles/loki/handlers/main.yml
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>` (preserves container state). The module-level
+# `state` parameter is intentionally never used for restarts -- force-recreate
+# is non-idempotent.
+#
+# Loki config changes require a container restart (no SIGHUP reload
+# path for storage_config or limits_config changes), so the config-file
+# template notifies this handler.
+
+- name: Docker restart loki
+  ansible.builtin.command:
+    cmd: "docker restart {{ loki_container_name }}"
+  changed_when: true
+  listen: restart loki

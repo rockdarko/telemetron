@@ -1,0 +1,19 @@
+---
+# Telemetron -- Loki operator knobs (Phase 2, D-30, D-33)
+# Role-specific overrides for the `loki` role.
+# See roles/loki/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Inter-component traffic stays on
+# the telemetron Docker bridge network (Grafana / OTel / Fluent Bit
+# in later phases reach Loki at http://loki:3100). Operator access
+# via SSH local-forward:
+#   ssh -L 3100:localhost:3100 <host>
+# Override to `true` (publishes to 0.0.0.0) or `127.0.0.1` (loopback only).
+loki_publish_host: false
+
+# Log retention (BACK-02). Surfaced again here so operators see the
+# override path without grep-hunting defaults/main.yml. The role default
+# aliases to telemetron_default_log_retention (14d) from storage.yml.
+# Override directly here for non-default retention:
+#   loki_retention_period: 7d
+loki_retention_period: "{{ telemetron_default_log_retention | default('14d') }}"

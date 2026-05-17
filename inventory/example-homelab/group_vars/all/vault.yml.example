@@ -25,7 +25,16 @@
 vault_minio_root_user: CHANGE_ME       # MinIO root username (>= 3 chars)
 vault_minio_root_password: CHANGE_ME   # MinIO root password (>= 8 chars, recommend 32+)
 
-# --- Phase 2+ keys will be added here as their roles land ---
+# --- Phase 2: Loki S3 credentials (D-27) ---
+# Consumed by: roles/loki (S3 access to the loki-chunks bucket).
+# Values alias to the Phase-1 MinIO root credentials for now. A future
+# hardening milestone will split MinIO into per-backend users with
+# bucket-scoped IAM policies; at that point only vault.yml changes --
+# role templates do not (cheap forward-compat per D-27).
+vault_loki_s3_access_key: "{{ vault_minio_root_user }}"
+vault_loki_s3_secret_key: "{{ vault_minio_root_password }}"
+
+# --- Phase 2+ additional keys will be added here as their roles land ---
 # (Examples for future planning visibility -- do NOT add real values yet:)
 # vault_grafana_admin_password: CHANGE_ME   # Phase 5 -- Grafana admin login
 # vault_jenkins_api_token: CHANGE_ME        # Phase 4 -- hook_router outbound auth to Jenkins
