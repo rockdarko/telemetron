@@ -49,8 +49,8 @@ Plans:
   5. Per-role port-acceptance gates pass on each of Loki/Tempo/Mimir (idempotent re-run, grep clean, healthcheck green, image pinned).
 **Plans**: 3 plans
 Plans:
-- [ ] 02-01-PLAN.md — Loki 3.7.2 monolithic role port + wire into deploy_docker.yml (BACK-01, BACK-02)
-- [ ] 02-02-PLAN.md — Tempo 2.10.5 monolithic role port (dual-knob retention; OTLP alt ports :14317/:14318; metrics-generator local-WAL path) + wire into deploy_docker.yml (BACK-01, BACK-03, BACK-05)
+- [x] 02-01-PLAN.md — Loki 3.7.2 monolithic role port + wire into deploy_docker.yml (BACK-01, BACK-02)
+- [x] 02-02-PLAN.md — Tempo 2.10.5 monolithic role port (dual-knob retention; OTLP alt ports :14317/:14318; metrics-generator local-WAL path) + wire into deploy_docker.yml (BACK-01, BACK-03, BACK-05)
 - [ ] 02-03-PLAN.md — Mimir 3.0.6 monolithic role port (three distinct MinIO buckets; D-36 monolithic tuning) + wire into deploy_docker.yml (BACK-01, BACK-04)
 
 ### Phase 3: Ingest Plane
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Storage | 3/3 | Complete   | 2026-05-17 |
-| 2. Telemetry Backends | 0/3 | Not started | - |
+| 2. Telemetry Backends | 2/3 | In Progress | - |
 | 3. Ingest Plane | 0/TBD | Not started | - |
 | 4. Alert Plane | 0/TBD | Not started | - |
 | 5. UI Plane | 0/TBD | Not started | - |
