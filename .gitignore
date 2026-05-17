@@ -21,6 +21,17 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Agentic / AI tooling — local-only, doesn't pertain to the project itself
+.planning/
+.claude/
+.cursor/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.cursorrules
+.codex
+.aider*
+
 # Secrets / local
 *.env
 .env.local
