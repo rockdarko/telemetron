@@ -51,7 +51,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — Loki 3.7.2 monolithic role port + wire into deploy_docker.yml (BACK-01, BACK-02)
 - [x] 02-02-PLAN.md — Tempo 2.10.5 monolithic role port (dual-knob retention; OTLP alt ports :14317/:14318; metrics-generator local-WAL path) + wire into deploy_docker.yml (BACK-01, BACK-03, BACK-05)
-- [ ] 02-03-PLAN.md — Mimir 3.0.6 monolithic role port (three distinct MinIO buckets; D-36 monolithic tuning) + wire into deploy_docker.yml (BACK-01, BACK-04)
+- [x] 02-03-PLAN.md — Mimir 3.0.6 monolithic role port (three distinct MinIO buckets; D-36 monolithic tuning) + wire into deploy_docker.yml (BACK-01, BACK-04)
 
 ### Phase 3: Ingest Plane
 **Goal**: Operator can run the playbook and have Prometheus, OTel Collector, Fluent Bit, and node_exporter running — with Prometheus scraping the Collector's self-metrics and node_exporter, remote-writing to Mimir, and evaluating a baseline alert-rule set; the OTel Collector accepting OTLP on the standard ports and fanning out to all three backends; Fluent Bit tailing host logs through the Collector to Loki; and node_exporter exposing host metrics on `:9100`. The four pieces come up in their internal dependency order (Prometheus needs Mimir, OTel needs all three backends, Fluent Bit needs OTel).
