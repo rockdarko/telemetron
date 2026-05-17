@@ -1,0 +1,110 @@
+---
+# roles/tempo/tasks/main.yml
+# Tempo monolithic deploy + in-network verify.
+# Mirrors the canonical roles/loki/tasks/main.yml shape.
+#
+# Healthcheck approach: Tempo 2.10.5 is distroless. The CMD healthcheck
+# uses tempo_healthcheck_test (list form) -- set by the executor per the
+# image probe outcome documented in the deploy plan (Task 2 action
+# section, RESEARCH Finding 6). When tempo_healthcheck_enabled is false,
+# the healthcheck block is omitted entirely and OPS-06 compliance is
+# achieved via verify.yml's D-10a poll + /ready curl probe.
+
+- name: Ensure Tempo config directory exists on host
+  ansible.builtin.file:
+    path: "{{ tempo_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - tempo
+    - tempo-config
+
+- name: Render Tempo config
+  ansible.builtin.template:
+    src: tempo.yaml.j2
+    dest: "{{ tempo_config_dir }}/tempo.yaml"
+    mode: "0600"
+  notify: restart tempo
+  tags:
+    - tempo
+    - tempo-config
+
+- name: Ensure Tempo data volume exists
+  community.docker.docker_volume:
+    name: "{{ tempo_data_volume }}"
+    state: present
+  tags:
+    - tempo
+
+- name: Pull Tempo image
+  community.docker.docker_image:
+    name: "{{ tempo_image }}:{{ tempo_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - tempo
+
+- name: Run Tempo container (with conditional healthcheck)
+  community.docker.docker_container:
+    name: "{{ tempo_container_name }}"
+    image: "{{ tempo_image }}:{{ tempo_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ tempo_restart_policy }}"
+    memory: "{{ tempo_memory_limit }}"
+    user: "{{ tempo_container_user }}"
+    command:
+      - "-config.file=/etc/tempo.yaml"
+      - "-target=all"
+    networks:
+      - name: "{{ tempo_network }}"
+        aliases:
+          - "{{ tempo_container_name }}"
+    # Per D-30 / D-12: zero host publish by default. Tempo's OTLP alt
+    # ports (:14317, :14318) are intentionally NEVER host-published.
+    # Even when tempo_publish_host is true, only the HTTP API port :3200
+    # is published -- the OTLP receivers stay internal-only per D-29.
+    published_ports: >-
+      {{
+        (
+          [ tempo_http_port | string + ':' + tempo_http_port | string ]
+          if tempo_publish_host is sameas true else
+          [ '127.0.0.1:' + tempo_http_port | string + ':' + tempo_http_port | string ]
+          if tempo_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      - source: "{{ tempo_data_volume }}"
+        target: "{{ tempo_data_path }}"
+        type: volume
+    volumes:
+      - "{{ tempo_config_dir }}/tempo.yaml:/etc/tempo.yaml:ro"
+    # Distroless image; CMD form (not CMD-SHELL).
+    # See RESEARCH.md Finding 6 + PITFALLS Pitfall B. The actual command
+    # form is set by the executor in defaults/main.yml per image probe.
+    # When tempo_healthcheck_enabled is false, the healthcheck key is
+    # omitted entirely via Ansible's `omit` magic value -- OPS-06
+    # compliance is then satisfied by verify.yml's State.Running poll
+    # plus the in-network /ready curl probe.
+    healthcheck: "{{ tempo_container_healthcheck if (tempo_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ tempo_tz }}"
+  vars:
+    tempo_container_healthcheck:
+      test: "{{ tempo_healthcheck_test }}"
+      interval: "{{ tempo_healthcheck_interval }}"
+      timeout: "{{ tempo_healthcheck_timeout }}"
+      retries: "{{ tempo_healthcheck_retries }}"
+      start_period: "{{ tempo_healthcheck_start_period }}"
+  tags:
+    - tempo
+    - tempo-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/loki/tasks/main.yml
+# pattern -- verify is included from main; not a separate playbook.
+- name: Verify Tempo end-to-end (readiness + synthetic OTLP push)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - tempo
+    - tempo-verify

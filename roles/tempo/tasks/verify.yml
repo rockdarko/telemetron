@@ -1,0 +1,143 @@
+---
+# roles/tempo/tasks/verify.yml
+# Pre-poll Tempo readiness, push a synthetic OTLP/HTTP trace via in-network
+# curl one-shot. Step 3 (MinIO bucket assertion) is intentionally omitted
+# in Phase 2 -- block flush is non-deterministic on single-trace push;
+# RESEARCH Finding 8 documents this. The bucket-landing assertion moves
+# to Phase 6 OPS-07 smoke test (longer running window).
+#
+# Mirrors the canonical roles/loki/tasks/verify.yml pattern (D-10a + W7 +
+# W8 + D-32). When tempo_healthcheck_enabled is true, Step 1a polls
+# State.Health.Status; when false, Step 1b polls State.Running. Step 1c
+# (always-on /ready curl probe) is the authoritative readiness gate
+# before the synthetic push.
+
+# Step 1a: poll Tempo HEALTHCHECK status (when healthcheck is enabled).
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :3200 directly (D-30 no host publish).
+- name: Wait for Tempo container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ tempo_container_name }}"
+  register: tempo_health_check
+  until: >-
+    tempo_health_check.container is defined
+    and tempo_health_check.container.State is defined
+    and tempo_health_check.container.State.Health is defined
+    and tempo_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ tempo_health_retries }}"
+  delay: "{{ tempo_health_delay }}"
+  changed_when: false
+  when: tempo_healthcheck_enabled | bool
+  tags:
+    - tempo
+    - tempo-verify
+
+# Step 1b: poll Tempo container running state (when healthcheck is disabled).
+# PITFALLS Pitfall B context -- distroless image with no health binary.
+- name: Wait for Tempo container to reach running state
+  community.docker.docker_container_info:
+    name: "{{ tempo_container_name }}"
+  register: tempo_running_check
+  until: >-
+    tempo_running_check.container is defined
+    and tempo_running_check.container.State is defined
+    and tempo_running_check.container.State.Running is true
+  retries: "{{ tempo_health_retries }}"
+  delay: "{{ tempo_health_delay }}"
+  changed_when: false
+  when: not (tempo_healthcheck_enabled | bool)
+  tags:
+    - tempo
+    - tempo-verify
+
+# Step 1c: in-network curl probe of /ready (BOTH paths -- final readiness gate).
+# This is the authoritative readiness check when the Docker HEALTHCHECK
+# is a binary-alive proxy or absent. When the Docker HEALTHCHECK is the
+# native -health binary, this is a belt-and-suspenders second check that
+# also confirms the HTTP API is bound on the bridge.
+- name: Curl-probe Tempo /ready endpoint in-network
+  community.docker.docker_container:
+    name: "{{ tempo_container_name }}-verify-ready"
+    image: "{{ tempo_curl_image }}:{{ tempo_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ tempo_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" http://{{ tempo_container_name }}:{{ tempo_http_port }}/ready 2>/dev/null) ;
+          if [ "$CODE" = "200" ] ; then echo "ready_ok=200" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "ready never returned 200 within 60s" ;
+        exit 1
+  register: tempo_verify_ready
+  failed_when: tempo_verify_ready.status is defined and tempo_verify_ready.status != 0
+  changed_when: false
+  tags:
+    - tempo
+    - tempo-verify
+
+# Step 2: synthetic OTLP/HTTP trace push to internal-only :14318.
+# Per W8 + D-32 / RESEARCH Finding 8. Trace IDs are fixed strings to
+# keep the JSON payload constant (idempotency-friendly, even though the
+# task is changed_when:false anyway).
+- name: Push synthetic OTLP trace to Tempo (in-network verify)
+  community.docker.docker_container:
+    name: "{{ tempo_container_name }}-verify-push"
+    image: "{{ tempo_curl_image }}:{{ tempo_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ tempo_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    # The OTLP/HTTP body is built via printf with separate format args so
+    # we stay under the 160-char line-length ansible-lint cap; the wire
+    # payload is functionally identical to a single-line JSON literal
+    # (whitespace is insignificant in JSON). Fixed traceId/spanId keep the
+    # synthetic trace idempotent across re-runs.
+    command:
+      - >-
+        START=$(date +%s) ;
+        END=$((START+1)) ;
+        URL=http://{{ tempo_container_name }}:{{ tempo_otlp_http_port }}/v1/traces ;
+        BODY=$(printf '%s%s%s%s%s%s%s%s%s'
+        '{"resourceSpans":[{"resource":{"attributes":'
+        '[{"key":"service.name","value":'
+        '{"stringValue":"telemetron-verify"}}]},'
+        '"scopeSpans":[{"scope":{"name":"telemetron.verify"},'
+        '"spans":[{"traceId":"5b8efff798038103d269b633813fc60c",'
+        '"spanId":"eee19b7ec3c1b174",'
+        '"name":"telemetron-verify-span","kind":1,'
+        "\"startTimeUnixNano\":\"${START}000000000\","
+        "\"endTimeUnixNano\":\"${END}000000000\",\"status\":{\"code\":1}}]}]}]}") ;
+        CODE=$(curl -sS -o /dev/null -w "%{http_code}"
+        -X POST "$URL" -H "Content-Type: application/json"
+        --data-raw "$BODY") ;
+        echo "tempo_push_http_code=$CODE" ;
+        test "$CODE" = "200" || test "$CODE" = "202" || test "$CODE" = "204"
+  register: tempo_verify_push
+  failed_when: tempo_verify_push.status is defined and tempo_verify_push.status != 0
+  changed_when: false
+  tags:
+    - tempo
+    - tempo-verify
+
+# Step 3 (intentionally omitted): MinIO bucket assertion.
+# RESEARCH Finding 8 explicitly documents that Tempo does not flush
+# blocks to S3 on a single synthetic push -- max_block_duration defaults
+# to 2h. Asserting `mc ls local/tempo-traces` shows objects in Phase 2
+# would either (a) require waiting 2+ hours, or (b) require lowering
+# tempo_max_block_duration for test purposes, polluting the homelab
+# defaults. The Phase 2 verify gates at "push returned 200" -- the
+# bucket-landing assertion belongs to Phase 6's M1 smoke test (OPS-07).
