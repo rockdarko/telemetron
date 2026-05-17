@@ -42,9 +42,11 @@
     - role: tempo
       tags:
         - tempo
+    - role: mimir
+      tags:
+        - mimir
   # Subsequent phase plans extend this list in dependency order
   # (D-05 dependency tree):
-  #   Phase 2: mimir (after tempo -- same wave; share no files)
   #   Phase 3: prometheus, opentelemetry, fluentbit, node_exporter
   #   Phase 4: alertmanager, hook_router
   #   Phase 5: grafana, karma, promlens

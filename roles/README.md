@@ -12,7 +12,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `hook_router`            | Alertmanager → CI bridge (new — was inline upstream) | ☐ |
 | `karma`                  | alert triage UI                                   | ☐ |
 | `loki`                   | log backend (monolithic mode)                     | ☑ |
-| `mimir`                  | long-term metrics (monolithic mode)               | ☐ |
+| `mimir`                  | long-term metrics (monolithic mode)               | ☑ |
 | `minio`                  | S3-compatible object storage                      | ☑ |
 | `nfsd`                   | NFS for legacy log ingestion (optional)           | ☐ |
 | `node_exporter`          | host metrics exporter (CPU, memory, disk, network, FS) | ☐ |
