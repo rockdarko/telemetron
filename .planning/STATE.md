@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.11.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-04-fluentbit-PLAN.md
-last_updated: "2026-05-18T17:13:13.434Z"
-last_activity: 2026-05-18 -- Phase 03 execution started
+stopped_at: Completed 03-05-fluentbit-label-enrichment-PLAN.md
+last_updated: "2026-05-18T17:27:15.081Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 03 (ingest-plane) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 03
-Last activity: 2026-05-18 -- Phase 03 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-05-18
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-ingest-plane P02-opentelemetry | 9 min | 10 tasks | 11 files |
 | Phase 03-ingest-plane P03-prometheus | 9 min | 11 tasks | 12 files |
 | Phase 03-ingest-plane P04-fluentbit | 8 min | 10 tasks | 9 files |
+| Phase 03 P05 | 9 min | 10 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 03-ingest-plane]: D-47 Loki label allowlist baked in: {host, env, service, job, level}; high-cardinality keys (container_id, image_id, image_name) NOT promoted (Pitfall 4 source-side mitigation); Q3 simplification - service/job default to container_name; Docker-label promotion deferred to Lua-filter enhancement documented under 'Labeling operator apps'
 - [Phase 03-ingest-plane]: D-50 Pitfall 6 mitigation pack THE biggest D-25 improvement: Time_System_Timezone Etc/UTC (Mode 1 DST avoidance, single most impactful one-liner) + Multiline_Flush 5 (Mode 3 fail-fast) + Read_from_Head false (Mode 4 no replay) + storage.type filesystem + storage.max_chunks_up 128 + fallback @timestamp filter (Mode 2); upstream had zero of these
 - [Phase 03-ingest-plane]: Phase 3 GAP-CLOSURE-IN-PROGRESS: all four ingest plane roles ported (node_exporter, opentelemetry, prometheus, fluentbit); deploy_docker.yml orchestrates minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry -> prometheus -> fluentbit; canonical Phase-3 role shape proven in four patterns (stateless no-config, two-template production+verify, three-template config+rules, two-template production+parsers); INGEST-07 PARTIAL gap closure landed by Plan 03-05.
+- [Phase 03-ingest-plane]: Plan 03-05 INGEST-07 gap closure: Lua filter (string.match, no cjson) extracts org.telemetron.{service,job} from /var/lib/docker/containers/<id>/config.v2.json; 8 stack roles stamp the labels; NO docker socket added
+- [Phase 03-ingest-plane]: Iteration-1 design call: NO cjson dependency in enrich.lua (FB 4.2.3 image lacks lua-cjson); string.match on raw JSON for service/job/Name fields; -json suffix strip (:sub(1, -6)) lives in Lua only, NOT in Plan 03-04 Tag_Regex
+- [Phase 03-ingest-plane]: Gate 7 added to roles/README.md per-role port-acceptance checklist: every community.docker.docker_container in a Telemetron role MUST stamp org.telemetron.service + org.telemetron.job; Phase 4/5 ports inherit (alertmanager, hook_router, grafana, karma, promlens)
 
 ### Pending Todos
 
@@ -131,6 +135,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T14:18:48.676Z
-Stopped at: Completed 03-04-fluentbit-PLAN.md
+Last session: 2026-05-18T17:27:15.077Z
+Stopped at: Completed 03-05-fluentbit-label-enrichment-PLAN.md
 Resume file: None
