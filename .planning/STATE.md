@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.11.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-02-opentelemetry-PLAN.md
-last_updated: "2026-05-18T13:50:39.436Z"
+stopped_at: Completed 03-03-prometheus-PLAN.md
+last_updated: "2026-05-18T14:04:49.260Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 03 (ingest-plane) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-05-18
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-telemetry-backends P03 | 7 min | 3 tasks | 11 files |
 | Phase 03-ingest-plane P01 | 7min | 8 tasks | 9 files |
 | Phase 03-ingest-plane P02-opentelemetry | 9 min | 10 tasks | 11 files |
+| Phase 03-ingest-plane P03-prometheus | 9 min | 11 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,13 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 03-ingest-plane]: D-51 docker_stats receiver: container.restarts AND container.uptime explicitly opt-in (default-disabled per RESEARCH correction #4); scope = ALL containers per D-53 (no excluded_images); after OTel-to-Prometheus translation surfaces as container_restarts_total (Plan 03-03 alert rule expects this exact name)
 - [Phase 03-ingest-plane]: D-45 Pitfall 5 LOCKED ratios baked in: mem_limit 512m, GOMEMLIMIT 400MiB (80%), memory_limiter.limit_mib 260 (65% of GOMEMLIMIT), spike_limit_mib 80 (20% of GOMEMLIMIT); pipeline order LOCKED [memory_limiter, batch] LITERAL in all three pipelines; sending_queue + retry_on_failure on every push exporter (pull prometheus exporter intentionally omits)
 - [Phase 03-ingest-plane]: OTLP-publish-conditional per-port-set knob: only :4317/:4318 follow opentelemetry_publish_otlp (default true); :8888 self-metrics + :8889 app-metrics stay INTERNAL ALWAYS for Prometheus DNS scrape (D-42); pattern emerges when a role has external-facing ports AND internal-only scrape ports
+- [Phase 03-ingest-plane]: Image pin v3.11.3 (RESEARCH Finding 6, 2026-04-27 release) selected over v3.5.1 LTS for current homelab quickstart audience; LTS is one-knob inventory flip
+- [Phase 03-ingest-plane]: OTelCollectorDroppingSignals uses otelcol_receiver_refused_{spans,log_records,metric_points} prefix per RESEARCH correction #2 -- CONTEXT.md processor_refused_* mention SUPERSEDED
+- [Phase 03-ingest-plane]: Three default scrape jobs (otel_self/otel_metrics/node_exporter) hardcoded as DEFAULTS in rendered config; operators add more via prometheus_extra_scrape_configs but cannot remove the three (they define the M1 telemetry contract)
+- [Phase 03-ingest-plane]: Pitfall 3 mitigation per-default-scrape-job (not global): each job ships metric_relabel_configs with explicit pod_uid|container_id|request_id|trace_id + catch-all .*_id labeldrop -- 6 total labeldrop entries in rendered config
+- [Phase 03-ingest-plane]: D-25 audit dropped three forbidden Prometheus CLI flags (--web.enable-remote-write-receiver, --enable-feature=remote-write-receiver, --web.enable-otlp-receiver): Telemetron Prometheus WRITES remote_write to Mimir; does not RECEIVE it
+- [Phase 03-ingest-plane]: Retention 15d (vs upstream 30d) -- deliberately longer than Mimir query_store_after 12h so Grafana resolves recent queries against Prometheus while Mimir handles long-term
+- [Phase 03-ingest-plane]: Phase-3 canonical role shape extended to THREE-template layout (production config + two supplementary rule docs) -- all three notify single restart handler; precedent for any future role with config + dashboards/datasources/rules
 
 ### Pending Todos
 
@@ -117,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T13:50:39.432Z
-Stopped at: Completed 03-02-opentelemetry-PLAN.md
+Last session: 2026-05-18T14:04:32.730Z
+Stopped at: Completed 03-03-prometheus-PLAN.md
 Resume file: None

@@ -67,7 +67,7 @@ Plans:
 Plans:
 - [x] 03-01-node-exporter-PLAN.md — node_exporter v1.11.1 role port (INGEST-08); Wave 1
 - [x] 03-02-opentelemetry-PLAN.md — OTel Collector Contrib 0.152.0 role port with D-44 amendment + D-43 dual-exporter + D-51 docker_stats (INGEST-04, INGEST-05); Wave 2
-- [ ] 03-03-prometheus-PLAN.md — Prometheus 3.11.3 role port with 4 baseline alert rules + Pitfall 3 relabel defaults + remote_write to Mimir (INGEST-01, INGEST-02, INGEST-03); Wave 3
+- [x] 03-03-prometheus-PLAN.md — Prometheus 3.11.3 role port with 4 baseline alert rules + Pitfall 3 relabel defaults + remote_write to Mimir (INGEST-01, INGEST-02, INGEST-03); Wave 3
 - [ ] 03-04-fluentbit-PLAN.md — Fluent Bit 4.2.3 role port with D-46 role inversion + D-47 label allowlist + D-50 Pitfall 6 mitigation pack (INGEST-06, INGEST-07); Wave 4
 
 ### Phase 4: Alert Plane
