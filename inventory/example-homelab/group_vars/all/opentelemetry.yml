@@ -1,0 +1,27 @@
+---
+# Telemetron -- opentelemetry operator knobs (Phase 3, D-30, D-42, D-43, D-52)
+# Role-specific overrides for the `opentelemetry` role.
+# See roles/opentelemetry/defaults/main.yml for the full default surface.
+
+# OTLP ingest (:4317 + :4318) published to host so external producers
+# (host-running apps, future operator workloads) can reach the collector.
+# Set to false if all producers are on the telemetron Docker network.
+opentelemetry_publish_otlp: true
+
+# D-43 forward-compat: metrics pipeline exporter selection.
+#   'prometheus' (default): metrics pipeline emits Prometheus format on
+#                            :8889; Prometheus scrapes; Prometheus remote_writes
+#                            to Mimir. Single ingest path into Mimir.
+#   'remote_write': metrics pipeline emits via prometheusremotewrite
+#                   direct to Mimir.
+# Default 'prometheus' for diagnostic clarity (everything that lands in
+# Mimir came through Prometheus -- load-bearing mental model).
+telemetron_otel_metrics_path: prometheus
+
+# OTel container memory limit. D-45 ratios: GOMEMLIMIT = 80% of this;
+# memory_limiter.limit_mib = 65% of GOMEMLIMIT; spike_limit_mib = 20%.
+# Overriding requires updating the matching ratio knobs in defaults.
+opentelemetry_memory_limit: 512m
+
+# Conditional HEALTHCHECK. Outcome B default (--version proxy).
+opentelemetry_healthcheck_enabled: true
