@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Storage** - MinIO with bucket bootstrap gate (5 required buckets), `telemetron` Docker bridge network created in playbook pre_tasks, inventory `group_vars/all/` skeleton, vault discipline, grep + idempotency gates established (completed 2026-05-17)
 - [x] **Phase 2: Telemetry Backends** - Loki, Tempo, and Mimir running in monolithic mode against MinIO with correct retention defaults and Tempo's OTLP ports moved off the standard 4317/4318 (completed 2026-05-17)
 - [x] **Phase 3: Ingest Plane** - Prometheus scraping + remote_writing to Mimir with baseline alert rules, OTel Collector accepting OTLP on 4317/4318 and fanning out to all three backends, Fluent Bit shipping host logs through OTel to Loki, node_exporter exposing host metrics (completed 2026-05-18; live-host UAT on leviathan closed 16 latent bugs, all 5 SCs pass)
-- [ ] **Phase 4: Alert Plane** - Alertmanager configured with sane group/repeat intervals, hook router Flask source under `hooks/router/` with allowlist + rate limit + vault-supplied Jenkins token, sample Jenkinsfile runbooks under `hooks/jobs/`, `hook_router` role wiring the webhook
+- [ ] **Phase 4: Alert Plane** - Alertmanager (`quay.io/prometheus/alertmanager:v0.32.1`) on :9093 with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, a single `null` default receiver (Karma in Phase 5 is the operator UX), one default inhibit rule (`severity=critical -> severity=warning, equal: [instance]`), persistent `telemetron_alertmanager_data` volume; Prometheus extended with an `alerting: alertmanagers:` block targeting it. Hook router work is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.
 - [ ] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate
 - [ ] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** - Opt-in `nfsd` role default-off, `playbooks/deploy_docker.yml` orchestrating all 14 roles in dependency order with per-role tags, example inventory hostnames wired so `ansible-playbook` runs end-to-end, three docs authored against a stack that actually booted, M1 acceptance smoke test (synthetic log + metric + trace in Grafana within 60s), top-level README updated
 
@@ -72,16 +72,18 @@ Plans:
 - [x] 03-05-fluentbit-label-enrichment-PLAN.md -- INGEST-07 gap closure (FB Lua + docker-labels); Wave 5
 
 ### Phase 4: Alert Plane
-**Goal**: Operator can run the playbook and have Alertmanager dispatching alerts from Prometheus to a Flask hook router (built locally from `hooks/router/` as a role artifact) that enforces an explicit per-rule allowlist + per-(alertname, job) rate limit and translates allowlisted alerts into Jenkins `buildWithParameters` calls with a vault-supplied token. Two to three sample Jenkinsfile runbooks ship under `hooks/jobs/` demonstrating non-trivial parameter substitution. No Jenkins token ever appears in alert payloads or container env logs.
+**Goal**: Operator can run the playbook and have Alertmanager running on `:9093` (`quay.io/prometheus/alertmanager:v0.32.1`) configured with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, `group_wait: 30s`, a single default `null` receiver, and one default inhibit rule (`source severity=critical -> target severity=warning, equal: [instance]`). Persistent state survives container restart via the `telemetron_alertmanager_data` named volume mounted at `/alertmanager`. Prometheus' `prometheus.yml` is extended with an `alerting: alertmanagers:` block pointing at `alertmanager:9093` so the four baseline rules from Phase 3 (`HostDown`, `FilesystemAlmostFull`, `ContainerRestartLoop`, `OTelCollectorDroppingSignals`) actually reach Alertmanager when they fire. The hook router (Flask app + role + sample bundles) is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.
 **Depends on**: Phase 3
-**Requirements**: ALERT-01, ALERT-02, ALERT-03, ALERT-04, ALERT-05, ALERT-06
+**Requirements**: ALERT-01 (ALERT-02..06 deferred to v2 as ALERT-V2-01..05)
 **Success Criteria** (what must be TRUE):
-  1. Operator runs `ansible-playbook --tags alertmanager,hook_router` and `curl http://<host>:9093/-/ready` and `curl http://<host>:5001/healthz` both return OK; the Alertmanager config shows `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`.
-  2. Operator force-fires a test alert (`amtool alert add alertname=TestRestart instance=demo job=ops-jenkins`) that matches an allowlisted `(alertname, job)` mapping in `hooks/router/rules.yml`, and the hook router logs the receipt + `POST /job/<name>/buildWithParameters` to Jenkins with parameters substituted from labels (`instance=demo`).
-  3. Operator force-fires an alert whose `alertname` is not on the allowlist — the hook router returns 4xx (not silently forwarded) and logs the rejection.
-  4. Operator force-fires the same allowlisted alert 10 times in 60 seconds — the 7th through 10th attempts return HTTP 429 (rate limit default 6/hour per `(alertname, job)`) and the `hook_router_rate_limited_total` counter increments.
-  5. Two to three sample `Jenkinsfile` runbooks exist under `hooks/jobs/` with non-trivial parameter substitution (e.g. `{instance}` → restart a specific container, `{filesystem}` → run a cleanup job); `grep -r 'Bearer\|api_token\|jenkins_token' hooks/router/` returns no string literal — token is loaded from env (sourced from vault) only.
-**Plans**: TBD
+  1. Operator runs `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml --tags alertmanager` and `curl -fsS http://alertmanager:9093/-/ready` returns HTTP 200; `docker inspect telemetron-alertmanager --format '{{.State.Health.Status}}'` returns `healthy`.
+  2. `curl -fsS http://alertmanager:9093/api/v2/receivers | jq -e '.[0].name == "null"'` exits 0 (single null receiver default).
+  3. `curl -fsS http://alertmanager:9093/api/v2/status | jq -r '.config.original'` contains `group_by:` listing `alertname/cluster/service`, `group_interval: 5m`, `repeat_interval: 4h`, `group_wait: 30s` (D-61).
+  4. `curl -fsS http://prometheus:9090/api/v1/alertmanagers | jq -e '.data.activeAlertmanagers[0].url == "http://alertmanager:9093/api/v2/alerts"'` exits 0 (Prom->AM wiring live).
+  5. `docker exec telemetron-alertmanager /bin/amtool --alertmanager.url=http://localhost:9093 alert add alertname=TestAlert severity=warning instance=verify-host` exits 0; the subsequent `amtool alert query alertname=TestAlert` lists the alert as active; `amtool silence add` followed by `amtool silence query` confirms silence persistence.
+**Plans**: 1
+Plans:
+- [ ] 04-01-PLAN.md -- Alertmanager role port (ALERT-01) + Prometheus alerting wiring (D-64) + doc-rework cascade (D-58, defers ALERT-02..06 to v2 as ALERT-V2-01..05); Wave 1
 
 ### Phase 5: UI Plane
 **Goal**: Operator can run the playbook and have Grafana running with datasources explicitly provisioned at stable UIDs (`prometheus`, `loki`, `tempo`, `mimir`), 5-10 curated starter dashboards rendering real data on a fresh deploy, trace-to-logs correlation wired through Tempo's `tracesToLogsV2` + a derived `trace_id` field on Loki — plus Karma running against Alertmanager and PromLens pinned to `v0.3.0` and marked deprecation-candidate in its role README. Grafana's datasource provisioning is the de-facto smoke test for everything that came before.
@@ -118,7 +120,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Storage | 3/3 | Complete   | 2026-05-17 |
 | 2. Telemetry Backends | 3/3 | Complete   | 2026-05-17 |
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
-| 4. Alert Plane | 0/TBD | Not started | - |
+| 4. Alert Plane | 0/1 | Not started | - |
 | 5. UI Plane | 0/TBD | Not started | - |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 

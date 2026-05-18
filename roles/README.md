@@ -6,10 +6,10 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 
 | Role                     | Component                                         | Ported |
 |--------------------------|---------------------------------------------------|:------:|
-| `alertmanager`           | alert routing                                     | ☐ |
+| `alertmanager`           | alert routing                                     | ☑ |
 | `fluentbit`              | log shipping                                      | ☑ |
 | `grafana`                | dashboards, datasources, provisioning             | ☐ |
-| `hook_router`            | Alertmanager → CI bridge (new — was inline upstream) | ☐ |
+| `hook_router`            | Alertmanager -> generic CI/automation webhook bridge (deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05) | — |
 | `karma`                  | alert triage UI                                   | ☐ |
 | `loki`                   | log backend (monolithic mode)                     | ☑ |
 | `mimir`                  | long-term metrics (monolithic mode)               | ☑ |
@@ -23,7 +23,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 
 **Dropped from upstream**: `graylog` (legacy aggregator no longer needed), `mongodb` (Graylog's metadata store; no remaining consumer), `mcp` (observability MCP server; not core to the plane), `haproxy` (only useful in distributed mode, which is deferred to a future milestone), `application_web_docker` (Apache vhost pairing binds operators to a single reverse-proxy choice; Telemetron is reverse-proxy-agnostic), and `postgres` (Grafana uses embedded SQLite on a persistent volume for single-host homelab use; Postgres returns only if HA Grafana lands in a later milestone).
 
-**Added vs. upstream**: `node_exporter` (so the stack has a story for scraping the host it runs on), `hook_router` (Alertmanager → CI bridge; was inline upstream).
+**Added vs. upstream**: `node_exporter` (so the stack has a story for scraping the host it runs on), `hook_router` (Alertmanager -> generic CI/automation webhook bridge; was inline upstream; planned for a future milestone, see REQUIREMENTS.md ALERT-V2-01..05).
 
 ## Port process per role
 
@@ -67,4 +67,4 @@ labels:
   org.telemetron.job: <component>
 ```
 
-`<component>` matches the role name (e.g. `prometheus`, `loki`, `node_exporter`) so that Fluent Bit's `[FILTER] lua` enrichment (`roles/fluentbit/files/enrich.lua`) picks them up from `/var/lib/docker/containers/<id>/config.v2.json` and ships them as the `service` + `job` Loki labels (INGEST-07 allowlist). Phase 4 (alertmanager, hook_router) and Phase 5 (grafana, karma, promlens) role ports MUST stamp these labels. No Docker socket access is added; the Lua filter only reads the bind-mounted JSON files Fluent Bit already tails.
+`<component>` matches the role name (e.g. `prometheus`, `loki`, `node_exporter`) so that Fluent Bit's `[FILTER] lua` enrichment (`roles/fluentbit/files/enrich.lua`) picks them up from `/var/lib/docker/containers/<id>/config.v2.json` and ships them as the `service` + `job` Loki labels (INGEST-07 allowlist). Phase 4 (alertmanager) and Phase 5 (grafana, karma, promlens) role ports MUST stamp these labels. (The hook_router role is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.) No Docker socket access is added; the Lua filter only reads the bind-mounted JSON files Fluent Bit already tails.

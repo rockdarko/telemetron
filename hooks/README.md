@@ -1,22 +1,31 @@
 # Hooks
 
-Sources for the **hook router** — a Flask service that bridges Alertmanager webhooks to Jenkins (or any CI) `buildWithParameters` calls. Lets you automate runbooks from alerts (container restarts, cleanup jobs, etc.).
+The hook router was originally planned as part of Telemetron M1
+(`ALERT-02..06`) -- a Flask service bridging Alertmanager webhooks to
+Jenkins `buildWithParameters` calls, with a per-rule allowlist,
+per-`(alertname, job)` rate limit, and a vault-supplied outbound token.
 
-## Planned layout
+**Status: deferred to a future milestone.**
 
-```
-router/      Flask app source + Dockerfile
-jobs/        sample Jenkinsfile runbooks you can adapt
-```
+Mid-M1 discussion concluded that Jenkins-as-target was no longer the
+right pitch for 2026 and that re-framing the router as
+backend-agnostic (generic webhook -> CI / automation) is a larger
+reshape than M1 should absorb. The deferred design -- including the
+two-tier `hook_router_backends` / `hook_router_rules` schema, the
+shared-secret inbound auth header, the in-memory rate limit, and the
+observability surface -- is captured in
+`.planning/phases/04-alert-plane/04-DISCUSSION-LOG.md` for the
+milestone that picks it up.
 
-The router itself is deployed by `roles/hook_router/`. The job definitions are reference examples — every operator ships their own.
+See `.planning/REQUIREMENTS.md` `## v2 Requirements` -- `ALERT-V2-01`
+through `ALERT-V2-05` -- for the planned shape. The `hooks/` directory
+survives as institutional memory; this README is its only content
+until v2.
 
-## Architecture
+In M1, Alertmanager (`roles/alertmanager/` -- Phase 4) ships with a
+single default `null` receiver. Alerts are visible in the Alertmanager
+UI and (via Phase 5) in Karma but are not dispatched to anything
+automatically. Operators wire their own receivers via
+`alertmanager_extra_receivers` in inventory.
 
-1. A Prometheus rule fires.
-2. Alertmanager applies its route. A `match` on a `hook-router-*` webhook receiver triggers a POST to the router.
-3. The router looks up the alert name in its rules, substitutes `{label}` tokens from the alert payload into the configured parameters.
-4. It calls `POST <jenkins_url>/job/<job_path>/buildWithParameters` with vault-supplied credentials.
-5. Jenkins instantiates the build.
-
-See `docs/hook-router.md` (coming soon) for the full picture.
+M1 does NOT build this image.

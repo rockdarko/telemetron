@@ -6,7 +6,7 @@ Telemetron is a one-stop, self-hosted observability stack — driven by Ansible 
 
 ## Core Value
 
-A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma + hook-router for alerts, all fed by OpenTelemetry Collector. If everything else fails, that single-host Docker happy path must work.
+A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. If everything else fails, that single-host Docker happy path must work.
 
 ## Requirements
 
@@ -22,9 +22,8 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 <!-- Current scope — Milestone 1: "Port to clean-slate, Docker, homelab-first" -->
 
 - [ ] Port 14 Ansible roles — translated (FR→EN), de-INSPQ'd, naming-normalized, each documented in `roles/<name>/README.md` and proven by booting on Rock's homelab Docker host
-- [ ] Roles in scope: `alertmanager`, `fluentbit`, `grafana`, `hook_router`, `karma`, `loki`, `mimir`, `minio`, `nfsd`, `node_exporter`, `opentelemetry`, `prometheus`, `promlens`, `tempo` (14 total — `mongodb`, `application_web_docker`, and `postgres` dropped; `node_exporter` added so the stack can scrape the host it runs on)
+- [ ] Roles in scope: `alertmanager`, `fluentbit`, `grafana`, `karma`, `loki`, `mimir`, `minio`, `nfsd`, `node_exporter`, `opentelemetry`, `prometheus`, `promlens`, `tempo` (13 deployed + `hook_router` deferred to v2 -- see REQUIREMENTS.md ALERT-V2-01..05)
 - [ ] Loki, Tempo, and Mimir support monolithic mode only for M1 (distributed/microservices mode deferred)
-- [ ] Write the hook router Flask app source under `hooks/router/` (was inline upstream) and ship sample Jenkinsfile runbooks under `hooks/jobs/`
 - [ ] Ship a working `inventory/example-homelab/` covering a single-node Docker target — clone, edit a hostname, run the playbook
 - [ ] Wire `playbooks/deploy_docker.yml` to orchestrate the 14 roles end-to-end
 - [ ] Author `docs/architecture.md` — components, modes, signal flow
@@ -87,7 +86,7 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 | PromLens ships pinned to v0.3.0 and is marked deprecation-candidate in its role README | Project frozen since 2022; Prometheus 3 absorbed its tree-view feature. Shipped only for upstream parity | ⚠️ Revisit (known debt) |
 | M1 ships amd64-only; arm64 deferred to a later milestone | Rock's homelab is amd64; all chosen images publish arm64 but the testing surface is amd64. Avoids opening a multi-arch test matrix during the port | — Pending (M1) |
 | Grafana datasource UIDs are explicitly pinned (`uid: prometheus`, `uid: loki`, `uid: tempo`, `uid: mimir`) in provisioning | Auto-generated UIDs differ per deploy; without pinning, every bundled dashboard breaks on a fresh install. Top portability pitfall in the research | — Pending (M1) |
-| Hook router security model (label allowlist + per-(alertname,job) rate limit + vault-supplied Jenkins token) ships in the first cut of `hooks/router/` | Allowlist + rate-limit are inexpensive to design in on day one and very expensive to retrofit; token leakage via alert payloads is the headline security pitfall | — Pending (M1) |
+| Hook router security model (label allowlist + per-(alertname,job) rate limit + vault-supplied Jenkins token) ships in the first cut of `hooks/router/` | Allowlist + rate-limit are inexpensive to design in on day one and very expensive to retrofit; token leakage via alert payloads is the headline security pitfall | Deferred to v2 (mid-M1 reshape, 2026-05-18 -- see Phase 4 CONTEXT.md D-56) |
 | Monolithic mode only for Loki/Tempo/Mimir in M1 | Matches the homelab/small-deployment audience; smallest configuration surface to ship | ✓ Good (shipped Phase 2 — all three roles run `-target=all`) |
 | Docker/VM deployment first; Kubernetes/OpenShift later | Tighter scope, faster to a credible "this works" demo; Kube path inherits a settled role surface | — Pending (M1) |
 | Ship a single-node Docker example inventory in M1 (`inventory/example-homelab/`) | README already promises a quickstart; without a working inventory the quickstart is hypothetical | — Pending (M1) |

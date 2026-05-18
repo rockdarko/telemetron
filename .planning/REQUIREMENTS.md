@@ -46,11 +46,8 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 ### Alert plane (ALERT)
 
 - [ ] **ALERT-01**: Operator can run the playbook and have Alertmanager running (`quay.io/prometheus/alertmanager:v0.32.1`) on `:9093`, configured with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`.
-- [ ] **ALERT-02**: `hooks/router/` ships a Flask service that accepts Alertmanager webhook POSTs on `:5001`, validates a shared-secret header on inbound requests, and translates allowlisted alerts into Jenkins `POST /job/<name>/buildWithParameters` calls with a vault-supplied Jenkins token. Container image is built locally as part of the `hook_router` role.
-- [ ] **ALERT-03**: The hook router enforces an **explicit per-rule allowlist** — no `{*}` or implicit wildcards. Each alert→job mapping declares `alert: <AlertName>` plus `job: <jenkins-job-path>` plus a `params: {param: "{label}"}` substitution map. Unrecognized alerts are 4xx'd, not silently forwarded.
-- [ ] **ALERT-04**: The hook router enforces a **rate limit** per `(alertname, job)` tuple with a default ceiling of 6 invocations per hour, configurable via env var. Overflow returns 429 and emits a counter metric.
-- [ ] **ALERT-05**: `hooks/jobs/` ships 2–3 sample `Jenkinsfile` runbooks demonstrating non-trivial parameter substitution (e.g. `{instance}` → restart a specific container; `{filesystem}` → run a cleanup job). These are reference examples; operators are expected to fork.
-- [ ] **ALERT-06**: Operator can run the playbook and have the `hook_router` role deploy the Flask container, wire an Alertmanager `webhook_configs` receiver pointing at it, and inject the shared secret + Jenkins token from vault. No Jenkins token ever appears in alert payloads or container env logs.
+
+> **ALERT-02..06 moved to v2 Requirements as ALERT-V2-01..05** during the Phase 4 scope reshape (CONTEXT.md D-56/D-57/D-58). The hook router (Flask app + `roles/hook_router/` + sample bundles + outbound auth) is deferred to a future milestone. M1 ships Alertmanager with a `null` default receiver; alerts are visible in Karma (Phase 5) but not dispatched automatically.
 
 ### UI plane (UI)
 
@@ -108,6 +105,11 @@ These are real requirements for the project but explicitly out of M1 scope. They
 - **DOCS-V2-06**: `docs/migration-from-inspq.md` — port notes for anyone forking the original INSPQ stack
 - **DOCS-V2-07**: `docs/metrics.md` — health metrics catalog with thresholds
 - **TEMPO-V2-01**: Tempo 3.x evaluation and upgrade when the release stabilizes
+- **ALERT-V2-01**: Hook router Flask app under `hooks/router/` -- backend-agnostic webhook bridge (was M1 ALERT-02).
+- **ALERT-V2-02**: Hook router enforces an explicit per-rule allowlist; unrecognized alerts return 4xx and are logged (was M1 ALERT-03).
+- **ALERT-V2-03**: Per-`(alertname, backend)` rate limit, default 6 per hour, configurable; overflow returns 429 + counter (was M1 ALERT-04; "job" renamed to "backend" to match the backend-agnostic v2 design).
+- **ALERT-V2-04**: `hooks/jobs/` sample bundles -- GitHub Actions repository_dispatch, Slack incoming webhook, generic curl, optionally Jenkinsfile for historical context (was M1 ALERT-05).
+- **ALERT-V2-05**: `roles/hook_router/` Ansible role that builds the Flask image locally + wires Alertmanager `webhook_configs` receiver + injects shared-secret + outbound token from vault (was M1 ALERT-06).
 
 ---
 
@@ -150,11 +152,6 @@ These are real requirements for the project but explicitly out of M1 scope. They
 | INGEST-07 | Phase 3 — Ingest Plane |
 | INGEST-08 | Phase 3 — Ingest Plane |
 | ALERT-01 | Phase 4 — Alert Plane |
-| ALERT-02 | Phase 4 — Alert Plane |
-| ALERT-03 | Phase 4 — Alert Plane |
-| ALERT-04 | Phase 4 — Alert Plane |
-| ALERT-05 | Phase 4 — Alert Plane |
-| ALERT-06 | Phase 4 — Alert Plane |
 | UI-01 | Phase 5 — UI Plane |
 | UI-02 | Phase 5 — UI Plane |
 | UI-03 | Phase 5 — UI Plane |
