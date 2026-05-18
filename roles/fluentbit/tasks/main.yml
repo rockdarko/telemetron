@@ -1,3 +1,123 @@
 ---
 # roles/fluentbit/tasks/main.yml
-# (Skeleton -- populated in Task 5.)
+# Fluent Bit deploy + in-network verify.
+# Mirrors the canonical roles/{mimir,opentelemetry,prometheus}/tasks/main.yml shape.
+# Conditional healthcheck approach matches the Phase-2 distroless pattern
+# (binary-alive proxy default; operator can flip to disabled without
+# touching the role).
+
+- name: Ensure Fluent Bit config directory exists on host
+  ansible.builtin.file:
+    path: "{{ fluentbit_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - fluentbit
+    - fluentbit-config
+
+- name: Render Fluent Bit main config (fluent-bit.conf)
+  ansible.builtin.template:
+    src: fluent-bit.conf.j2
+    dest: "{{ fluentbit_config_dir }}/fluent-bit.conf"
+    mode: "0640"
+  notify: restart fluentbit
+  tags:
+    - fluentbit
+    - fluentbit-config
+
+- name: Render Fluent Bit parsers config (parsers.conf)
+  ansible.builtin.template:
+    src: parsers.conf.j2
+    dest: "{{ fluentbit_config_dir }}/parsers.conf"
+    mode: "0640"
+  notify: restart fluentbit
+  tags:
+    - fluentbit
+    - fluentbit-config
+
+- name: Ensure Fluent Bit buffer volume exists
+  community.docker.docker_volume:
+    name: "{{ fluentbit_buffer_volume }}"
+    state: present
+  tags:
+    - fluentbit
+
+- name: Pull Fluent Bit image
+  community.docker.docker_image:
+    name: "{{ fluentbit_image }}:{{ fluentbit_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - fluentbit
+
+- name: Run Fluent Bit container (with conditional healthcheck)
+  community.docker.docker_container:
+    name: "{{ fluentbit_container_name }}"
+    image: "{{ fluentbit_image }}:{{ fluentbit_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ fluentbit_restart_policy }}"
+    memory: "{{ fluentbit_memory_limit }}"
+    command:
+      - "/fluent-bit/bin/fluent-bit"
+      - "-c"
+      - "/fluent-bit/etc/fluent-bit.conf"
+    networks:
+      - name: "{{ fluentbit_network }}"
+        aliases:
+          - "{{ fluentbit_container_name }}"
+    # Per D-30 / D-12: zero host publish by default. The :2020 HTTP server
+    # (/api/v1/health, /api/v1/metrics) stays on the telemetron bridge;
+    # operator access via SSH local-forward (ssh -L 2020:localhost:2020).
+    published_ports: >-
+      {{
+        (
+          [ fluentbit_http_port | string + ':' + fluentbit_http_port | string ]
+          if fluentbit_publish_host is sameas true else
+          [ '127.0.0.1:' + fluentbit_http_port | string + ':' + fluentbit_http_port | string ]
+          if fluentbit_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      # D-50: filesystem buffer survives container restart without log loss.
+      - source: "{{ fluentbit_buffer_volume }}"
+        target: "/var/log/flb-storage"
+        type: volume
+      # D-46: tail the host's Docker container JSON logs (role inversion).
+      # Read-only -- FB never writes to /var/lib/docker/containers.
+      - source: "{{ fluentbit_docker_logs_path }}"
+        target: "{{ fluentbit_docker_logs_path }}"
+        type: bind
+        read_only: true
+    volumes:
+      - "{{ fluentbit_config_dir }}/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro"
+      - "{{ fluentbit_config_dir }}/parsers.conf:/fluent-bit/etc/parsers.conf:ro"
+    # Distroless image; CMD form (not CMD-SHELL). The actual command form
+    # is set in defaults/main.yml per image probe. When
+    # fluentbit_healthcheck_enabled is false, the healthcheck key is
+    # omitted entirely via Ansible's `omit` magic value -- OPS-06
+    # compliance is then satisfied by verify.yml's State.Running poll
+    # plus the in-network /api/v1/health curl probe.
+    healthcheck: "{{ fluentbit_container_healthcheck if (fluentbit_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ fluentbit_tz }}"
+  vars:
+    fluentbit_container_healthcheck:
+      test: "{{ fluentbit_healthcheck_test }}"
+      interval: "{{ fluentbit_healthcheck_interval }}"
+      timeout: "{{ fluentbit_healthcheck_timeout }}"
+      retries: "{{ fluentbit_healthcheck_retries }}"
+      start_period: "{{ fluentbit_healthcheck_start_period }}"
+  tags:
+    - fluentbit
+    - fluentbit-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/{mimir,opentelemetry,
+# prometheus}/tasks/main.yml -- verify included from main, not a separate
+# playbook.
+- name: Verify Fluent Bit end-to-end (HTTP health gate per Q9)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - fluentbit
+    - fluentbit-verify
