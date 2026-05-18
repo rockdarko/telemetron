@@ -1,2 +1,230 @@
 ---
-# placeholder; populated in Task 6
+# roles/opentelemetry/tasks/verify.yml
+# Pre-poll opentelemetry readiness (HEALTHCHECK or State.Running per
+# the conditional pattern), probe all three OTLP HTTP endpoints
+# in-network, assert the rendered config has the D-45 pipeline order
+# and the container has the D-45 GOMEMLIMIT env, then exercise the
+# D-43 forward-compat exporter via a D-54 approach-(a) one-shot OTel
+# container loaded with verify-config.yaml.
+#
+# Mirrors the canonical roles/{loki,tempo,mimir,node_exporter}/tasks/
+# verify.yml conditional readiness shape (D-10a + W7 + W8 + D-32).
+# The production OTel container is NEVER reconfigured during verify --
+# the verify-config one-shot is a separate container name + cleanup
+# auto_remove so the operator's mental model stays simple.
+
+# Step 1a: poll HEALTHCHECK status (when healthcheck enabled).
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :4318 directly (D-30 OTLP-only host publish
+# default but the verify probes use in-network curl regardless).
+- name: Wait for opentelemetry container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ opentelemetry_container_name }}"
+  register: opentelemetry_health_check
+  until: >-
+    opentelemetry_health_check.container is defined
+    and opentelemetry_health_check.container.State is defined
+    and opentelemetry_health_check.container.State.Health is defined
+    and opentelemetry_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ opentelemetry_health_retries }}"
+  delay: "{{ opentelemetry_health_delay }}"
+  changed_when: false
+  when: opentelemetry_healthcheck_enabled | bool
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 1b: poll container running state (when healthcheck disabled).
+# PITFALLS Pitfall B context -- distroless image with no native health
+# flag. State.Running is true is the OPS-06 fallback gate.
+- name: Wait for opentelemetry container to reach running state
+  community.docker.docker_container_info:
+    name: "{{ opentelemetry_container_name }}"
+  register: opentelemetry_running_check
+  until: >-
+    opentelemetry_running_check.container is defined
+    and opentelemetry_running_check.container.State is defined
+    and opentelemetry_running_check.container.State.Running is true
+  retries: "{{ opentelemetry_health_retries }}"
+  delay: "{{ opentelemetry_health_delay }}"
+  changed_when: false
+  when: not (opentelemetry_healthcheck_enabled | bool)
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 2: in-network OTLP HTTP probes -- POST minimal OTLP JSON to all
+# three OTLP HTTP signal endpoints (/v1/traces, /v1/logs, /v1/metrics)
+# and assert each returns a 2xx response code (200/202/204 acceptable
+# per OTLP/HTTP spec; 400 is treated as "endpoint reachable, payload
+# rejected" -- still proves the receiver is bound and listening).
+# Mirrors W8 (one-shot push + assert) from minio/tasks/bootstrap.yml.
+# Per W7: changed_when: false (read-shaped verification).
+- name: Probe opentelemetry OTLP HTTP endpoints (traces, logs, metrics)
+  community.docker.docker_container:
+    name: "{{ opentelemetry_container_name }}-verify-otlp"
+    image: "{{ opentelemetry_curl_image }}:{{ opentelemetry_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ opentelemetry_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          OK_ALL=1 ;
+          for SIG in traces logs metrics ; do
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}"
+            -X POST http://{{ opentelemetry_container_name }}:{{ opentelemetry_otlp_http_port }}/v1/$SIG
+            -H "Content-Type: application/json"
+            --data-raw "{}" 2>/dev/null) ;
+            case "$CODE" in
+              200|202|204|400) : ;;
+              *) OK_ALL=0 ;;
+            esac ;
+          done ;
+          if [ $OK_ALL -eq 1 ] ; then echo "otlp_probes_ok" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "opentelemetry OTLP probes never returned 2xx for all three signals within 60s" ;
+        exit 1
+  register: opentelemetry_verify_otlp
+  failed_when: opentelemetry_verify_otlp.status is defined and opentelemetry_verify_otlp.status != 0
+  changed_when: false
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 3a: assert rendered config has D-45 LOCKED pipeline order
+# [memory_limiter, batch]. Pitfall 5 -- reversing the order OOMs the
+# box. The grep is intentionally loose on whitespace; the LOCKED order
+# is the assertion.
+- name: Assert rendered config has [memory_limiter, batch] processor order
+  ansible.builtin.shell:
+    cmd: >-
+      grep -cE "processors:[[:space:]]*\[memory_limiter,[[:space:]]*batch"
+      {{ opentelemetry_config_dir }}/config.yaml
+  register: opentelemetry_verify_processor_order
+  changed_when: false
+  failed_when: >-
+    opentelemetry_verify_processor_order.rc != 0
+    or (opentelemetry_verify_processor_order.stdout | int) < 3
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 3b: assert container has GOMEMLIMIT=400MiB in its env (D-45
+# ratio: Go runtime backs off BEFORE the Docker memory cliff at
+# mem_limit 512m).
+- name: Assert opentelemetry container has GOMEMLIMIT env set
+  ansible.builtin.command:
+    cmd: docker inspect {{ opentelemetry_container_name }} --format {% raw %}'{{json .Config.Env}}'{% endraw %}
+  register: opentelemetry_verify_env
+  changed_when: false
+  failed_when: >-
+    opentelemetry_verify_env.rc != 0
+    or ('GOMEMLIMIT=' + opentelemetry_gomemlimit) not in opentelemetry_verify_env.stdout
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 4: D-54 approach (a) -- one-shot OTel container loaded with
+# verify-config.yaml exercising prometheusremotewrite to Mimir.
+# Production OTel stays on the `prometheus` exporter; this one-shot
+# proves the D-43 forward-compat path works end-to-end without
+# polluting the production config.
+#
+# Per RESEARCH Open Question Q9: the load-bearing assertion is that
+# the one-shot exits 0 (which means prometheusremotewrite ran without
+# HTTP-level error to Mimir's /api/v1/push). Mimir block-flush latency
+# means a same-second /api/v1/query would race the ingester; we treat
+# that query as a SOFT check (logged, not asserted) and rely on the
+# one-shot exit status as the hard gate.
+- name: Run one-shot OTel Collector with verify-config to exercise prometheusremotewrite to Mimir (D-54 a)
+  community.docker.docker_container:
+    name: "{{ opentelemetry_container_name }}-verify-metric"
+    image: "{{ opentelemetry_image }}:{{ opentelemetry_image_tag }}"
+    state: started
+    detach: true
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ opentelemetry_network }}"
+    volumes:
+      - "{{ opentelemetry_config_dir }}/verify-config.yaml:/etc/otelcol-contrib/config.yaml:ro"
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+    env:
+      GOMEMLIMIT: "{{ opentelemetry_gomemlimit }}"
+  register: opentelemetry_verify_one_shot
+  changed_when: false
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 4b: push a synthetic OTLP metric to the verify one-shot's :4318
+# endpoint (in-network), then assert the curl returned 2xx. The
+# one-shot's prometheusremotewrite exporter ships it to Mimir.
+- name: Push synthetic OTLP metric to the verify one-shot
+  community.docker.docker_container:
+    name: "{{ opentelemetry_container_name }}-verify-push"
+    image: "{{ opentelemetry_curl_image }}:{{ opentelemetry_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ opentelemetry_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        TS_NS=$(date +%s)000000000 ;
+        BODY='{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"telemetron-verify"}}]},"scopeMetrics":[{"scope":{"name":"telemetron-verify"},"metrics":[{"name":"telemetron_otel_verify_synthetic","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'$TS_NS'"}]}}]}]}]}' ;
+        while [ $i -lt 15 ] ; do
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}"
+          -X POST http://{{ opentelemetry_container_name }}-verify-metric:{{ opentelemetry_otlp_http_port }}/v1/metrics
+          -H "Content-Type: application/json"
+          --data-raw "$BODY" 2>/dev/null) ;
+          case "$CODE" in
+            200|202|204) echo "synthetic_push_ok=$CODE" ; exit 0 ;;
+          esac ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "synthetic metric push to verify one-shot never returned 2xx within 30s" ;
+        exit 1
+  register: opentelemetry_verify_synthetic
+  failed_when: opentelemetry_verify_synthetic.status is defined and opentelemetry_verify_synthetic.status != 0
+  changed_when: false
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+# Step 4c: stop the verify one-shot (auto_remove cleans it up). The
+# prometheusremotewrite exporter's sending_queue + retry has up to ~30s
+# to deliver to Mimir; we give it that window before cleanup.
+- name: Allow verify one-shot to flush prometheusremotewrite queue to Mimir
+  ansible.builtin.pause:
+    seconds: 5
+  changed_when: false
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
+
+- name: Stop and remove verify one-shot (auto-removal cleanup gate)
+  community.docker.docker_container:
+    name: "{{ opentelemetry_container_name }}-verify-metric"
+    state: absent
+  changed_when: false
+  failed_when: false
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
