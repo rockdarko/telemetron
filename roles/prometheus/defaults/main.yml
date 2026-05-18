@@ -1,3 +1,96 @@
 ---
 # roles/prometheus/defaults/main.yml
-# Placeholder -- populated in Task 2.
+# Prometheus role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/prometheus.yml.
+#
+# Prometheus 3.11.3 -- pull-scrape three default jobs (otel_self,
+# otel_metrics, node_exporter) + remote_write to Mimir + evaluate four
+# baseline alert rules + extensible via operator knobs.
+
+# --- Image pin (OPS-01) ---
+# See: https://github.com/prometheus/prometheus/releases/tag/v3.11.3
+prometheus_image: prom/prometheus
+prometheus_image_tag: "v3.11.3"
+
+# --- Container identity ---
+prometheus_container_name: prometheus
+
+# --- Host port publishing (D-30) ---
+# Default false. Operator UI access via SSH local-forward:
+#   ssh -L 9090:localhost:9090 <host>
+prometheus_publish_host: "{{ prometheus_publish_host | default(false) }}"
+
+# --- Port matrix ---
+prometheus_http_port: 9090
+
+# --- Storage layout (D-16, D-17, D-18) ---
+prometheus_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_prometheus_data"
+prometheus_data_path: /prometheus     # Prometheus image default TSDB path
+prometheus_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/prometheus"
+
+# --- Retention (Claude's Discretion -- 15d > Mimir's query_store_after 12h) ---
+prometheus_retention_time: "{{ prometheus_retention_time | default('15d') }}"
+
+# --- Scrape defaults ---
+prometheus_global_scrape_interval: 15s
+prometheus_global_evaluation_interval: 15s
+prometheus_cluster_label: telemetron-homelab
+
+# --- remote_write target (INGEST-02; Phase-2 D-26 no X-Scope-OrgID) ---
+prometheus_remote_write_url: "http://mimir:9009/api/v1/push"
+prometheus_remote_write_queue_capacity: 10000
+prometheus_remote_write_max_samples_per_send: 2000
+prometheus_remote_write_batch_send_deadline: 5s
+prometheus_remote_write_min_shards: 1
+prometheus_remote_write_max_shards: 5
+
+# --- Default scrape targets (D-42 + INGEST-08) ---
+# otel:8888 -- OTel Collector self-metrics (consumed by OTelCollectorDroppingSignals alert).
+# otel:8889 -- OTel Collector app-metrics in Prometheus format (consumed by ContainerRestartLoop alert).
+# node-exporter:9100 -- host metrics from Plan 03-01 (INGEST-08).
+prometheus_otel_self_target: "otel:8888"
+prometheus_otel_metrics_target: "otel:8889"
+prometheus_node_exporter_target: "node-exporter:9100"
+
+# --- Pitfall 3 metric_relabel_configs defaults ---
+# Always-applied set per scrape job. Operator extends via
+# prometheus_extra_relabel_configs (list of dict per the
+# metric_relabel_configs schema -- regex + action).
+prometheus_default_relabel_drop_regex: "pod_uid|container_id|request_id|trace_id"
+prometheus_default_relabel_id_catchall_regex: ".*_id"
+
+# --- Operator extension knobs (INGEST-03 + D-20 sorted-keys) ---
+prometheus_extra_scrape_configs: []
+prometheus_extra_rules: []
+prometheus_extra_relabel_configs: []
+
+# --- Healthcheck approach (conditional; same pattern as Phase-2 roles) ---
+# Prometheus 3.11.3 image is distroless; researcher most-likely Outcome B.
+# /bin/prometheus --version is the binary-alive proxy. Image probe at
+# execute time picks the actual outcome.
+prometheus_healthcheck_enabled: true
+prometheus_healthcheck_test: ["CMD", "/bin/prometheus", "--version"]
+prometheus_healthcheck_interval: 15s
+prometheus_healthcheck_timeout: 5s
+prometheus_healthcheck_retries: 5
+prometheus_healthcheck_start_period: 30s
+
+# --- Verify pre-poll (D-10a) ---
+prometheus_health_retries: 45
+prometheus_health_delay: 2
+
+# --- Restart policy (OPS-06) ---
+prometheus_restart_policy: unless-stopped
+
+# --- Resource limits ---
+prometheus_memory_limit: 1g
+
+# --- Network ---
+prometheus_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06; Pitfall 6) ---
+prometheus_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Curl image pin for verify (OPS-01) ---
+prometheus_curl_image: curlimages/curl
+prometheus_curl_image_tag: "8.10.1"
