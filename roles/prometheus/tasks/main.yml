@@ -1,3 +1,142 @@
 ---
 # roles/prometheus/tasks/main.yml
-# Placeholder -- populated in Task 6.
+# Prometheus monolithic deploy + in-network verify.
+# Mirrors the canonical roles/{mimir,opentelemetry}/tasks/main.yml shape.
+# Conditional healthcheck approach matches the Phase-2 distroless pattern
+# (binary-alive proxy default; operator can flip to disabled without
+# touching the role).
+
+- name: Ensure Prometheus config directory exists on host
+  ansible.builtin.file:
+    path: "{{ prometheus_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - prometheus
+    - prometheus-config
+
+- name: Ensure Prometheus rules subdirectory exists on host
+  ansible.builtin.file:
+    path: "{{ prometheus_config_dir }}/rules"
+    state: directory
+    mode: "0755"
+  tags:
+    - prometheus
+    - prometheus-config
+
+- name: Render Prometheus config (prometheus.yml)
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    mode: "0640"
+  notify: restart prometheus
+  tags:
+    - prometheus
+    - prometheus-config
+
+- name: Render Prometheus baseline rules (rules/baseline.yml)
+  ansible.builtin.template:
+    src: rules-baseline.yml.j2
+    dest: "{{ prometheus_config_dir }}/rules/baseline.yml"
+    mode: "0640"
+  notify: restart prometheus
+  tags:
+    - prometheus
+    - prometheus-config
+
+- name: Render Prometheus operator-extra rules (rules/extra.yml)
+  ansible.builtin.template:
+    src: rules-extras.yml.j2
+    dest: "{{ prometheus_config_dir }}/rules/extra.yml"
+    mode: "0640"
+  notify: restart prometheus
+  tags:
+    - prometheus
+    - prometheus-config
+
+- name: Ensure Prometheus data volume exists
+  community.docker.docker_volume:
+    name: "{{ prometheus_data_volume }}"
+    state: present
+  tags:
+    - prometheus
+
+- name: Pull Prometheus image
+  community.docker.docker_image:
+    name: "{{ prometheus_image }}:{{ prometheus_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - prometheus
+
+- name: Run Prometheus container (with conditional healthcheck)
+  community.docker.docker_container:
+    name: "{{ prometheus_container_name }}"
+    image: "{{ prometheus_image }}:{{ prometheus_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ prometheus_restart_policy }}"
+    memory: "{{ prometheus_memory_limit }}"
+    # D-25 audit: the remote-write-receiver and otlp-receiver feature
+    # flags are intentionally NOT enabled here -- Telemetron's Prometheus
+    # WRITES remote_write to Mimir; it does not RECEIVE it.
+    # See README's Deviations section for the full audit.
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time={{ prometheus_retention_time }}"
+      - "--web.enable-lifecycle"
+      - "--web.listen-address=0.0.0.0:{{ prometheus_http_port }}"
+    networks:
+      - name: "{{ prometheus_network }}"
+        aliases:
+          - "{{ prometheus_container_name }}"
+    # Per D-30 / D-12: zero host publish by default. Operators reach the
+    # Prometheus UI from the workstation via SSH local-forward
+    # (ssh -L 9090:...); inter-component traffic stays on the
+    # telemetron Docker bridge.
+    published_ports: >-
+      {{
+        (
+          [ prometheus_http_port | string + ':' + prometheus_http_port | string ]
+          if prometheus_publish_host is sameas true else
+          [ '127.0.0.1:' + prometheus_http_port | string + ':' + prometheus_http_port | string ]
+          if prometheus_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      - source: "{{ prometheus_data_volume }}"
+        target: "{{ prometheus_data_path }}"
+        type: volume
+    volumes:
+      - "{{ prometheus_config_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "{{ prometheus_config_dir }}/rules/baseline.yml:/etc/prometheus/rules/baseline.yml:ro"
+      - "{{ prometheus_config_dir }}/rules/extra.yml:/etc/prometheus/rules/extra.yml:ro"
+    # Distroless image; CMD form (not CMD-SHELL). The actual command form
+    # is set in defaults/main.yml per image probe. When
+    # prometheus_healthcheck_enabled is false, the healthcheck key is
+    # omitted entirely via Ansible's `omit` magic value -- OPS-06
+    # compliance is then satisfied by verify.yml's State.Running poll
+    # plus the in-network /-/ready curl probe.
+    healthcheck: "{{ prometheus_container_healthcheck if (prometheus_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ prometheus_tz }}"
+  vars:
+    prometheus_container_healthcheck:
+      test: "{{ prometheus_healthcheck_test }}"
+      interval: "{{ prometheus_healthcheck_interval }}"
+      timeout: "{{ prometheus_healthcheck_timeout }}"
+      retries: "{{ prometheus_healthcheck_retries }}"
+      start_period: "{{ prometheus_healthcheck_start_period }}"
+  tags:
+    - prometheus
+    - prometheus-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/{mimir,opentelemetry}/
+# tasks/main.yml -- verify included from main, not a separate playbook.
+- name: Verify Prometheus end-to-end (readiness + targets + rules assertions)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - prometheus
+    - prometheus-verify
