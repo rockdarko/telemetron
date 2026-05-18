@@ -7,6 +7,12 @@
 # (RESEARCH correction #2 -- the receiver-side counters are the
 # canonical names per the OpenTelemetry internal-telemetry docs;
 # any reference to a processor-side refused metric is wrong).
+#
+# Phase 4 (D-65) verified: severity labels on all four rules are
+# correctly present (HostDown=critical, FilesystemAlmostFull=warning,
+# ContainerRestartLoop=warning, OTelCollectorDroppingSignals=warning).
+# Required for roles/alertmanager/templates/alertmanager.yml.j2 D-63
+# inhibit rule to match (source_matchers: severity = "critical").
 
 groups:
   - name: telemetron.baseline

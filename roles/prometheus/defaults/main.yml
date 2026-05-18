@@ -44,6 +44,13 @@ prometheus_remote_write_batch_send_deadline: 5s
 prometheus_remote_write_min_shards: 1
 prometheus_remote_write_max_shards: 5
 
+# --- Alertmanager target (D-64 -- Phase 4 wiring) ---
+# DNS name on the telemetron Docker bridge. Resolves to the
+# telemetron-alertmanager container (port 9093) deployed by Phase 4
+# roles/alertmanager/. The static_configs target consumed by the
+# `alerting:` block in templates/prometheus.yml.j2.
+prometheus_alertmanager_target: "alertmanager:9093"
+
 # --- Default scrape targets (D-42 + INGEST-08) ---
 # otel:8888 -- OTel Collector self-metrics (consumed by OTelCollectorDroppingSignals alert).
 # otel:8889 -- OTel Collector app-metrics in Prometheus format (consumed by ContainerRestartLoop alert).

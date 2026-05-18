@@ -17,6 +17,17 @@ rule_files:
   - /etc/prometheus/rules/baseline.yml
   - /etc/prometheus/rules/extra.yml
 
+alerting:
+  # D-64: Phase-4 wiring -- Prometheus dispatches evaluated alerts to
+  # Alertmanager on the telemetron Docker bridge. Default target
+  # `alertmanager:9093` resolves via Docker DNS to the
+  # telemetron-alertmanager container deployed by roles/alertmanager/.
+  # Override per environment via prometheus_alertmanager_target in
+  # inventory/<env>/group_vars/all/prometheus.yml.
+  alertmanagers:
+    - static_configs:
+        - targets: ['{{ prometheus_alertmanager_target }}']
+
 remote_write:
   - url: {{ prometheus_remote_write_url }}
     # D-26: no headers block (Mimir multitenancy_enabled: false; tenant 'anonymous').
