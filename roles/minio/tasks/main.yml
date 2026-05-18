@@ -55,7 +55,11 @@
     networks:
       - name: "{{ minio_network }}"
         aliases:
+          # Container name is `telemetron_<role>` (visible in `docker ps`).
+          # Short alias preserves backward-compat for cross-role config refs
+          # like `http://minio:9000` in loki/tempo/mimir templates.
           - "{{ minio_container_name }}"
+          - minio
     labels:
       org.telemetron.service: telemetron
       org.telemetron.job: minio
@@ -78,7 +82,7 @@
         target: "{{ minio_data_path }}"
         type: volume
     healthcheck:
-      test: "{{ minio_healthcheck_test.split(' ') }}"
+      test: "{{ minio_healthcheck_test }}"
       interval: "{{ minio_healthcheck_interval }}"
       timeout: "{{ minio_healthcheck_timeout }}"
       retries: "{{ minio_healthcheck_retries }}"

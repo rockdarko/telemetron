@@ -17,6 +17,12 @@
   ansible.builtin.template:
     src: loki.yaml.j2
     dest: "{{ loki_config_dir }}/loki.yaml"
+    # Owned by the container's UID/GID -- file contains the MinIO secret
+    # access key, so 0600 keeps it owner-only-readable on the host. The
+    # container is the only legitimate reader. Caught Phase 2 UAT 2026-05-18
+    # (02-UAT.md gap config-mode-unreadable-by-container-uid).
+    owner: "{{ loki_container_user.split(':')[0] }}"
+    group: "{{ loki_container_user.split(':')[1] | default(loki_container_user.split(':')[0]) }}"
     mode: "0600"
   notify: restart loki
   tags:
@@ -54,6 +60,7 @@
       - name: "{{ loki_network }}"
         aliases:
           - "{{ loki_container_name }}"
+          - loki
     labels:
       org.telemetron.service: telemetron
       org.telemetron.job: loki

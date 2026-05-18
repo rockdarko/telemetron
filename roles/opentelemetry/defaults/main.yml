@@ -16,7 +16,7 @@ opentelemetry_image: otel/opentelemetry-collector-contrib
 opentelemetry_image_tag: "0.152.0"
 
 # --- Container identity ---
-opentelemetry_container_name: opentelemetry
+opentelemetry_container_name: telemetron-opentelemetry
 # Short DNS alias on the telemetron network so other roles reach the
 # collector at http://otel:4318/v1/logs etc.
 opentelemetry_container_alias: otel
@@ -80,7 +80,11 @@ opentelemetry_retry_max_elapsed_time: 300s
 opentelemetry_docker_stats_endpoint: "unix:///var/run/docker.sock"
 opentelemetry_docker_stats_collection_interval: 30s
 opentelemetry_docker_stats_timeout: 5s
-opentelemetry_docker_stats_api_version: "1.25"
+# Docker 25+ enforces a minimum API version (Docker 29 reports
+# `MinAPIVersion: 1.44`). The prior pin to 1.25 made the docker_stats
+# receiver fail with "client version 1.25 is too old". Caught Phase 3
+# UAT 2026-05-18 (03-UAT.md gap otel-docker-stats-api-version-too-old).
+opentelemetry_docker_stats_api_version: "1.44"
 
 # --- D-52 Docker socket bind-mount ---
 opentelemetry_docker_socket_host_path: "/var/run/docker.sock"

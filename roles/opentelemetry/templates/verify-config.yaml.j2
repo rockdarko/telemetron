@@ -37,10 +37,7 @@ exporters:
   # synthetic metric reaches the backend before Prometheus is wired.
   prometheusremotewrite:
     endpoint: {{ opentelemetry_mimir_endpoint }}
-    sending_queue:
-      enabled: true
-      num_consumers: 1
-      queue_size: 100
+    # sending_queue removed -- same Phase 3 UAT gap as production config.yaml.
     retry_on_failure:
       enabled: true
       initial_interval: 1s

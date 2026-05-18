@@ -12,7 +12,10 @@
 # publish to loopback only.
 minio_publish_host: false
 
-# Container name on the telemetron network. Other roles reference MinIO
-# at http://{{ minio_container_name }}:9000 -- do not change unless you
-# also update every Phase 2 backend role's S3 endpoint config.
-minio_container_name: minio
+# Container name on the telemetron network. Visible in `docker ps` and
+# the suffix of all telemetron Docker volumes. Other roles still reach
+# MinIO at `http://minio:9000` because `minio` is kept on the network
+# aliases list (see roles/minio/tasks/main.yml). To change the host-side
+# container name only, edit this value; cross-role config refs survive
+# via the alias.
+minio_container_name: telemetron-minio

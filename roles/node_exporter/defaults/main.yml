@@ -16,7 +16,7 @@ node_exporter_image_tag: "v1.11.1"
 # --- Container identity ---
 # DNS name on the telemetron network. Plan 03-03 Prometheus scrapes
 # http://{{ node_exporter_container_name }}:9100/metrics.
-node_exporter_container_name: node-exporter
+node_exporter_container_name: telemetron-node-exporter
 
 # --- Host port publishing (D-30) ---
 node_exporter_publish_host: "{{ node_exporter_publish_host | default(false) }}"

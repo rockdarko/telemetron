@@ -17,7 +17,7 @@ loki_image_tag: "3.7.2"
 # Container name on the telemetron network. Other roles reach Loki at
 # http://{{ loki_container_name }}:3100. Future phases (Grafana, OTel,
 # Fluent Bit) consume this DNS name -- coordinate any change.
-loki_container_name: loki
+loki_container_name: telemetron-loki
 
 # --- Host port publishing (D-30, D-12, D-14) ---
 # Default: zero host publish. Inter-component traffic stays on the
@@ -112,8 +112,12 @@ loki_restart_policy: unless-stopped
 # Loki ingester is the memory hog; 1G fits a homelab single-tenant.
 loki_memory_limit: 1g
 
-# --- Container identity follow-ups ---
-loki_container_user: "1000:0"
+# --- Container identity ---
+# grafana/loki image's default WORKDIR /loki is owned 10001:10001 -- the named
+# volume gets initialized with that ownership. Running the container as any
+# other UID makes Loki fail with "mkdir /loki/tsdb-cache: permission denied"
+# at startup. Caught Phase 2 UAT 2026-05-18 (02-UAT.md gap loki-container-uid-mismatch).
+loki_container_user: "10001:10001"
 
 # --- Network ---
 # Created by playbooks/deploy_docker.yml pre_tasks; this role attaches.
@@ -125,7 +129,7 @@ loki_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
 # --- mc image pins for the verify one-shot (mirrors roles/minio defaults) ---
 # Used by tasks/verify.yml to assert objects landed in loki-chunks.
 loki_mc_image: minio/mc
-loki_mc_image_tag: "RELEASE.2025-04-22T16-23-26Z"
+loki_mc_image_tag: "RELEASE.2025-04-16T18-13-26Z"
 
 # --- Curl image pin for the verify push one-shot ---
 # curlimages/curl is a small busybox-shell + curl image; pin explicitly

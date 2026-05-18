@@ -101,10 +101,12 @@ exporters:
   # without role rewrite.
   prometheusremotewrite:
     endpoint: {{ opentelemetry_mimir_endpoint }}
-    sending_queue:
-      enabled: true
-      num_consumers: {{ opentelemetry_sending_queue_num_consumers }}
-      queue_size: {{ opentelemetry_sending_queue_size }}
+    # sending_queue removed -- prometheusremotewriteexporter in OTel
+    # Contrib 0.152 does NOT accept `sending_queue`. The exporter has its
+    # own internal queueing and the field was rejected at config-load
+    # ("invalid keys: sending_queue"). The other otlp exporters above
+    # still accept it. Caught Phase 3 UAT 2026-05-18 (03-UAT.md gap
+    # otel-prw-sending-queue-removed).
     retry_on_failure:
       enabled: true
       initial_interval: {{ opentelemetry_retry_initial_interval }}

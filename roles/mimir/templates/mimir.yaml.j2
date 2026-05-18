@@ -38,7 +38,10 @@ blocks_storage:
     bucket_name: {{ mimir_blocks_bucket }}
   tsdb:
     dir: {{ mimir_data_path }}/tsdb
-    out_of_order_time_window: {{ mimir_ooo_time_window }}
+    # Removed: out_of_order_time_window -- field is not on tsdb.TSDBConfig
+    # in Mimir 3.0. The setting moved to per-tenant `limits:`; pinning here
+    # at the storage level was wrong. Caught Phase 2 UAT 2026-05-18
+    # (02-UAT.md gap mimir-config-ooo-time-window-removed).
   bucket_store:
     sync_dir: {{ mimir_data_path }}/tsdb-sync
     sync_interval: {{ mimir_bucket_store_sync_interval }}   # CONTEXT.md D-36 + PITFALLS Pitfall 11
@@ -55,7 +58,10 @@ alertmanager_storage:
 
 compactor:
   data_dir: {{ mimir_data_path }}/compactor
-  blocks_retention_period: {{ mimir_compactor_blocks_retention_period }}   # CONTEXT.md D-35 + BACK-04
+  # Removed: blocks_retention_period -- field is not on compactor.Config in
+  # Mimir 3.0. The setting moved to per-tenant `limits:`. Default retention
+  # is 1 week, fine for M1. Caught Phase 2 UAT 2026-05-18
+  # (02-UAT.md gap mimir-config-blocks-retention-period-removed).
   cleanup_interval: {{ mimir_compactor_cleanup_interval }}   # CONTEXT.md D-36 + PITFALLS Pitfall 11
 
 ruler:

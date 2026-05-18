@@ -46,7 +46,7 @@
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        TS=$(date +%s%N) ;
+        TS=$(date +%s)000000000 ;
         STATUS=$(curl -sS -o /dev/null -w "%{http_code}"
         -X POST http://{{ loki_container_name }}:{{ loki_http_port }}/loki/api/v1/push
         -H "Content-Type: application/json"

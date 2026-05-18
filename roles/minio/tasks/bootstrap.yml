@@ -72,19 +72,20 @@
         mc mb --ignore-existing
         {% for b in minio_buckets | sort %}local/{{ b }} {% endfor %}
   register: minio_bootstrap_result
-  failed_when: minio_bootstrap_result.status is defined and minio_bootstrap_result.status != 0
+  failed_when: >-
+    minio_bootstrap_result is failed
+    or minio_bootstrap_result.status is not defined
+    or minio_bootstrap_result.status != 0
   changed_when: false
   tags:
     - minio
     - minio-bootstrap
 
-# Step 3: verify (cheap read-back -- mc ls with JSON output per W8).
-# If the bucket list doesn't match all expected buckets, fail loud.
-# Per W8: JSON is mc's documented stable interface; column parsing of
-# text output is fragile. sed extracts the "key" field (busybox-compat --
-# works inside the minio/mc alpine-based image without jq or GNU coreutils).
-# We use `diff` against a sorted expected list -- any missing or extra
-# bucket causes diff to exit 1 and the playbook fails.
+# Step 3: verify -- per-bucket existence check via mc stat.
+# Originally used `mc ls --json | sed | diff` but the mc image moved from
+# alpine+busybox to ubi9-micro+coreutils between releases, dropping sed,
+# diff, and grep. `mc stat local/<bucket>/` exits non-zero on missing,
+# uses only mc + sh builtins, and fails loud on first miss via `set -e`.
 - name: Verify all required buckets exist
   community.docker.docker_container:
     name: "{{ minio_container_name }}-verify"
@@ -101,14 +102,15 @@
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        mc ls --json local/ |
-        sed -n 's/.*"key":"\([^"]*\)\/".*/\1/p' |
-        sort -u >/tmp/got;
-        printf '%s\n' {% for b in minio_buckets | sort %}{{ b }} {% endfor %} |
-        sort -u >/tmp/want;
-        diff /tmp/want /tmp/got
+        set -e;
+        {% for b in minio_buckets | sort %}
+        mc ls local/{{ b }}/ >/dev/null;
+        {% endfor %}
   register: minio_bucket_verify
-  failed_when: minio_bucket_verify.status is defined and minio_bucket_verify.status != 0
+  failed_when: >-
+    minio_bucket_verify is failed
+    or minio_bucket_verify.status is not defined
+    or minio_bucket_verify.status != 0
   changed_when: false
   tags:
     - minio

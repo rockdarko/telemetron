@@ -53,7 +53,9 @@ compactor:
     # CONTEXT.md D-34 / BACK-03.
     block_retention: {{ tempo_block_retention }}
     compacted_block_retention: {{ tempo_compacted_block_retention }}
-    block_ranges_period: {{ tempo_compactor_block_ranges_period }}
+    # Removed: block_ranges_period -- the field does not exist in
+    # tempodb.CompactorConfig in Tempo 2.10. Caught Phase 2 UAT 2026-05-18
+    # (02-UAT.md gap tempo-config-block-ranges-period-unknown).
 
 {% if tempo_metrics_generator_enabled %}
 overrides:

@@ -17,7 +17,7 @@ mimir_image_tag: "3.0.6"
 # --- Container identity ---
 # DNS name on the telemetron network. Phase 3 Prometheus remote_writes
 # to http://{{ mimir_container_name }}:9009/api/v1/push.
-mimir_container_name: mimir
+mimir_container_name: telemetron-mimir
 
 # --- Host port publishing (D-30) ---
 # Default: zero host publish. Operator access via SSH local-forward:
@@ -119,9 +119,14 @@ mimir_restart_policy: unless-stopped
 # 2GB fits homelab single-tenant per PITFALLS sizing.
 mimir_memory_limit: 2g
 
-# --- Container user (RESEARCH Finding 7) ---
-# Mimir 3.x image runs as UID 472 per upstream default.
-mimir_container_user: "472:472"
+# --- Container user ---
+# grafana/mimir 3.0.6 image's default User is 0 (root) -- the prior pin to
+# 472:472 was a copy from Grafana's image convention, not Mimir's. With
+# 472:472 Mimir failed to write `/metrics-activity.log` (CWD=/, owned root
+# mode 755) and crash-looped at startup. The image is distroless, no shell
+# to chown things at runtime; running as root is the upstream convention.
+# Caught Phase 2 UAT 2026-05-18 (02-UAT.md gap mimir-container-uid-wrong).
+mimir_container_user: "0:0"
 
 # --- Network ---
 # Created by playbooks/deploy_docker.yml pre_tasks; this role attaches.
@@ -134,7 +139,7 @@ mimir_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
 # Used by tasks/verify.yml to assert all three mimir-* buckets are
 # reachable via the D-27-aliased mimir vault credentials.
 mimir_mc_image: minio/mc
-mimir_mc_image_tag: "RELEASE.2025-04-22T16-23-26Z"
+mimir_mc_image_tag: "RELEASE.2025-04-16T18-13-26Z"
 
 # --- Curl image pin for the /ready probe one-shot ---
 # curlimages/curl is a small busybox-shell + curl image; pin explicitly

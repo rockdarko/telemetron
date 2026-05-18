@@ -96,12 +96,22 @@
     - fluentbit
     - fluentbit-verify
 
-# Step 4: Plan 03-05 INGEST-07 -- assert enrich.lua is bind-mounted and
-# readable inside the container. Confirms tasks/main.yml volume entry and
-# Docker bind-mount round-tripped successfully.
+# Step 4: Plan 03-05 INGEST-07 -- assert enrich.lua is bind-mounted.
+# Original used `docker exec ... test -r <path>` but FB image is distroless
+# (no `test` binary -- exec exits 127). Switched to host-side docker
+# inspect of Mounts. Caught Phase 3 UAT 2026-05-18 (03-UAT.md gap
+# fluentbit-verify-exec-test-not-in-distroless).
 - name: Verify enrich.lua is bind-mounted inside Fluent Bit container (INGEST-07)
-  ansible.builtin.command:
-    cmd: "docker exec {{ fluentbit_container_name }} test -r {{ fluentbit_enrich_lua_path }}"
+  community.docker.docker_container_info:
+    name: "{{ fluentbit_container_name }}"
+  register: fluentbit_inspect
+  failed_when: >-
+    fluentbit_inspect.container is not defined
+    or fluentbit_inspect.container.Mounts
+       | selectattr('Destination', 'equalto', fluentbit_enrich_lua_path)
+       | list
+       | length
+       == 0
   changed_when: false
   tags:
     - fluentbit

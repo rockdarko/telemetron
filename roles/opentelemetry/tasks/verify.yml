@@ -69,29 +69,30 @@
     auto_remove: true
     recreate: true
     cleanup: true
+    recreate: true
+    cleanup: true
     networks:
       - name: "{{ opentelemetry_network }}"
     entrypoint: ["/bin/sh", "-c"]
     command:
+      # IMPORTANT: keep `curl ...` on a single YAML logical line. YAML folded
+      # scalar `>-` only folds lines at the SAME indentation; more-indented
+      # lines (loop body, curl args) get preserved as literal newlines and
+      # break the shell command. Caught Phase 3 UAT 2026-05-18 (03-UAT.md
+      # gap otel-verify-otlp-yaml-folded-scalar-splits-curl).
       - >-
-        i=0 ;
-        while [ $i -lt 30 ] ; do
-          OK_ALL=1 ;
-          for SIG in traces logs metrics ; do
-            CODE=$(curl -sS -o /dev/null -w "%{http_code}"
-            -X POST http://{{ opentelemetry_container_name }}:{{ opentelemetry_otlp_http_port }}/v1/$SIG
-            -H "Content-Type: application/json"
-            --data-raw "{}" 2>/dev/null) ;
-            case "$CODE" in
-              200|202|204|400) : ;;
-              *) OK_ALL=0 ;;
-            esac ;
-          done ;
-          if [ $OK_ALL -eq 1 ] ; then echo "otlp_probes_ok" ; exit 0 ; fi ;
-          i=$((i+1)) ;
-          sleep 2 ;
-        done ;
-        echo "opentelemetry OTLP probes never returned 2xx for all three signals within 60s" ;
+        i=0;
+        while [ $i -lt 30 ]; do
+        OK_ALL=1;
+        for SIG in traces logs metrics; do
+        CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "http://{{ opentelemetry_container_name }}:{{ opentelemetry_otlp_http_port }}/v1/$SIG" -H "Content-Type: application/json" --data-raw "{}" 2>/dev/null);
+        case "$CODE" in 200|202|204|400) : ;; *) OK_ALL=0 ;; esac;
+        done;
+        if [ $OK_ALL -eq 1 ]; then echo "otlp_probes_ok"; exit 0; fi;
+        i=$((i+1));
+        sleep 2;
+        done;
+        echo "opentelemetry OTLP probes never returned 2xx for all three signals within 60s";
         exit 1
   register: opentelemetry_verify_otlp
   failed_when: opentelemetry_verify_otlp.status is defined and opentelemetry_verify_otlp.status != 0
@@ -184,22 +185,19 @@
       - name: "{{ opentelemetry_network }}"
     entrypoint: ["/bin/sh", "-c"]
     command:
+      # See OTLP probe task: YAML folded scalar splits multi-line curl. Keep
+      # the full curl on one logical line.
       - >-
-        i=0 ;
-        TS_NS=$(date +%s)000000000 ;
-        BODY='{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"telemetron-verify"}}]},"scopeMetrics":[{"scope":{"name":"telemetron-verify"},"metrics":[{"name":"telemetron_otel_verify_synthetic","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'$TS_NS'"}]}}]}]}]}' ;
-        while [ $i -lt 15 ] ; do
-          CODE=$(curl -sS -o /dev/null -w "%{http_code}"
-          -X POST http://{{ opentelemetry_container_name }}-verify-metric:{{ opentelemetry_otlp_http_port }}/v1/metrics
-          -H "Content-Type: application/json"
-          --data-raw "$BODY" 2>/dev/null) ;
-          case "$CODE" in
-            200|202|204) echo "synthetic_push_ok=$CODE" ; exit 0 ;;
-          esac ;
-          i=$((i+1)) ;
-          sleep 2 ;
-        done ;
-        echo "synthetic metric push to verify one-shot never returned 2xx within 30s" ;
+        i=0;
+        TS_NS=$(date +%s)000000000;
+        BODY='{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"telemetron-verify"}}]},"scopeMetrics":[{"scope":{"name":"telemetron-verify"},"metrics":[{"name":"telemetron_otel_verify_synthetic","gauge":{"dataPoints":[{"asInt":"1","timeUnixNano":"'$TS_NS'"}]}}]}]}]}';
+        while [ $i -lt 15 ]; do
+        CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "http://{{ opentelemetry_container_name }}-verify-metric:{{ opentelemetry_otlp_http_port }}/v1/metrics" -H "Content-Type: application/json" --data-raw "$BODY" 2>/dev/null);
+        case "$CODE" in 200|202|204) echo "synthetic_push_ok=$CODE"; exit 0;; esac;
+        i=$((i+1));
+        sleep 2;
+        done;
+        echo "synthetic metric push to verify one-shot never returned 2xx within 30s";
         exit 1
   register: opentelemetry_verify_synthetic
   failed_when: opentelemetry_verify_synthetic.status is defined and opentelemetry_verify_synthetic.status != 0

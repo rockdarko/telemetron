@@ -19,7 +19,7 @@ tempo_image_tag: "2.10.5"
 # --- Container identity ---
 # DNS name on the telemetron network. Phase 3 OTel Collector forwards
 # OTLP traces to http://{{ tempo_container_name }}:14318 over the bridge.
-tempo_container_name: tempo
+tempo_container_name: telemetron-tempo
 
 # --- Host port publishing (D-30) ---
 # Default: zero host publish. Operator access via SSH local-forward:
@@ -120,8 +120,11 @@ tempo_restart_policy: unless-stopped
 tempo_memory_limit: 1g
 
 # --- Container user ---
-# Tempo image runs as 1000:0 per upstream default (Claude's Discretion D-39).
-tempo_container_user: "1000:0"
+# grafana/tempo image's default User is 10001:10001 (not 1000:0 -- the prior
+# comment was wrong). The /var/tempo WORKDIR is owned 10001:10001 -- running
+# as a different UID fails at startup with permission-denied creating WAL
+# blocks. Caught Phase 2 UAT 2026-05-18 (02-UAT.md gap tempo-container-uid-mismatch).
+tempo_container_user: "10001:10001"
 
 # --- Network ---
 # Created by playbooks/deploy_docker.yml pre_tasks.

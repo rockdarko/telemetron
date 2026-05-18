@@ -42,7 +42,13 @@
     networks:
       - name: "{{ node_exporter_network }}"
         aliases:
+          # Container name `telemetron-node-exporter` plus the legacy short
+          # `node-exporter` (matches prometheus_node_exporter_target default
+          # `node-exporter:9100`). Underscore form intentionally NOT in this
+          # list -- underscores in DNS hostnames violate RFC 1123 and break
+          # strict clients (mc, Go net/http, Java URLConnection).
           - "{{ node_exporter_container_name }}"
+          - node-exporter
     labels:
       org.telemetron.service: telemetron
       org.telemetron.job: node_exporter

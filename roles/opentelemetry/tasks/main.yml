@@ -27,6 +27,12 @@
   ansible.builtin.template:
     src: config.yaml.j2
     dest: "{{ opentelemetry_config_dir }}/config.yaml"
+    # otel/opentelemetry-collector-contrib image's default User is 10001:10001.
+    # File must be owned/group-readable by that UID/GID or the container
+    # crashes with "open ...: permission denied" before it can run.
+    # Caught Phase 3 UAT 2026-05-18 (03-UAT.md gap config-mode-uid-mismatch).
+    owner: "10001"
+    group: "10001"
     mode: "0640"
   notify: restart opentelemetry
   tags:
@@ -37,6 +43,10 @@
   ansible.builtin.template:
     src: verify-config.yaml.j2
     dest: "{{ opentelemetry_config_dir }}/verify-config.yaml"
+    # Verify one-shot also runs as image default 10001:10001. Same chown
+    # rationale as the production config above.
+    owner: "10001"
+    group: "10001"
     mode: "0640"
   # No notify -- verify-config is loaded by the verify one-shot, never
   # by the production container. Rendering it here keeps the file fresh
@@ -83,7 +93,11 @@
     networks:
       - name: "{{ opentelemetry_network }}"
         aliases:
+          # Container is `telemetron_opentelemetry`; legacy `opentelemetry`
+          # plus the canonical short `otel` (the alias most other roles
+          # reference via http://otel:4318 etc.) are kept on the network.
           - "{{ opentelemetry_container_name }}"
+          - opentelemetry
           - "{{ opentelemetry_container_alias }}"
     labels:
       org.telemetron.service: telemetron

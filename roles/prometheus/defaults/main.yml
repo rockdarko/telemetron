@@ -13,7 +13,7 @@ prometheus_image: prom/prometheus
 prometheus_image_tag: "v3.11.3"
 
 # --- Container identity ---
-prometheus_container_name: prometheus
+prometheus_container_name: telemetron-prometheus
 
 # --- Host port publishing (D-30) ---
 # Default false. Operator UI access via SSH local-forward:

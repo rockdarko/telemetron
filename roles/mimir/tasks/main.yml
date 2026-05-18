@@ -20,6 +20,11 @@
   ansible.builtin.template:
     src: mimir.yaml.j2
     dest: "{{ mimir_config_dir }}/mimir.yaml"
+    # Owned by the container's UID/GID; mode 0600 keeps the embedded MinIO
+    # secret owner-only-readable on the host. See roles/loki/tasks/main.yml
+    # for the full rationale.
+    owner: "{{ mimir_container_user.split(':')[0] }}"
+    group: "{{ mimir_container_user.split(':')[1] | default(mimir_container_user.split(':')[0]) }}"
     mode: "0600"
   notify: restart mimir
   tags:
@@ -57,6 +62,7 @@
       - name: "{{ mimir_network }}"
         aliases:
           - "{{ mimir_container_name }}"
+          - mimir
     labels:
       org.telemetron.service: telemetron
       org.telemetron.job: mimir

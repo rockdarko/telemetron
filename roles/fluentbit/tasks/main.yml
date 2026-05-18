@@ -76,6 +76,7 @@
       - name: "{{ fluentbit_network }}"
         aliases:
           - "{{ fluentbit_container_name }}"
+          - fluentbit
     labels:
       org.telemetron.service: telemetron
       org.telemetron.job: fluentbit

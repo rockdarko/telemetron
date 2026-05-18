@@ -14,7 +14,7 @@ fluentbit_image: fluent/fluent-bit
 fluentbit_image_tag: "4.2.3"
 
 # --- Container identity ---
-fluentbit_container_name: fluentbit
+fluentbit_container_name: telemetron-fluentbit
 
 # --- Host port publishing (D-30) ---
 # Default false. FB's :2020 HTTP server (/api/v1/health, /api/v1/metrics)

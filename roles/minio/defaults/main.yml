@@ -18,13 +18,16 @@ minio_image_tag: "RELEASE.2025-04-22T22-12-26Z"
 # mc (MinIO Client) image -- paired with the server pin. Used only by the
 # one-shot bootstrap container that creates buckets.
 minio_mc_image: minio/mc
-minio_mc_image_tag: "RELEASE.2025-04-22T16-23-26Z"
+# Closest published mc release to the Apr-22 MinIO server tag. The original
+# pin (2025-04-22T16-23-26Z) was never published to Docker Hub -- mc tags
+# don't always co-publish with server tags. Verified via Docker Hub API.
+minio_mc_image_tag: "RELEASE.2025-04-16T18-13-26Z"
 
 # --- Container identity ---
 # Container name on the telemetron network. Other roles reach MinIO at
 # http://{{ minio_container_name }}:9000 -- coordinate any change here
 # with every Phase 2 backend role's S3 endpoint config.
-minio_container_name: "{{ minio_container_name | default('minio') }}"
+minio_container_name: telemetron-minio
 
 # --- Host port publishing (D-13, D-14, Security Mistakes from PITFALLS.md) ---
 # Default: zero host publish. Inter-component traffic stays on the
@@ -71,7 +74,15 @@ minio_health_delay: 2
 # reflects MinIO readiness, not just "container running." The bootstrap
 # pre-poll (tasks/bootstrap.yml) reads Status.Health.Status via
 # docker_container_info and waits for `healthy` before firing mc.
-minio_healthcheck_test: "CMD-SHELL curl -sf http://127.0.0.1:{{ minio_api_port }}/minio/health/ready || exit 1"
+#
+# IMPORTANT: must be a list, NOT a space-split string. Docker's CMD-SHELL
+# form is exactly ["CMD-SHELL", "<one shell command string>"] -- if you
+# pass ["CMD-SHELL", "curl", "-sf", ...] each token after CMD-SHELL is
+# discarded and the shell runs an empty command. Caught Phase 1 UAT
+# (01-UAT.md gap minio-healthcheck-cmdshell).
+minio_healthcheck_test:
+  - CMD-SHELL
+  - "curl -sf http://127.0.0.1:{{ minio_api_port }}/minio/health/ready || exit 1"
 minio_healthcheck_interval: 30s
 minio_healthcheck_timeout: 5s
 minio_healthcheck_retries: 3

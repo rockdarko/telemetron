@@ -32,12 +32,18 @@ GEMINI.md
 .codex
 .aider*
 
+# --- Private inventories ---
+# Only inventory/example-homelab/ (the shipped public reference) and the
+# README ship in git. Other inventories (real homelab hosts, BYO) stay local.
+inventory/*/
+!inventory/example-homelab/
+!inventory/example-homelab/**
+
 # --- Ansible vault (OPS-02, Phase 1 D-15) ---
-# Real vault files are NEVER committed. The .example template IS committed.
+# Real vault files are NEVER committed (overrides the negations above for
+# example-homelab/**). The .example template IS committed.
 # Naming convention: vault_<role>_<purpose>.
-inventory/*/group_vars/all/vault.yml
-inventory/*/group_vars/*/vault.yml
-inventory/*/vault.yml
+**/vault.yml
 .vault_password
 ansible-vault-password.txt
 

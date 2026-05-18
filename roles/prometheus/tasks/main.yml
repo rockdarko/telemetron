@@ -28,6 +28,11 @@
   ansible.builtin.template:
     src: prometheus.yml.j2
     dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    # prom/prometheus image's default User is `nobody` (UID 65534). Files
+    # owned root:root mode 0640 are not readable by nobody:nogroup. Caught
+    # Phase 3 UAT 2026-05-18 (03-UAT.md gap config-mode-uid-mismatch).
+    owner: "nobody"
+    group: "nogroup"
     mode: "0640"
   notify: restart prometheus
   tags:
@@ -38,6 +43,8 @@
   ansible.builtin.template:
     src: rules-baseline.yml.j2
     dest: "{{ prometheus_config_dir }}/rules/baseline.yml"
+    owner: "nobody"
+    group: "nogroup"
     mode: "0640"
   notify: restart prometheus
   tags:
@@ -48,6 +55,8 @@
   ansible.builtin.template:
     src: rules-extras.yml.j2
     dest: "{{ prometheus_config_dir }}/rules/extra.yml"
+    owner: "nobody"
+    group: "nogroup"
     mode: "0640"
   notify: restart prometheus
   tags:
@@ -91,6 +100,7 @@
       - name: "{{ prometheus_network }}"
         aliases:
           - "{{ prometheus_container_name }}"
+          - prometheus
     labels:
       org.telemetron.service: telemetron
       org.telemetron.job: prometheus
