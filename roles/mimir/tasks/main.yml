@@ -57,6 +57,9 @@
       - name: "{{ mimir_network }}"
         aliases:
           - "{{ mimir_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: mimir
     # Per D-30 / D-12: zero host publish by default. Operators reach
     # Mimir from the workstation via SSH local-forward (ssh -L 9009:...);
     # Phase 3 Prometheus remote_write traffic stays on the telemetron

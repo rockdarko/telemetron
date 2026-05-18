@@ -56,6 +56,9 @@
       - name: "{{ minio_network }}"
         aliases:
           - "{{ minio_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: minio
     # Per D-12, D-13: zero host publish by default. Only publish if
     # the operator explicitly sets minio_publish_host to true or 127.0.0.1.
     published_ports: >-

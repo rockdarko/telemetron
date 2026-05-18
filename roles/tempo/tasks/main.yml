@@ -60,6 +60,9 @@
       - name: "{{ tempo_network }}"
         aliases:
           - "{{ tempo_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: tempo
     # Per D-30 / D-12: zero host publish by default. Tempo's OTLP alt
     # ports (:14317, :14318) are intentionally NEVER host-published.
     # Even when tempo_publish_host is true, only the HTTP API port :3200

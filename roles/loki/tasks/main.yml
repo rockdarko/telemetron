@@ -54,6 +54,9 @@
       - name: "{{ loki_network }}"
         aliases:
           - "{{ loki_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: loki
     # Per D-30 / D-12: zero host publish by default. Only publish if
     # the operator explicitly sets loki_publish_host to true or 127.0.0.1.
     published_ports: >-
