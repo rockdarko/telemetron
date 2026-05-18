@@ -1,0 +1,26 @@
+---
+galaxy_info:
+  role_name: prometheus
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Prometheus 3.11.3 for Telemetron -- scrapes OTel Collector
+    + node_exporter, remote_writes to Mimir, evaluates baseline alert
+    rules.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - metrics
+    - prometheus
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin
