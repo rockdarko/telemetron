@@ -7,7 +7,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | Role                     | Component                                         | Ported |
 |--------------------------|---------------------------------------------------|:------:|
 | `alertmanager`           | alert routing                                     | ☐ |
-| `fluentbit`              | log shipping                                      | ☐ |
+| `fluentbit`              | log shipping                                      | ☑ |
 | `grafana`                | dashboards, datasources, provisioning             | ☐ |
 | `hook_router`            | Alertmanager → CI bridge (new — was inline upstream) | ☐ |
 | `karma`                  | alert triage UI                                   | ☐ |
