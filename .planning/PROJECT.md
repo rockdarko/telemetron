@@ -15,6 +15,7 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 <!-- Shipped and confirmed valuable. -->
 
 - Loki 3.7.2 / Tempo 2.10.5 / Mimir 3.0.6 ported as monolithic-mode Ansible roles against MinIO buckets bootstrapped in Phase 1; `playbooks/deploy_docker.yml` orchestrates `minio → loki → tempo → mimir` in order. **Validated in Phase 2: telemetry-backends** (BACK-01..BACK-05; static gates green, live-Docker UAT tracked in `.planning/phases/02-telemetry-backends/02-HUMAN-UAT.md`).
+- Prometheus 3.11.3 + OpenTelemetry Collector Contrib 0.152.0 + Fluent Bit 4.2.3 + node_exporter 1.11.1 ported as monolithic-mode Ansible roles; `playbooks/deploy_docker.yml` extends to `… → node_exporter → opentelemetry → prometheus → fluentbit`. Pitfall 5 OOM-resistance pack (memory_limiter ratios + GOMEMLIMIT + sending_queue/retry_on_failure on every exporter), four baseline alert rules (HostDown / FilesystemAlmostFull / ContainerRestartLoop / OTelCollectorDroppingSignals) + extras knob, FB Lua-enrichment promotes `org.telemetron.{service,job}` Docker labels to first-class Loki labels (NO Docker socket — reads `/var/lib/docker/containers/<id>/config.v2.json`). Gate 7 in `roles/README.md` forces Phase 4/5 roles to inherit the label-stamp convention. **Validated in Phase 3: ingest-plane** (INGEST-01..INGEST-08, including INGEST-07 closed by gap-closure Plan 03-05; static gates green, live-Docker UAT tracked in `.planning/phases/03-ingest-plane/03-HUMAN-UAT.md`).
 
 ### Active
 
@@ -115,4 +116,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-17 after Phase 2 (telemetry-backends) — Loki + Tempo + Mimir monolithic roles ported against MinIO; `playbooks/deploy_docker.yml` reaches `minio → loki → tempo → mimir`; canonical role pattern (defaults/meta/handlers/template/tasks/verify/README + inventory + vault aliases) proven on three backends*
+*Last updated: 2026-05-18 after Phase 3 (ingest-plane) — node_exporter + opentelemetry + prometheus + fluentbit monolithic roles ported; `playbooks/deploy_docker.yml` reaches `minio → loki → tempo → mimir → node_exporter → opentelemetry → prometheus → fluentbit`; INGEST-07 gap closed by Plan 03-05 (FB Lua-enrichment promotes `org.telemetron.{service,job}` to first-class Loki labels, no Docker socket); 8/14 roles ported (6 remaining: alertmanager, hook_router, karma, grafana, promlens, nfsd)*
