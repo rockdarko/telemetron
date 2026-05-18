@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: fluentbit
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Fluent Bit 4.2.3 for Telemetron -- tails Docker container
+    JSON logs by default and ships through OTel Collector to Loki.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - logs
+    - fluent-bit
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin
