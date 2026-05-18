@@ -1,1 +1,148 @@
-# placeholder; populated in Task 3
+# /opt/telemetron/opentelemetry/config.yaml
+# {{ ansible_managed }}
+# OpenTelemetry Collector Contrib 0.152.0 -- Telemetron-tuned.
+#
+# PITFALL 5 inline-cited; D-45 pipeline order LOCKED in every pipeline
+# as `[memory_limiter, batch]`. Reversing that order OOMs the box.
+#
+# D-44 AMENDED: the `loki` exporter was REMOVED from contrib in
+# v0.131.0 (Pitfall: upstream INSPQ used it). We use `otlphttp/loki`
+# to Loki's `/otlp` endpoint instead (Loki 3.7.2 native OTLP).
+#
+# D-43 forward-compat: production declares BOTH `prometheus` and
+# `prometheusremotewrite` exporters unconditionally. The metrics
+# pipeline reference flips via the `telemetron_otel_metrics_path`
+# knob; default 'prometheus'. See README's Modes section.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:{{ opentelemetry_otlp_grpc_port }}
+      http:
+        endpoint: 0.0.0.0:{{ opentelemetry_otlp_http_port }}
+
+  docker_stats:
+    # D-51 / D-53: scope all containers; no excluded_images filter.
+    endpoint: {{ opentelemetry_docker_stats_endpoint }}
+    collection_interval: {{ opentelemetry_docker_stats_collection_interval }}
+    timeout: {{ opentelemetry_docker_stats_timeout }}
+    api_version: "{{ opentelemetry_docker_stats_api_version }}"
+    metrics:
+      # ContainerRestartLoop signal source (D-51). DEFAULT-DISABLED in
+      # the receiver; MUST be explicitly enabled. Translated Prometheus
+      # name = container_restarts_total (Plan 03-03 alert rule expects
+      # this exact name).
+      container.restarts:
+        enabled: true
+      container.uptime:
+        enabled: true
+
+processors:
+  # PITFALL 5: memory_limiter MUST be FIRST. Reversing order OOMs the box.
+  # D-45 ratios: limit_mib = 65% of GOMEMLIMIT, spike_limit_mib = 20%.
+  memory_limiter:
+    check_interval: {{ opentelemetry_memory_limiter_check_interval }}
+    limit_mib: {{ opentelemetry_memory_limiter_limit_mib }}
+    spike_limit_mib: {{ opentelemetry_memory_limiter_spike_limit_mib }}
+
+  batch:
+    timeout: {{ opentelemetry_batch_timeout }}
+    send_batch_size: {{ opentelemetry_batch_send_batch_size }}
+    send_batch_max_size: {{ opentelemetry_batch_send_batch_max_size }}
+
+exporters:
+  # OTel -> Loki via OTLP/HTTP. D-44 AMENDED -- the `loki` exporter was
+  # REMOVED from contrib in v0.131.0 (see RESEARCH Finding 2). The
+  # canonical OTLP path replaces it. Loki 3.7.2 with auth_enabled: false
+  # accepts OTLP without X-Scope-OrgID.
+  otlphttp/loki:
+    endpoint: {{ opentelemetry_loki_endpoint }}
+    sending_queue:
+      enabled: true
+      num_consumers: {{ opentelemetry_sending_queue_num_consumers }}
+      queue_size: {{ opentelemetry_sending_queue_size }}
+    retry_on_failure:
+      enabled: true
+      initial_interval: {{ opentelemetry_retry_initial_interval }}
+      max_interval: {{ opentelemetry_retry_max_interval }}
+      max_elapsed_time: {{ opentelemetry_retry_max_elapsed_time }}
+
+  # OTel -> Tempo via OTLP gRPC on Phase-2 D-29 internal-only port.
+  otlp/tempo:
+    endpoint: {{ opentelemetry_tempo_endpoint }}
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: {{ opentelemetry_sending_queue_num_consumers }}
+      queue_size: {{ opentelemetry_sending_queue_size }}
+    retry_on_failure:
+      enabled: true
+      initial_interval: {{ opentelemetry_retry_initial_interval }}
+      max_interval: {{ opentelemetry_retry_max_interval }}
+      max_elapsed_time: {{ opentelemetry_retry_max_elapsed_time }}
+
+  # D-42: pull-style Prometheus exporter for OTLP-pushed metrics.
+  # Prometheus scrapes :{{ opentelemetry_app_metrics_port }} as job
+  # `otel_metrics`. NO sending_queue / retry_on_failure (those are
+  # push-exporter concepts; pull is Prometheus's responsibility).
+  prometheus:
+    endpoint: 0.0.0.0:{{ opentelemetry_app_metrics_port }}
+    namespace: ""
+    send_timestamps: true
+    metric_expiration: 5m
+    enable_open_metrics: true
+
+  # D-43 forward-compat: DECLARED unconditionally even when not in the
+  # metrics pipeline. Flipping telemetron_otel_metrics_path to
+  # 'remote_write' moves the metrics pipeline to use this exporter
+  # without role rewrite.
+  prometheusremotewrite:
+    endpoint: {{ opentelemetry_mimir_endpoint }}
+    sending_queue:
+      enabled: true
+      num_consumers: {{ opentelemetry_sending_queue_num_consumers }}
+      queue_size: {{ opentelemetry_sending_queue_size }}
+    retry_on_failure:
+      enabled: true
+      initial_interval: {{ opentelemetry_retry_initial_interval }}
+      max_interval: {{ opentelemetry_retry_max_interval }}
+      max_elapsed_time: {{ opentelemetry_retry_max_elapsed_time }}
+
+service:
+  telemetry:
+    metrics:
+      # Self-metrics on :{{ opentelemetry_self_metrics_port }} -- Prometheus
+      # job `otel_self` scrapes this (D-42). Includes
+      # otelcol_receiver_refused_{spans,log_records,metric_points} which
+      # Plan 03-03's OTelCollectorDroppingSignals alert rule consumes.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: {{ opentelemetry_self_metrics_port }}
+
+  pipelines:
+    # D-45 LOCKED order in every pipeline: [memory_limiter, batch].
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/loki]   # D-44 AMENDED
+
+    metrics:
+      # docker_stats feeds the container.restarts signal (D-51).
+      receivers: [otlp, docker_stats]
+      processors: [memory_limiter, batch]
+      # D-43 forward-compat Jinja conditional. Default 'prometheus'.
+{% if telemetron_otel_metrics_path == 'remote_write' %}
+      exporters: [prometheusremotewrite]
+{% else %}
+      exporters: [prometheus]
+{% endif %}
