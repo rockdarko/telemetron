@@ -6,8 +6,9 @@
 # as `[memory_limiter, batch]`. Reversing that order OOMs the box.
 #
 # D-44 AMENDED: the `loki` exporter was REMOVED from contrib in
-# v0.131.0 (Pitfall: upstream INSPQ used it). We use `otlphttp/loki`
-# to Loki's `/otlp` endpoint instead (Loki 3.7.2 native OTLP).
+# v0.131.0 (upstream used it; see README's Deviations section for the
+# full audit). We use `otlphttp/loki` to Loki's `/otlp` endpoint
+# instead (Loki 3.7.2 native OTLP).
 #
 # D-43 forward-compat: production declares BOTH `prometheus` and
 # `prometheusremotewrite` exporters unconditionally. The metrics
