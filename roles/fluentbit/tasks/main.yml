@@ -35,6 +35,16 @@
     - fluentbit
     - fluentbit-config
 
+- name: Copy Fluent Bit Lua enrichment script (Plan 03-05 INGEST-07)
+  ansible.builtin.copy:
+    src: enrich.lua
+    dest: "{{ fluentbit_config_dir }}/enrich.lua"
+    mode: "0640"
+  notify: restart fluentbit
+  tags:
+    - fluentbit
+    - fluentbit-config
+
 - name: Ensure Fluent Bit buffer volume exists
   community.docker.docker_volume:
     name: "{{ fluentbit_buffer_volume }}"
@@ -93,6 +103,7 @@
     volumes:
       - "{{ fluentbit_config_dir }}/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro"
       - "{{ fluentbit_config_dir }}/parsers.conf:/fluent-bit/etc/parsers.conf:ro"
+      - "{{ fluentbit_config_dir }}/enrich.lua:{{ fluentbit_enrich_lua_path }}:ro"
     # Distroless image; CMD form (not CMD-SHELL). The actual command form
     # is set in defaults/main.yml per image probe. When
     # fluentbit_healthcheck_enabled is false, the healthcheck key is
