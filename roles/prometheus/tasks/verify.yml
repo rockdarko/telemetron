@@ -1,3 +1,151 @@
 ---
 # roles/prometheus/tasks/verify.yml
-# Placeholder -- populated in Task 7.
+# Pre-poll Prometheus readiness, curl-probe /-/ready, then assert all
+# three default scrape targets are `up` and all four baseline alert
+# rules loaded successfully.
+#
+# Mirrors the canonical roles/{mimir,opentelemetry}/tasks/verify.yml
+# conditional readiness shape (D-10a + D-32 + D-54). The targets +
+# rules assertions are Prometheus-specific (INGEST-01 + INGEST-03 +
+# RESEARCH correction #2 -- all four rule names must load).
+
+# Step 1a: poll HEALTHCHECK status (when healthcheck enabled).
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :9090 directly (D-30 no host publish).
+- name: Wait for Prometheus container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ prometheus_container_name }}"
+  register: prometheus_health_check
+  until: >-
+    prometheus_health_check.container is defined
+    and prometheus_health_check.container.State is defined
+    and prometheus_health_check.container.State.Health is defined
+    and prometheus_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ prometheus_health_retries }}"
+  delay: "{{ prometheus_health_delay }}"
+  changed_when: false
+  when: prometheus_healthcheck_enabled | bool
+  tags:
+    - prometheus
+    - prometheus-verify
+
+# Step 1b: poll container running state (when healthcheck disabled).
+- name: Wait for Prometheus container to reach running state
+  community.docker.docker_container_info:
+    name: "{{ prometheus_container_name }}"
+  register: prometheus_running_check
+  until: >-
+    prometheus_running_check.container is defined
+    and prometheus_running_check.container.State is defined
+    and prometheus_running_check.container.State.Running is true
+  retries: "{{ prometheus_health_retries }}"
+  delay: "{{ prometheus_health_delay }}"
+  changed_when: false
+  when: not (prometheus_healthcheck_enabled | bool)
+  tags:
+    - prometheus
+    - prometheus-verify
+
+# Step 2: in-network curl probe of /-/ready (authoritative readiness gate).
+# Prometheus /-/ready returns 200 when fully started; 503 otherwise.
+- name: Curl-probe Prometheus /-/ready endpoint in-network
+  community.docker.docker_container:
+    name: "{{ prometheus_container_name }}-verify-ready"
+    image: "{{ prometheus_curl_image }}:{{ prometheus_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ prometheus_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" http://{{ prometheus_container_name }}:{{ prometheus_http_port }}/-/ready 2>/dev/null) ;
+          if [ "$CODE" = "200" ] ; then echo "ready_ok=200" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "prometheus /-/ready never returned 200 within 60s" ;
+        exit 1
+  register: prometheus_verify_ready
+  failed_when: prometheus_verify_ready.status is defined and prometheus_verify_ready.status != 0
+  changed_when: false
+  tags:
+    - prometheus
+    - prometheus-verify
+
+# Step 3: /api/v1/targets assertion -- all three default jobs present + at
+# least one target reporting health "up". Wrapped in a 60s retry loop
+# because verify runs immediately after the container starts; targets
+# need a scrape cycle to flip to up.
+- name: Assert Prometheus default scrape jobs are up (otel_self + otel_metrics + node_exporter)
+  community.docker.docker_container:
+    name: "{{ prometheus_container_name }}-verify-targets"
+    image: "{{ prometheus_curl_image }}:{{ prometheus_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ prometheus_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          BODY=$(curl -sS http://{{ prometheus_container_name }}:{{ prometheus_http_port }}/api/v1/targets 2>/dev/null) ;
+          if echo "$BODY" | grep -q '"job":"otel_self"' \
+              && echo "$BODY" | grep -q '"job":"otel_metrics"' \
+              && echo "$BODY" | grep -q '"job":"node_exporter"' \
+              && echo "$BODY" | grep -q '"health":"up"' ; then
+            echo "targets_ok" ;
+            exit 0 ;
+          fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "prometheus /api/v1/targets never reported all three jobs up within 60s" ;
+        echo "last body: $BODY" ;
+        exit 1
+  register: prometheus_verify_targets
+  failed_when: prometheus_verify_targets.status is defined and prometheus_verify_targets.status != 0
+  changed_when: false
+  tags:
+    - prometheus
+    - prometheus-verify
+
+# Step 4: /api/v1/rules assertion -- all four baseline rule names load.
+# Rule loading is synchronous on Prometheus startup; if any rule failed
+# to parse, the rule body would be absent. Single-shot check (no retry
+# loop) because rules are loaded before /-/ready returns 200.
+- name: Assert Prometheus baseline rules loaded (HostDown + FilesystemAlmostFull + ContainerRestartLoop + OTelCollectorDroppingSignals)
+  community.docker.docker_container:
+    name: "{{ prometheus_container_name }}-verify-rules"
+    image: "{{ prometheus_curl_image }}:{{ prometheus_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ prometheus_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -sS http://{{ prometheus_container_name }}:{{ prometheus_http_port }}/api/v1/rules 2>/dev/null) ;
+        echo "$BODY" | grep -q '"name":"HostDown"' || { echo "missing HostDown" ; exit 1 ; } ;
+        echo "$BODY" | grep -q '"name":"FilesystemAlmostFull"' || { echo "missing FilesystemAlmostFull" ; exit 1 ; } ;
+        echo "$BODY" | grep -q '"name":"ContainerRestartLoop"' || { echo "missing ContainerRestartLoop" ; exit 1 ; } ;
+        echo "$BODY" | grep -q '"name":"OTelCollectorDroppingSignals"' || { echo "missing OTelCollectorDroppingSignals" ; exit 1 ; } ;
+        echo "rules_ok=4"
+  register: prometheus_verify_rules
+  failed_when: prometheus_verify_rules.status is defined and prometheus_verify_rules.status != 0
+  changed_when: false
+  tags:
+    - prometheus
+    - prometheus-verify
