@@ -56,6 +56,25 @@ fluentbit_storage_max_chunks_up: 128
 fluentbit_storage_backlog_mem_limit: "50M"
 fluentbit_flush_interval: 5
 
+# --- Lua enrichment for INGEST-07 service/job labels (Plan 03-05 gap closure) ---
+# Fluent Bit's [FILTER] lua reads /var/lib/docker/containers/<id>/config.v2.json
+# (already bind-mounted RO by tasks/main.yml -- the sibling of *-json.log that
+# the [INPUT] tail consumes) and extracts the two Telemetron Docker labels
+# `org.telemetron.service` + `org.telemetron.job`. Source of truth: each role's
+# docker_container `labels:` argument stamps these at container creation.
+#
+# Fallback semantics:
+#   - service unset -> "unlabeled"
+#   - job unset     -> container_name (from JSON `Name` field, leading `/` stripped)
+#
+# NO /var/run/docker.sock mount. NO Docker daemon API access. The Lua filter
+# only reads the on-disk JSON files that FB already has RO access to.
+fluentbit_enrich_lua_path: "/fluent-bit/etc/enrich.lua"
+fluentbit_enrich_docker_root: "/var/lib/docker/containers"
+fluentbit_enrich_cache_ttl_seconds: 300
+fluentbit_unlabeled_service: "unlabeled"
+fluentbit_unlabeled_job: "unknown"
+
 # --- D-47 level extraction regex ---
 # Default Fluent Bit grep-style regex on log line content for level promotion.
 fluentbit_level_regex: '(?i)\b(?<level>INFO|WARN|ERROR|FATAL|DEBUG|TRACE)\b'
