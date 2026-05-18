@@ -1,1 +1,65 @@
-# Placeholder -- populated in Task 4.
+# /opt/telemetron/prometheus/rules/baseline.yml
+# {{ ansible_managed }}
+# INGEST-03 baseline alert rules. Operators extend via
+# prometheus_extra_rules: [] in inventory.
+#
+# OTelCollectorDroppingSignals uses otelcol_receiver_refused_* prefix
+# (RESEARCH correction #2 -- the receiver-side counters are the
+# canonical names per the OpenTelemetry internal-telemetry docs;
+# any reference to a processor-side refused metric is wrong).
+
+groups:
+  - name: telemetron.baseline
+    interval: 30s
+    rules:
+      - alert: HostDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: telemetron
+        annotations:
+          summary: "Scrape target {{ '{{' }} $labels.instance {{ '}}' }} is unreachable"
+          description: "{{ '{{' }} $labels.job {{ '}}' }} on {{ '{{' }} $labels.instance {{ '}}' }} has been unreachable for >2 minutes."
+
+      - alert: FilesystemAlmostFull
+        # Pitfall 3 -- exclude high-cardinality / ephemeral fstypes.
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          team: telemetron
+        annotations:
+          summary: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} on {{ '{{' }} $labels.instance {{ '}}' }} is <15% free"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} ({{ '{{' }} $labels.fstype {{ '}}' }}) on {{ '{{' }} $labels.instance {{ '}}' }} has been below 15% available for >5 minutes."
+
+      - alert: ContainerRestartLoop
+        # D-51 -- fed by OTel docker_stats container.restarts (opt-in in OTel config).
+        # OTel->Prometheus translation: container_restarts_total.
+        expr: increase(container_restarts_total[10m]) >= 3
+        for: 0m
+        labels:
+          severity: warning
+          team: telemetron
+        annotations:
+          summary: "Container {{ '{{' }} $labels.container_name {{ '}}' }} restarted >=3 times in 10m"
+          description: "Container {{ '{{' }} $labels.container_name {{ '}}' }} (image {{ '{{' }} $labels.container_image_name {{ '}}' }}) has restarted >=3 times in the last 10 minutes. Likely crash-looping."
+
+      - alert: OTelCollectorDroppingSignals
+        # RESEARCH correction #2: prefix is otelcol_receiver_refused_*
+        # When a downstream pipeline rejects data (memory_limiter
+        # saturation, exporter retry exhaust, batch overflow), the
+        # receiver-side counters increment.
+        expr: |
+          (
+            rate(otelcol_receiver_refused_spans[5m])
+            + rate(otelcol_receiver_refused_log_records[5m])
+            + rate(otelcol_receiver_refused_metric_points[5m])
+          ) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: telemetron
+        annotations:
+          summary: "OTel Collector is refusing signals"
+          description: "OTel Collector on {{ '{{' }} $labels.instance {{ '}}' }} has been refusing one or more signal types for >5 minutes. Check memory_limiter saturation, exporter queue depth, and backend availability."
