@@ -58,3 +58,13 @@ grep -rPn '[^\x00-\x7F]' roles/<name>/
 **5. Healthcheck + restart-policy gate (OPS-06):** `docker inspect <container> --format '{{.State.Health.Status}}'` returns `healthy`; `docker inspect <container> --format '{{.HostConfig.RestartPolicy.Name}}'` returns `unless-stopped`. Healthcheck is declared on the container (either via Docker image default or explicit in the role's `community.docker.docker_container` task).
 
 **6. Per-role README gate (OPS-03):** `roles/<name>/README.md` exists and documents (in order): variables (with defaults and purpose), modes (if the role supports any), tags (one per role minimum), volumes (with `telemetron_<role>_*` prefix), healthcheck details (port, interval, timeout, retries), and deprecation notes if applicable. The `roles/minio/README.md` written in Phase 1 plan 03 is the canonical template every subsequent role README mirrors.
+
+**7. Telemetron label-stamp gate (Plan 03-05; INGEST-07):** every `community.docker.docker_container` task in a Telemetron role MUST include a `labels:` argument with the two key/value pairs:
+
+```yaml
+labels:
+  org.telemetron.service: telemetron
+  org.telemetron.job: <component>
+```
+
+`<component>` matches the role name (e.g. `prometheus`, `loki`, `node_exporter`) so that Fluent Bit's `[FILTER] lua` enrichment (`roles/fluentbit/files/enrich.lua`) picks them up from `/var/lib/docker/containers/<id>/config.v2.json` and ships them as the `service` + `job` Loki labels (INGEST-07 allowlist). Phase 4 (alertmanager, hook_router) and Phase 5 (grafana, karma, promlens) role ports MUST stamp these labels. No Docker socket access is added; the Lua filter only reads the bind-mounted JSON files Fluent Bit already tails.
