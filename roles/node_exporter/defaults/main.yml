@@ -36,11 +36,12 @@ node_exporter_restart_policy: unless-stopped
 # --- Resource limits (homelab-safe) ---
 node_exporter_memory_limit: 128m
 
-# --- Container hardening (Claude's Discretion; INSPQ-kept-improved set) ---
-# When true (default), applies the upstream INSPQ security hardening set:
+# --- Container hardening (kept-and-improved security set) ---
+# When true (default), applies the upstream security hardening set:
 # read-only rootfs, drop ALL caps, add DAC_READ_SEARCH, no-new-privileges,
 # tmpfs /tmp, pids_limit 512. Operators can flip to false per environment
-# (e.g. RHEL SELinux interactions).
+# (e.g. RHEL SELinux interactions). See README "Deviations" section for the
+# full audit of what was kept vs. dropped vs. added.
 node_exporter_container_hardening_enabled: true
 
 # --- Healthcheck approach (conditional pattern; RESEARCH Open Question Q4) ---

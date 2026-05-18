@@ -29,10 +29,10 @@
     # upstream node_exporter README). The kernel-level access is read-only via
     # the /host/{proc,sys,root} bind-mounts below.
     pid_mode: host
-    # Container hardening set (kept from upstream INSPQ, guarded by knob).
-    # When the knob is false (e.g. RHEL SELinux interactions), all six fields
-    # collapse to Ansible's `omit` magic value -- the docker_container module
-    # then leaves Docker defaults in place.
+    # Container hardening set (kept from upstream, guarded by knob -- see
+    # README "Deviations" section). When the knob is false (e.g. RHEL SELinux
+    # interactions), all six fields collapse to Ansible's `omit` magic value
+    # -- the docker_container module then leaves Docker defaults in place.
     read_only: "{{ node_exporter_container_hardening_enabled | bool }}"
     cap_drop: "{{ ['ALL'] if (node_exporter_container_hardening_enabled | bool) else omit }}"
     capabilities: "{{ ['DAC_READ_SEARCH'] if (node_exporter_container_hardening_enabled | bool) else omit }}"
