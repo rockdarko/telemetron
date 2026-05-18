@@ -1,0 +1,26 @@
+---
+# Telemetron -- prometheus operator knobs (Phase 3, D-30, INGEST-02, INGEST-03)
+# Role-specific overrides for the `prometheus` role.
+# See roles/prometheus/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Operator UI access via SSH:
+#   ssh -L 9090:localhost:9090 <host>
+prometheus_publish_host: false
+
+# Local TSDB retention. 15d > Mimir's query_store_after (12h per
+# Phase-2 D-36) so Grafana queries against Prometheus for recent data
+# while Mimir handles long-term.
+prometheus_retention_time: 15d
+
+# Operator-extensible alert rules (INGEST-03 extension). Example:
+#   prometheus_extra_rules:
+#     - name: MyAppDown
+#       expr: up{job="my-app"} == 0
+#       for: 1m
+#       labels: { severity: critical, team: ops }
+#       annotations:
+#         summary: "my-app is down"
+prometheus_extra_rules: []
+
+# Operator-extensible scrape jobs. Same shape as Prometheus scrape_config.
+prometheus_extra_scrape_configs: []
