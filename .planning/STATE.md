@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.11.1
 milestone_name: milestone
-status: verifying
+status: executing
 stopped_at: Completed 03-04-fluentbit-PLAN.md
-last_updated: "2026-05-18T14:19:08.108Z"
-last_activity: 2026-05-18
+last_updated: "2026-05-18T17:13:13.434Z"
+last_activity: 2026-05-18 -- Phase 03 execution started
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 10
+  completed_phases: 2
+  total_plans: 11
   completed_plans: 10
   percent: 0
 ---
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 03 (ingest-plane) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-05-18
+Plan: 1 of 5
+Status: Executing Phase 03
+Last activity: 2026-05-18 -- Phase 03 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -119,7 +119,7 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 03-ingest-plane]: D-46 role inversion as headline deviation: Telemetron M1 colocates FB with workloads on a single Docker host (tail /var/lib/docker/containers/*/*-json.log); inverts upstream legacy-host-scoop pattern; user memory project_fluentbit_role_shift.md is source-of-truth narrative
 - [Phase 03-ingest-plane]: D-47 Loki label allowlist baked in: {host, env, service, job, level}; high-cardinality keys (container_id, image_id, image_name) NOT promoted (Pitfall 4 source-side mitigation); Q3 simplification - service/job default to container_name; Docker-label promotion deferred to Lua-filter enhancement documented under 'Labeling operator apps'
 - [Phase 03-ingest-plane]: D-50 Pitfall 6 mitigation pack THE biggest D-25 improvement: Time_System_Timezone Etc/UTC (Mode 1 DST avoidance, single most impactful one-liner) + Multiline_Flush 5 (Mode 3 fail-fast) + Read_from_Head false (Mode 4 no replay) + storage.type filesystem + storage.max_chunks_up 128 + fallback @timestamp filter (Mode 2); upstream had zero of these
-- [Phase 03-ingest-plane]: Phase 3 FEATURE-COMPLETE: all four ingest plane roles ported (node_exporter, opentelemetry, prometheus, fluentbit); deploy_docker.yml orchestrates minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry -> prometheus -> fluentbit; canonical Phase-3 role shape proven in four patterns (stateless no-config, two-template production+verify, three-template config+rules, two-template production+parsers)
+- [Phase 03-ingest-plane]: Phase 3 GAP-CLOSURE-IN-PROGRESS: all four ingest plane roles ported (node_exporter, opentelemetry, prometheus, fluentbit); deploy_docker.yml orchestrates minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry -> prometheus -> fluentbit; canonical Phase-3 role shape proven in four patterns (stateless no-config, two-template production+verify, three-template config+rules, two-template production+parsers); INGEST-07 PARTIAL gap closure landed by Plan 03-05.
 
 ### Pending Todos
 

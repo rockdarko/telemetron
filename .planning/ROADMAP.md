@@ -63,12 +63,13 @@ Plans:
   3. Prometheus evaluates the baseline alert-rule set (`HostDown`, `FilesystemAlmostFull`, `ContainerRestartLoop`, `OTelCollectorDroppingSignals`) — `curl http://<host>:9090/api/v1/rules` returns all four rule names; operators can add their own via `prometheus_extra_rules` in inventory.
   4. The OTel Collector pipeline order is `processors: [memory_limiter, batch, ...]` (verifiable in `/etc/telemetron/opentelemetry/config.yaml`); `GOMEMLIMIT` is set to ~80% of the container's memory limit; every exporter has `sending_queue: enabled` and `retry_on_failure` configured — and the container does not OOM under a 5-minute synthetic load test.
   5. Fluent Bit ships only the labels `{job, host, service, env, level}` to Loki (high-cardinality fields go to structured metadata) — verifiable by inspecting Loki streams via `/loki/api/v1/labels`; `Time_System_Timezone Etc/UTC` and `Multiline_Flush 5` are set in the rendered config.
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
 - [x] 03-01-node-exporter-PLAN.md — node_exporter v1.11.1 role port (INGEST-08); Wave 1
 - [x] 03-02-opentelemetry-PLAN.md — OTel Collector Contrib 0.152.0 role port with D-44 amendment + D-43 dual-exporter + D-51 docker_stats (INGEST-04, INGEST-05); Wave 2
 - [x] 03-03-prometheus-PLAN.md — Prometheus 3.11.3 role port with 4 baseline alert rules + Pitfall 3 relabel defaults + remote_write to Mimir (INGEST-01, INGEST-02, INGEST-03); Wave 3
 - [x] 03-04-fluentbit-PLAN.md — Fluent Bit 4.2.3 role port with D-46 role inversion + D-47 label allowlist + D-50 Pitfall 6 mitigation pack (INGEST-06, INGEST-07); Wave 4
+- [ ] 03-05-fluentbit-label-enrichment-PLAN.md -- INGEST-07 gap closure (FB Lua + docker-labels); Wave 5
 
 ### Phase 4: Alert Plane
 **Goal**: Operator can run the playbook and have Alertmanager dispatching alerts from Prometheus to a Flask hook router (built locally from `hooks/router/` as a role artifact) that enforces an explicit per-rule allowlist + per-(alertname, job) rate limit and translates allowlisted alerts into Jenkins `buildWithParameters` calls with a vault-supplied token. Two to three sample Jenkinsfile runbooks ship under `hooks/jobs/` demonstrating non-trivial parameter substitution. No Jenkins token ever appears in alert payloads or container env logs.
