@@ -1,3 +1,69 @@
 ---
 # roles/node_exporter/defaults/main.yml
-# node_exporter role tunables. Content lands in Task 2.
+# node_exporter role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/node_exporter.yml.
+#
+# node_exporter v1.11.1 -- host metrics (CPU, memory, disk, network, FS)
+# on :9100/metrics. Scraped by Phase-3 Prometheus (Plan 03-03) over the
+# telemetron Docker bridge.
+
+# --- Image pin (OPS-01) ---
+# Quay registry pin matches Phase-1 alertmanager convention; avoids Docker Hub
+# rate-limit risk for unauth pulls. See RESEARCH.md Finding 6.
+node_exporter_image: quay.io/prometheus/node-exporter
+node_exporter_image_tag: "v1.11.1"
+
+# --- Container identity ---
+# DNS name on the telemetron network. Plan 03-03 Prometheus scrapes
+# http://{{ node_exporter_container_name }}:9100/metrics.
+node_exporter_container_name: node-exporter
+
+# --- Host port publishing (D-30) ---
+node_exporter_publish_host: "{{ node_exporter_publish_host | default(false) }}"
+
+# --- Port matrix ---
+node_exporter_port: 9100
+
+# --- Network ---
+node_exporter_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06; Pitfall 6) ---
+node_exporter_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Restart policy (OPS-06) ---
+node_exporter_restart_policy: unless-stopped
+
+# --- Resource limits (homelab-safe) ---
+node_exporter_memory_limit: 128m
+
+# --- Container hardening (Claude's Discretion; INSPQ-kept-improved set) ---
+# When true (default), applies the upstream INSPQ security hardening set:
+# read-only rootfs, drop ALL caps, add DAC_READ_SEARCH, no-new-privileges,
+# tmpfs /tmp, pids_limit 512. Operators can flip to false per environment
+# (e.g. RHEL SELinux interactions).
+node_exporter_container_hardening_enabled: true
+
+# --- Healthcheck approach (conditional pattern; RESEARCH Open Question Q4) ---
+# node_exporter image is built FROM scratch -- no shell, no wget. Image
+# probe at execute time picks the outcome:
+#   Outcome A: native --health flag (unlikely; verify with --help)
+#   Outcome B: only --version (binary-alive proxy) -- DEFAULT
+#   Outcome C: nothing useful -- set node_exporter_healthcheck_enabled: false
+# In all three, the verify task's in-network curl to /metrics is the
+# authoritative readiness gate.
+node_exporter_healthcheck_enabled: true
+node_exporter_healthcheck_test: ["CMD", "/bin/node_exporter", "--version"]
+node_exporter_healthcheck_interval: 15s
+node_exporter_healthcheck_timeout: 5s
+node_exporter_healthcheck_retries: 5
+node_exporter_healthcheck_start_period: 10s
+
+# --- Verify pre-poll (D-10a) ---
+# 60s total budget = 30 retries x 2s. node_exporter cold-start is fast
+# (just open /proc + start HTTP server).
+node_exporter_health_retries: 30
+node_exporter_health_delay: 2
+
+# --- Curl image pin for the verify one-shot (OPS-01) ---
+node_exporter_curl_image: curlimages/curl
+node_exporter_curl_image_tag: "8.10.1"
