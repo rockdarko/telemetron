@@ -1,0 +1,4 @@
+---
+# roles/node_exporter/tasks/main.yml
+# Pull image, run container with bind-mounts and pid_mode host, include verify.
+# Mirrors the canonical roles/mimir/tasks/main.yml shape. Content lands in Task 3.

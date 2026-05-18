@@ -1,0 +1,3 @@
+---
+# roles/node_exporter/handlers/main.yml
+# Single docker restart handler per W6 / Pitfall 8. Content lands in Task 5.

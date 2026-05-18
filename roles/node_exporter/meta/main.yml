@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: node_exporter
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Prometheus node_exporter v1.11.1 on the telemetron Docker bridge
+    network. Ships host metrics (CPU, memory, disk, network, filesystem) on
+    :9100/metrics for Phase 3 Prometheus to scrape. Stateless container with
+    three RO bind-mounts (/proc, /sys, /) and pid_mode host.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - metrics
+    - node-exporter
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin

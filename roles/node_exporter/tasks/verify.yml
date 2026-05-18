@@ -1,0 +1,4 @@
+---
+# roles/node_exporter/tasks/verify.yml
+# D-10a HEALTHCHECK / State.Running poll + in-network /metrics curl.
+# Content lands in Task 4.
