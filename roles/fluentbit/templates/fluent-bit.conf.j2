@@ -1,2 +1,126 @@
-# roles/fluentbit/templates/fluent-bit.conf.j2
-# (Skeleton -- populated in Task 3.)
+# /opt/telemetron/fluentbit/fluent-bit.conf
+# {{ ansible_managed }}
+# Fluent Bit 4.2.3 -- Telemetron-tuned.
+# Pitfall 6 mitigation pack inline-cited; D-50 buffer/timezone discipline.
+# Role inversion (D-46) vs upstream: see roles/fluentbit/README.md
+# "Deviations from upstream" section.
+
+[SERVICE]
+    Parsers_File              parsers.conf
+    Log_Level                 info
+    Flush                     {{ fluentbit_flush_interval }}
+    HTTP_Server               On
+    HTTP_Listen               0.0.0.0
+    HTTP_Port                 {{ fluentbit_http_port }}
+    Health_Check              On
+    HC_Error_Count            5
+    HTTP_Metrics              On
+    # D-50: filesystem buffer survives container restart without log loss.
+    storage.path              /var/log/flb-storage/
+    storage.sync              normal
+    storage.checksum          off
+    storage.backlog.mem_limit {{ fluentbit_storage_backlog_mem_limit }}
+    storage.max_chunks_up     {{ fluentbit_storage_max_chunks_up }}
+    # Pitfall 6 (Mode 1: DST drift) -- UTC everywhere; never DST-observing TZ.
+    # Default: Etc/UTC.
+    Time_System_Timezone      {{ fluentbit_system_timezone }}
+    # Pitfall 6 (Mode 3: multiline parser stuck timestamp) -- fail-fast bound.
+    Multiline_Flush           {{ fluentbit_multiline_flush }}
+
+# D-46: Docker container logs default tail.
+# ROLE INVERSION vs upstream -- single-host colocated FB-with-workloads;
+# see roles/fluentbit/README.md "Deviations from upstream" section.
+# Default tail path resolves to: /var/lib/docker/containers/*/*-json.log
+[INPUT]
+    Name              tail
+    Alias             docker_containers
+    Path              {{ fluentbit_docker_logs_path }}/*/*-json.log
+    Parser            docker
+    Tag               docker.<container_id>
+    Tag_Regex         (?<container_id>[^/]+)\.log$
+    Refresh_Interval  5
+    Read_from_Head    false
+    Mem_Buf_Limit     10MB
+    Skip_Long_Lines   On
+    storage.type      filesystem
+    Buffer_Max_Size   1MB
+    Buffer_Chunk_Size 32KB
+
+# D-48: extension knobs (default-off).
+{% if fluentbit_tail_system_logs | default(false) %}
+[INPUT]
+    Name              tail
+    Alias             system_logs
+    Path              /var/log/syslog,/var/log/auth.log,/var/log/kern.log,/var/log/messages
+    Tag               system.*
+    Refresh_Interval  10
+    Read_from_Head    false
+    Skip_Long_Lines   On
+    storage.type      filesystem
+{% endif %}
+
+{% if fluentbit_tail_journald | default(false) %}
+[INPUT]
+    Name              systemd
+    Alias             journald
+    Path              /run/log/journal
+    Tag               journald.*
+    Read_From_Tail    on
+    Strip_Underscores on
+{% endif %}
+
+{% for entry in fluentbit_extra_tail_paths | default([]) | sort %}
+[INPUT]
+    Name              tail
+    Alias             extra_{{ loop.index }}
+    Path              {{ entry }}
+    Tag               extra.{{ loop.index }}.*
+    Refresh_Interval  10
+    Read_from_Head    false
+    storage.type      filesystem
+{% endfor %}
+
+# D-47 label allowlist: static deploy-time labels.
+[FILTER]
+    Name              modify
+    Alias             allowlist_static
+    Match             docker.*
+    Add               host {{ ansible_hostname }}
+    Add               env {{ telemetron_env | default('homelab') }}
+
+# D-47 level extraction via regex parser. Fallback default when no match.
+[FILTER]
+    Name              parser
+    Alias             extract_level
+    Match             docker.*
+    Key_Name          log
+    Parser            level_extractor
+    Reserve_Data      On
+    Preserve_Key      On
+
+[FILTER]
+    Name              modify
+    Alias             default_level
+    Match             docker.*
+    Add               level {{ fluentbit_default_level }}
+
+# Pitfall 6 (Mode 2: missing date in source line) -- fallback @timestamp.
+# modify Add operates only when the key is absent.
+[FILTER]
+    Name              modify
+    Alias             timestamp_fallback
+    Match             *
+    Add               @timestamp ${ingest_time}
+
+# D-49: ship to OTel Collector via OTLP/HTTP.
+# Logs_uri default resolves to: /v1/logs (Loki OTLP receiver path on the
+# OTel Collector side; see roles/opentelemetry/templates/config.yaml.j2).
+[OUTPUT]
+    Name              opentelemetry
+    Alias             otel_logs
+    Match             *
+    Host              {{ fluentbit_otel_host }}
+    Port              {{ fluentbit_otel_port }}
+    Logs_uri          {{ fluentbit_otel_logs_uri }}
+    log_response_payload false
+    Tls               Off
