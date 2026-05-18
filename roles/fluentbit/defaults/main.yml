@@ -1,3 +1,92 @@
 ---
 # roles/fluentbit/defaults/main.yml
-# (Skeleton -- populated in Task 2.)
+# Fluent Bit role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/fluentbit.yml.
+#
+# Fluent Bit 4.2.3 -- tails Docker container JSON logs by default
+# (D-46 role inversion vs upstream) and ships through OTel
+# Collector at http://otel:4318/v1/logs (D-49 opentelemetry output).
+
+# --- Image pin (OPS-01) ---
+# See: https://fluentbit.io/announcements/v4.2.0/
+# 4.x is M1-stable; 5.x released May 2026, too new for M1.
+fluentbit_image: fluent/fluent-bit
+fluentbit_image_tag: "4.2.3"
+
+# --- Container identity ---
+fluentbit_container_name: fluentbit
+
+# --- Host port publishing (D-30) ---
+# Default false. FB's :2020 HTTP server (/api/v1/health, /api/v1/metrics)
+# is reachable on the telemetron bridge; operator access via SSH local-forward.
+fluentbit_publish_host: "{{ fluentbit_publish_host | default(false) }}"
+
+# --- Port matrix ---
+fluentbit_http_port: 2020
+
+# --- Config layout (D-18) ---
+fluentbit_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/fluentbit"
+
+# --- Buffer volume (D-50, Phase-1 D-16) ---
+fluentbit_buffer_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_fluentbit_buffer"
+
+# --- D-46 default tail path (role inversion vs upstream) ---
+fluentbit_docker_logs_path: "/var/lib/docker/containers"
+
+# --- D-47 label allowlist (deploy-time static labels) ---
+# host: ansible_hostname (set in Jinja at template render time)
+# env: telemetron_env override
+# service / job: container_name fallback (Q3 -- Docker-label promotion deferred)
+telemetron_env: "{{ telemetron_env | default('homelab') }}"
+
+# --- D-48 extension knobs (all default-off) ---
+fluentbit_tail_system_logs: false
+fluentbit_tail_journald: false
+fluentbit_extra_tail_paths: []
+
+# --- D-49 OTel destination (set by Plan 03-02 OTel) ---
+fluentbit_otel_host: "otel"
+fluentbit_otel_port: 4318
+fluentbit_otel_logs_uri: "/v1/logs"
+
+# --- D-50 buffer + timestamp discipline (Pitfall 6 mitigation pack) ---
+fluentbit_system_timezone: "Etc/UTC"
+fluentbit_multiline_flush: 5
+fluentbit_storage_max_chunks_up: 128
+fluentbit_storage_backlog_mem_limit: "50M"
+fluentbit_flush_interval: 5
+
+# --- D-47 level extraction regex ---
+# Default Fluent Bit grep-style regex on log line content for level promotion.
+fluentbit_level_regex: '(?i)\b(?<level>INFO|WARN|ERROR|FATAL|DEBUG|TRACE)\b'
+fluentbit_default_level: info
+
+# --- Healthcheck approach (conditional; same pattern as Phase-2 roles) ---
+# FB image is distroless; image probe at execute time picks the outcome.
+# Default Outcome B = binary-alive proxy via `/fluent-bit/bin/fluent-bit --version`.
+fluentbit_healthcheck_enabled: true
+fluentbit_healthcheck_test: ["CMD", "/fluent-bit/bin/fluent-bit", "--version"]
+fluentbit_healthcheck_interval: 15s
+fluentbit_healthcheck_timeout: 5s
+fluentbit_healthcheck_retries: 5
+fluentbit_healthcheck_start_period: 30s
+
+# --- Verify pre-poll (D-10a) ---
+fluentbit_health_retries: 30
+fluentbit_health_delay: 2
+
+# --- Restart policy (OPS-06) ---
+fluentbit_restart_policy: unless-stopped
+
+# --- Resource limits ---
+fluentbit_memory_limit: 256m
+
+# --- Network ---
+fluentbit_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06) ---
+fluentbit_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Curl image pin for verify (OPS-01) ---
+fluentbit_curl_image: curlimages/curl
+fluentbit_curl_image_tag: "8.10.1"
