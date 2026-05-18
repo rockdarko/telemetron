@@ -1,2 +1,16 @@
-# roles/fluentbit/templates/parsers.conf.j2
-# (Skeleton -- populated in Task 4.)
+# /opt/telemetron/fluentbit/parsers.conf
+# {{ ansible_managed }}
+# Fluent Bit parsers consumed by fluent-bit.conf -- docker JSON for the
+# tail input (D-46), level_extractor for the [FILTER] parser stanza (D-47).
+
+[PARSER]
+    Name        docker
+    Format      json
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%LZ
+    Time_Keep   On
+
+[PARSER]
+    Name        level_extractor
+    Format      regex
+    Regex       {{ fluentbit_level_regex }}
