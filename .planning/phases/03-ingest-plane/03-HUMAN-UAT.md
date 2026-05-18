@@ -3,7 +3,7 @@ status: partial
 phase: 03-ingest-plane
 source: [03-VERIFICATION.md]
 started: 2026-05-18T17:05:00Z
-updated: 2026-05-18T17:05:00Z
+updated: 2026-05-18T22:30:00Z
 ---
 
 ## Current Test
@@ -44,14 +44,17 @@ expected: |
   - 5-min synthetic load (e.g. otelgen) against `:4318/v1/metrics` at ≥1k req/s does NOT OOM the container (`docker inspect telemetron-otel --format '{{.State.OOMKilled}}'` stays `false`)
 result: [pending]
 
-### 5. Live boot SC5 — Fluent Bit ships only the 5-label allowlist
+### 5. Live boot SC5 — Fluent Bit ships only the 5-label allowlist (incl. Lua-enriched service/job)
 expected: |
-  After FB has tailed at least one container log line (e.g. `docker run --rm hello-world` on the host):
+  After FB has tailed at least one container log line on the host:
   - `curl 'http://<host>:3100/loki/api/v1/labels'` returns a `data` array containing AT MOST: `host`, `env`, `service`, `job`, `level`
   - High-cardinality keys (`container_id`, `image_id`, etc.) MUST NOT appear
   - `Time_System_Timezone Etc/UTC` and `Multiline_Flush 5` literals are visible in the rendered `/opt/telemetron/fluentbit/fluent-bit.conf` on the host
 
-  KNOWN GAP (INGEST-07 partial): The current FB config only Add's `host`, `env`, `level` via `[FILTER] modify`. `service` and `job` are NOT promoted to record fields in the rendered config — README documents this as a deferred Lua-filter Docker-API enrichment under "Labeling operator apps". UAT should record whether the actual Loki label set matches operator expectations; absence of `service`/`job` is a known-deferred enhancement, not a regression.
+  INGEST-07 enrichment (Plan 03-05 — now SATISFIED in code, awaiting live boot):
+  - For a STACK container (e.g. `telemetron-prometheus`), Loki streams must show `service="telemetron"` + `job="prometheus"` (the `org.telemetron.service` / `org.telemetron.job` Docker labels stamped by every Phase-1..3 role)
+  - For an UNLABELED container (e.g. `docker run --rm hello-world`), the Lua filter falls back to `service="unlabeled"` (from `fluentbit_unlabeled_service`) + `job=<container_name>` (from `fluentbit_unlabeled_job`) — `curl 'http://<host>:3100/loki/api/v1/label/service/values'` should return both `telemetron` and `unlabeled`
+  - SC4 OOM re-test: the Lua filter adds a per-log-line disk read against `/var/lib/docker/containers/<id>/config.v2.json` with a 300s TTL cache. Re-run the 5-min 1k-req/s synthetic load test against the FB pipeline (not just OTel) and confirm `docker inspect telemetron-fluentbit --format '{{.State.OOMKilled}}'` stays `false`.
 result: [pending]
 
 ## Summary
