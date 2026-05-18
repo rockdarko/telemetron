@@ -1,0 +1,24 @@
+---
+# Telemetron -- fluentbit operator knobs (Phase 3, D-30, D-46, D-48, D-50)
+# Role-specific overrides for the `fluentbit` role.
+# See roles/fluentbit/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Operator access via SSH:
+#   ssh -L 2020:localhost:2020 <host>
+fluentbit_publish_host: false
+
+# D-48 extension knobs (all default-off). Flip selectively per host.
+# tail_system_logs: when true, tails /var/log/{syslog,auth.log,kern.log,messages}.
+# tail_journald: requires Linux-with-systemd; bind-mount /run/systemd/journal/socket
+#                in roles/fluentbit/tasks/main.yml when flipping this on.
+# extra_tail_paths: list of arbitrary tail paths -- preserves the upstream
+#                   legacy-host-scoop use case as opt-in (D-46 inversion docs).
+fluentbit_tail_system_logs: false
+fluentbit_tail_journald: false
+fluentbit_extra_tail_paths: []
+
+# Default env label applied to all FB-shipped logs.
+telemetron_env: homelab
+
+# Conditional HEALTHCHECK (image probe outcome at execute time).
+fluentbit_healthcheck_enabled: true

@@ -54,9 +54,12 @@
     - role: prometheus
       tags:
         - prometheus
+    - role: fluentbit
+      tags:
+        - fluentbit
   # Subsequent phase plans extend this list in dependency order
-  # (D-05 dependency tree):
-  #   Phase 3: fluentbit (node_exporter + opentelemetry + prometheus now wired)
+  # (D-05 dependency tree). Phase 3 is now FEATURE-COMPLETE:
+  # node_exporter + opentelemetry + prometheus + fluentbit are all wired.
   #   Phase 4: alertmanager, hook_router
   #   Phase 5: grafana, karma, promlens
   #   Phase 6: nfsd (opt-in via enable_nfsd flag)
