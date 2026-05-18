@@ -1,2 +1,16 @@
 ---
-# placeholder; populated in Task 7
+# roles/opentelemetry/handlers/main.yml
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>`. The module-level state parameter is never
+# used for restarts -- force-recreate is non-idempotent.
+#
+# OTel Collector config changes (receivers, processors, exporters,
+# pipelines) require a container restart; the production config-file
+# template notifies this handler. The verify-config template does NOT
+# notify -- it is loaded only by the one-shot in verify.yml.
+
+- name: Docker restart opentelemetry
+  ansible.builtin.command:
+    cmd: "docker restart {{ opentelemetry_container_name }}"
+  changed_when: true
+  listen: restart opentelemetry
