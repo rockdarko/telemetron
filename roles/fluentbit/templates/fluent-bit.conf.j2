@@ -80,6 +80,18 @@
     storage.type      filesystem
 {% endfor %}
 
+# Plan 03-05: INGEST-07 service + job label enrichment.
+# Reads /var/lib/docker/containers/<id>/config.v2.json (RO bind-mount;
+# already mounted by tasks/main.yml -- sibling of *-json.log). Extracts
+# org.telemetron.{service,job} Docker labels with container-name + 'unlabeled'
+# fallbacks. NO Docker socket access. Cache TTL 300s (see enrich.lua).
+[FILTER]
+    Name              lua
+    Alias             telemetron_enrich
+    Match             docker.*
+    script            {{ fluentbit_enrich_lua_path }}
+    call              enrich
+
 # D-47 label allowlist: static deploy-time labels.
 [FILTER]
     Name              modify
