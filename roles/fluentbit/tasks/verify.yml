@@ -83,3 +83,26 @@
   tags:
     - fluentbit
     - fluentbit-verify
+
+# Step 3: Plan 03-05 INGEST-07 -- assert rendered fluent-bit.conf on the host
+# contains the [FILTER] lua block. Read-only static-audit gate (changed_when:
+# false). The full Lua-under-load contract (SC4 retest) is a UAT item;
+# see roles/fluentbit/README.md "Verification scope".
+- name: Verify rendered fluent-bit.conf contains [FILTER] lua block (INGEST-07)
+  ansible.builtin.command:
+    cmd: "grep -q 'Alias             telemetron_enrich' {{ fluentbit_config_dir }}/fluent-bit.conf"
+  changed_when: false
+  tags:
+    - fluentbit
+    - fluentbit-verify
+
+# Step 4: Plan 03-05 INGEST-07 -- assert enrich.lua is bind-mounted and
+# readable inside the container. Confirms tasks/main.yml volume entry and
+# Docker bind-mount round-tripped successfully.
+- name: Verify enrich.lua is bind-mounted inside Fluent Bit container (INGEST-07)
+  ansible.builtin.command:
+    cmd: "docker exec {{ fluentbit_container_name }} test -r {{ fluentbit_enrich_lua_path }}"
+  changed_when: false
+  tags:
+    - fluentbit
+    - fluentbit-verify
