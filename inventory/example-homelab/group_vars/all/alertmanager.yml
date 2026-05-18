@@ -1,0 +1,42 @@
+---
+# Telemetron -- alertmanager-specific inventory overrides (Phase 4, D-15)
+# Consumed by roles/alertmanager/ at playbook time.
+#
+# All values are defaults shipped by the role -- this file surfaces the
+# operator-tunable subset for visibility. Operators tweak per-environment
+# without editing role defaults.
+#
+# Vault keys NOT extended in Phase 4 (D-66): alertmanager has no outbound
+# auth in M1 (null receiver = no destination) and no inbound auth (single-
+# host telemetron bridge trust boundary). Operators wiring real receivers
+# via alertmanager_extra_receivers must add their own vault keys.
+
+# --- Host publish (D-30) ---
+# false  -- no host port publish (default; SSH local-forward for UI access)
+# true   -- publish :9093 on 0.0.0.0
+# 127.0.0.1 -- publish on loopback only
+alertmanager_publish_host: false
+
+# --- Routing intervals (ALERT-01 / D-61) ---
+# Defaults match the ALERT-01-mandated values. Override per environment.
+alertmanager_group_by:
+  - alertname
+  - cluster
+  - service
+alertmanager_group_wait: 30s
+alertmanager_group_interval: 5m
+alertmanager_repeat_interval: 4h
+
+# --- Log level ---
+alertmanager_log_level: info
+
+# --- Operator extension lists (D-60; sorted-keys-iterated per D-20) ---
+# Default to empty. Operators add real receivers + routes here once they
+# wire a notification target (Slack, PagerDuty, custom webhook, etc.).
+# See roles/alertmanager/README.md "Bring your own receivers" for an
+# example.
+alertmanager_extra_receivers: []
+alertmanager_extra_routes: []
+alertmanager_extra_inhibit_rules: []
+alertmanager_extra_time_intervals: []
+alertmanager_extra_mute_time_intervals: []

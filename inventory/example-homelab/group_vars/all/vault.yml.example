@@ -51,5 +51,10 @@ vault_mimir_s3_secret_key: "{{ vault_minio_root_password }}"
 # --- Phase 2+ additional keys will be added here as their roles land ---
 # (Examples for future planning visibility -- do NOT add real values yet:)
 # vault_grafana_admin_password: CHANGE_ME   # Phase 5 -- Grafana admin login
-# vault_jenkins_api_token: CHANGE_ME        # Phase 4 -- hook_router outbound auth to Jenkins
-# vault_alertmanager_webhook_secret: CHANGE_ME  # Phase 4 -- shared secret on hook_router inbound
+#
+# Note: Phase 4 (alertmanager) adds NO vault keys (D-66). The null
+# default receiver has no outbound destination; the single-host bridge
+# trust boundary covers inbound. The previously-planned hook_router
+# vault keys (vault_jenkins_api_token, shared-secret) moved with the
+# hook-router deferral to a future milestone -- see REQUIREMENTS.md
+# ALERT-V2-01..05.
