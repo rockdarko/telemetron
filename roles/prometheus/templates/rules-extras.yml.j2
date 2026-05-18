@@ -1,1 +1,24 @@
-# Placeholder -- populated in Task 5.
+# /opt/telemetron/prometheus/rules/extra.yml
+# {{ ansible_managed }}
+# Operator-supplied alert rules (INGEST-03 extension).
+# Define rules in inventory as prometheus_extra_rules: list-of-dict with
+# keys: name, expr, for, labels (dict), annotations (dict).
+# Sorted-keys (D-20) for idempotent rendering.
+
+groups:
+  - name: telemetron.operator-extras
+    interval: 30s
+    rules:
+{% for rule in prometheus_extra_rules | default([]) | sort(attribute='name') %}
+      - alert: {{ rule.name }}
+        expr: {{ rule.expr | to_json }}
+        for: {{ rule.for | default('0m') }}
+        labels:
+{% for k in (rule.labels | default({})).keys() | sort %}
+          {{ k }}: {{ rule.labels[k] }}
+{% endfor %}
+        annotations:
+{% for k in (rule.annotations | default({})).keys() | sort %}
+          {{ k }}: {{ rule.annotations[k] }}
+{% endfor %}
+{% endfor %}
