@@ -1,3 +1,16 @@
 ---
 # roles/node_exporter/handlers/main.yml
-# Single docker restart handler per W6 / Pitfall 8. Content lands in Task 5.
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>`. The module-level state parameter is never
+# used for restarts -- force-recreate is non-idempotent.
+#
+# node_exporter is CLI-flag-driven (no rendered config file in M1), so
+# this handler is currently unused. It exists for future-compat -- when
+# command-flag knobs surface, the run-container task can notify this
+# handler on flag changes without role restructure.
+
+- name: Docker restart node_exporter
+  ansible.builtin.command:
+    cmd: "docker restart {{ node_exporter_container_name }}"
+  changed_when: true
+  listen: restart node_exporter
