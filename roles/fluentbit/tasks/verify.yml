@@ -1,3 +1,85 @@
 ---
 # roles/fluentbit/tasks/verify.yml
-# (Skeleton -- populated in Task 6.)
+# Pre-poll Fluent Bit readiness, then curl-probe /api/v1/health.
+#
+# Per RESEARCH Open Question Q9 + Finding 9: end-to-end FB->Loki smoke
+# is deferred to Phase 6 OPS-07 (single-push bucket-landing is impractical
+# for FB output chunking). M1 acceptance gate is HTTP 200 on
+# :2020/api/v1/health -- documented in roles/fluentbit/README.md.
+#
+# Mirrors the canonical roles/{mimir,opentelemetry,prometheus}/tasks/verify.yml
+# conditional readiness shape (D-10a poll + in-network curl one-shot + D-32).
+
+# Step 1a: poll HEALTHCHECK status (when healthcheck enabled).
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :2020 directly (D-30 no host publish).
+- name: Wait for Fluent Bit container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ fluentbit_container_name }}"
+  register: fluentbit_health_check
+  until: >-
+    fluentbit_health_check.container is defined
+    and fluentbit_health_check.container.State is defined
+    and fluentbit_health_check.container.State.Health is defined
+    and fluentbit_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ fluentbit_health_retries }}"
+  delay: "{{ fluentbit_health_delay }}"
+  changed_when: false
+  when: fluentbit_healthcheck_enabled | bool
+  tags:
+    - fluentbit
+    - fluentbit-verify
+
+# Step 1b: poll container running state (when healthcheck disabled).
+# Same shape as the Phase-2 distroless fallback path.
+- name: Wait for Fluent Bit container to reach running state
+  community.docker.docker_container_info:
+    name: "{{ fluentbit_container_name }}"
+  register: fluentbit_running_check
+  until: >-
+    fluentbit_running_check.container is defined
+    and fluentbit_running_check.container.State is defined
+    and fluentbit_running_check.container.State.Running is true
+  retries: "{{ fluentbit_health_retries }}"
+  delay: "{{ fluentbit_health_delay }}"
+  changed_when: false
+  when: not (fluentbit_healthcheck_enabled | bool)
+  tags:
+    - fluentbit
+    - fluentbit-verify
+
+# Step 2: in-network curl probe of /api/v1/health (M1 acceptance gate per Q9).
+# 60s retry budget -- FB exposes /api/v1/health as soon as its HTTP_Server
+# binds; 30 retries * 2s delay gives FB time to ingest the first chunk on
+# a freshly-restarted host. End-to-end FB->Loki smoke is intentionally NOT
+# tested here -- see roles/fluentbit/README.md "Verification scope" section
+# (Phase 6 OPS-07 will pick that up).
+- name: Curl-probe Fluent Bit /api/v1/health endpoint in-network
+  community.docker.docker_container:
+    name: "{{ fluentbit_container_name }}-verify-health"
+    image: "{{ fluentbit_curl_image }}:{{ fluentbit_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ fluentbit_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" http://{{ fluentbit_container_name }}:{{ fluentbit_http_port }}/api/v1/health 2>/dev/null) ;
+          if [ "$CODE" = "200" ] ; then echo "health_ok=200" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "fluentbit /api/v1/health never returned 200 within 60s" ;
+        exit 1
+  register: fluentbit_verify_health
+  failed_when: fluentbit_verify_health.status is defined and fluentbit_verify_health.status != 0
+  changed_when: false
+  tags:
+    - fluentbit
+    - fluentbit-verify
