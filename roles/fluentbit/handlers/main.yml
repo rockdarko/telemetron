@@ -1,3 +1,15 @@
 ---
 # roles/fluentbit/handlers/main.yml
-# (Skeleton -- populated in Task 7.)
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>`. The module-level state parameter is never
+# used for restarts -- force-recreate is non-idempotent.
+#
+# Fluent Bit config changes (input paths, filter chain, output target,
+# storage tuning) require a container restart; both rendered templates
+# (fluent-bit.conf + parsers.conf) notify this handler.
+
+- name: Docker restart fluentbit
+  ansible.builtin.command:
+    cmd: "docker restart {{ fluentbit_container_name }}"
+  changed_when: true
+  listen: restart fluentbit
