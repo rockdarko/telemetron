@@ -76,6 +76,9 @@
       - name: "{{ fluentbit_network }}"
         aliases:
           - "{{ fluentbit_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: fluentbit
     # Per D-30 / D-12: zero host publish by default. The :2020 HTTP server
     # (/api/v1/health, /api/v1/metrics) stays on the telemetron bridge;
     # operator access via SSH local-forward (ssh -L 2020:localhost:2020).

@@ -43,6 +43,9 @@
       - name: "{{ node_exporter_network }}"
         aliases:
           - "{{ node_exporter_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: node_exporter
     # Per D-30 / D-12: zero host publish by default. Operators reach
     # node_exporter from the workstation via SSH local-forward
     # (ssh -L 9100:localhost:9100 <host>); Phase 3 Prometheus scrape traffic

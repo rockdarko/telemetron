@@ -85,6 +85,9 @@
         aliases:
           - "{{ opentelemetry_container_name }}"
           - "{{ opentelemetry_container_alias }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: otel
     # Per D-30 / D-12: only OTLP ingest ports (:4317 + :4318) are
     # published by default so external producers (host-running apps,
     # future operator workloads) can reach the collector. Self-metrics

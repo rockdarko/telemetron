@@ -91,6 +91,9 @@
       - name: "{{ prometheus_network }}"
         aliases:
           - "{{ prometheus_container_name }}"
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: prometheus
     # Per D-30 / D-12: zero host publish by default. Operators reach the
     # Prometheus UI from the workstation via SSH local-forward
     # (ssh -L 9090:...); inter-component traffic stays on the
