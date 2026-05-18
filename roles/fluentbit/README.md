@@ -63,37 +63,79 @@ source-side Pitfall 4 mitigation (label explosion).
 |-----------|------------------------------------------------------------------------|
 | `host`    | `{{ ansible_hostname }}` rendered at deploy time (static literal)      |
 | `env`     | `{{ telemetron_env | default('homelab') }}` rendered at deploy time    |
-| `service` | container_name (fallback when no Docker label promotion -- Q3)         |
-| `job`     | container_name (same fallback as service -- Q3)                        |
+| `service` | Docker label `org.telemetron.service` (M1 convention: `telemetron`); fallback `unlabeled` |
+| `job`     | Docker label `org.telemetron.job` (M1 convention: per-component); fallback container_name from JSON `Name` field |
 | `level`   | regex-extracted from log line via `level_extractor` parser; `info` default |
 
-**Q3 simplification:** Fluent Bit 4.2's `tail` input does NOT enrich
-records with Docker labels at tail time -- the Lua-filter / Docker-API
-route exists but is heavier than M1 needs. `service` and `job` default
-to container_name; Docker-label-driven promotion is documented under
-"Labeling operator apps" below as a deferred enhancement.
+The `service` and `job` labels are populated at runtime by a `[FILTER] lua`
+script (`roles/fluentbit/files/enrich.lua`) that reads each source container's
+`/var/lib/docker/containers/<id>/config.v2.json` -- the sibling of the JSON
+log file Fluent Bit already tails. The script extracts the two Docker labels
+`org.telemetron.service` and `org.telemetron.job` (M1 convention: each
+telemetron stack role stamps these on its `docker_container` at creation
+time), caches results per container_id with a 300-second TTL, and falls
+back to `service=unlabeled` + `job=<container_name>` when a container is
+not stamped. NO Docker socket is mounted -- the Lua filter only reads the
+on-disk JSON files Fluent Bit already has RO access to via the bind-mount
+from Plan 03-04.
 
 ## Labeling operator apps
 
-Operators who want to promote arbitrary Docker labels (e.g. `app`,
-`team`, `tier`) onto Loki labels can add a `[FILTER] lua` script to
-the rendered config that calls the Docker API at read time and merges
-the result into the record. Reasonable shape:
+Operator workloads colocated on the Telemetron Docker host opt into the
+Loki label scheme by stamping two Docker labels on their own
+containers at creation time:
 
-```ini
-[FILTER]
-    Name              lua
-    Match             docker.*
-    script            /fluent-bit/etc/enrich-docker-labels.lua
-    call              enrich
+| Label key                  | Value                              | Purpose                              |
+|----------------------------|------------------------------------|--------------------------------------|
+| `org.telemetron.service`   | a stable service identifier        | populates Loki `service` label       |
+| `org.telemetron.job`       | a per-component identifier         | populates Loki `job` label           |
+
+The Fluent Bit Lua filter (`roles/fluentbit/files/enrich.lua`) picks
+up these labels from the container's `config.v2.json` on the host and
+applies them to every log line shipped to Loki. Unlabeled operator
+containers still ship logs -- they just land with `service=unlabeled`
+and `job=<container_name>` until the operator stamps the convention
+labels.
+
+Stamping pattern in docker run:
+
+```bash
+docker run -d \
+  --network telemetron \
+  --label org.telemetron.service=myapp \
+  --label org.telemetron.job=myapp-web \
+  myapp:1.2.3
 ```
 
-The Lua script reads `/var/run/docker.sock` (read-only bind-mount;
-mirrors the D-52 socket-access pattern from Plan 03-02) and writes
-selected Docker labels into the record before the D-47 allowlist
-filter runs. This is documented as a deferred enhancement; M1 ships
-without it because the container_name fallback is sufficient for the
-homelab single-host audience.
+In docker-compose:
+
+```yaml
+services:
+  myapp-web:
+    image: myapp:1.2.3
+    networks: [telemetron]
+    labels:
+      org.telemetron.service: myapp
+      org.telemetron.job: myapp-web
+```
+
+In an Ansible role using `community.docker.docker_container`:
+
+```yaml
+- community.docker.docker_container:
+    name: myapp-web
+    image: myapp:1.2.3
+    networks:
+      - name: telemetron
+    labels:
+      org.telemetron.service: myapp
+      org.telemetron.job: myapp-web
+```
+
+The eight Phase-1..3 telemetron stack roles (minio, loki, tempo, mimir,
+node_exporter, opentelemetry, prometheus, fluentbit) all stamp these
+labels per Plan 03-05; Phase 4/5 role ports inherit the convention via
+the per-role port-acceptance checklist in `roles/README.md`.
 
 ## Extension knobs (D-48, all default-off)
 
@@ -187,6 +229,11 @@ Each mitigation is inline-cited in `templates/fluent-bit.conf.j2`.
 | `fluentbit_storage_max_chunks_up` | `128` | [SERVICE] storage.max_chunks_up |
 | `fluentbit_storage_backlog_mem_limit` | `50M` | [SERVICE] storage.backlog.mem_limit |
 | `fluentbit_flush_interval` | `5` | [SERVICE] Flush seconds |
+| `fluentbit_enrich_lua_path` | `/fluent-bit/etc/enrich.lua` | In-container path of the Plan 03-05 Lua enrichment script |
+| `fluentbit_enrich_docker_root` | `/var/lib/docker/containers` | Host directory of Docker container JSON config files (RO bind-mount source) |
+| `fluentbit_enrich_cache_ttl_seconds` | `300` | Per-container_id cache TTL in the Lua filter |
+| `fluentbit_unlabeled_service` | `unlabeled` | Fallback `service` label for containers without `org.telemetron.service` |
+| `fluentbit_unlabeled_job` | `unknown` | Fallback `job` when no `org.telemetron.job` and no container_name available |
 | `fluentbit_level_regex` | `(?i)\b(?<level>INFO\|WARN\|ERROR\|FATAL\|DEBUG\|TRACE)\b` | level_extractor regex |
 | `fluentbit_default_level` | `info` | Default level when regex does not match |
 | `fluentbit_healthcheck_enabled` | `true` | Override to false if image probe shows no useful flag |
@@ -324,6 +371,18 @@ acceptance gate is HTTP 200 on `:2020/api/v1/health`, which proves
 the engine has started, the config parsed, and the [OUTPUT] plugin
 loaded.
 
+Plan 03-05 added two non-blocking verify-task assertions that confirm
+the rendered `[FILTER] lua` block exists in the host-rendered config
+and that `enrich.lua` is readable inside the container via the bind-
+mount. The full Lua-under-load contract -- the SC4 retest (5-minute
+synthetic load at >= 1k req/s without OOM, mirrored from
+03-VERIFICATION.md's human_verification entry) -- is a UAT item: per-
+log-line Lua execution shifts the FB CPU+memory budget, and if SC4
+regresses under load, the Lua filter must be tuned (longer TTL, smaller
+cache, simpler logic). The default TTL of 300 seconds + per-container
+cache entry is sized to keep the per-log-line work to a cache lookup
+plus two record-field assignments under steady state.
+
 ## Deviations from upstream INSPQ (D-25)
 
 Per CONTEXT.md D-25, each role port is an opinionated improvement
@@ -414,6 +473,14 @@ use case as opt-in. See user memory note
   `fluentbit_tail_journald`, `fluentbit_extra_tail_paths`. Preserves
   the upstream legacy-host-scoop use case as opt-in without making
   it the default.
+- **Lua-filter Docker-label enrichment (Plan 03-05 D-47 amendment)** -- a
+  `[FILTER] lua` script (`roles/fluentbit/files/enrich.lua`) reads each
+  source container's `/var/lib/docker/containers/<id>/config.v2.json`
+  and extracts `org.telemetron.service` + `org.telemetron.job` Docker
+  labels onto the record. M1 convention -- replaces an earlier
+  container_name-default fallback for `service` and `job`. NO Docker
+  socket mount; the Lua filter only reads the JSON files that Fluent
+  Bit's tail already bind-mounts RO from /var/lib/docker/containers.
 
 ### Kept from upstream (got it right)
 
