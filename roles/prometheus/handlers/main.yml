@@ -1,3 +1,15 @@
 ---
 # roles/prometheus/handlers/main.yml
-# Placeholder -- populated in Task 8.
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>`. Force-recreate is non-idempotent.
+#
+# All three template renders (prometheus.yml, rules/baseline.yml,
+# rules/extra.yml) notify this handler. Prometheus reloads rule files
+# on SIGHUP via --web.enable-lifecycle, but a `docker restart` is
+# simpler and still idempotent at the W6 layer.
+
+- name: Docker restart prometheus
+  ansible.builtin.command:
+    cmd: "docker restart {{ prometheus_container_name }}"
+  changed_when: true
+  listen: restart prometheus
