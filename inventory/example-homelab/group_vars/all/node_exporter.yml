@@ -1,0 +1,19 @@
+---
+# Telemetron -- node_exporter operator knobs (Phase 3, D-30, D-55)
+# Role-specific overrides for the `node_exporter` role.
+# See roles/node_exporter/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Operator access via SSH local-forward:
+#   ssh -L 9100:localhost:9100 <host>
+node_exporter_publish_host: false
+
+# Container hardening (read-only rootfs, drop ALL caps, add DAC_READ_SEARCH,
+# no-new-privileges, tmpfs /tmp, pids_limit 512). Flip to false on hosts
+# where SELinux or other layers interact poorly.
+node_exporter_container_hardening_enabled: true
+
+# Conditional HEALTHCHECK (RESEARCH Q4). Image probe outcomes:
+#   Outcome A: --health flag present (unlikely)
+#   Outcome B: --version proxy (default)
+#   Outcome C: flip to false; rely on State.Running + verify /metrics curl
+node_exporter_healthcheck_enabled: true
