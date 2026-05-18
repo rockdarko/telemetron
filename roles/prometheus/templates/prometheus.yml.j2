@@ -1,1 +1,83 @@
-# Placeholder -- populated in Task 3.
+# /opt/telemetron/prometheus/prometheus.yml
+# {{ ansible_managed }}
+# Prometheus 3.11.3 -- Telemetron-tuned.
+# Pitfall 3 inline-cited (high-cardinality label drop at scrape time so
+# they never become active series). D-26: no tenant header on
+# remote_write (single-tenant Mimir per Phase-2 anonymous tenant).
+# See roles/prometheus/README.md for the full audit narrative.
+
+global:
+  scrape_interval: {{ prometheus_global_scrape_interval }}
+  evaluation_interval: {{ prometheus_global_evaluation_interval }}
+  external_labels:
+    cluster: {{ prometheus_cluster_label }}
+    host: "{{ inventory_hostname }}"
+
+rule_files:
+  - /etc/prometheus/rules/baseline.yml
+  - /etc/prometheus/rules/extra.yml
+
+remote_write:
+  - url: {{ prometheus_remote_write_url }}
+    # D-26: no headers block (Mimir multitenancy_enabled: false; tenant 'anonymous').
+    queue_config:
+      capacity: {{ prometheus_remote_write_queue_capacity }}
+      max_samples_per_send: {{ prometheus_remote_write_max_samples_per_send }}
+      batch_send_deadline: {{ prometheus_remote_write_batch_send_deadline }}
+      min_shards: {{ prometheus_remote_write_min_shards }}
+      max_shards: {{ prometheus_remote_write_max_shards }}
+
+# Pitfall 3 source-side mitigation: labeldrop high-cardinality keys
+# at scrape time so they never become active series.
+scrape_configs:
+  - job_name: otel_self
+    # D-42: OTel Collector's INTERNAL/SELF metrics on :8888.
+    # Source of otelcol_receiver_refused_* metrics consumed by the
+    # OTelCollectorDroppingSignals alert rule.
+    static_configs:
+      - targets: ['{{ prometheus_otel_self_target }}']
+        labels:
+          service: opentelemetry-collector
+    metric_relabel_configs:
+      - regex: '{{ prometheus_default_relabel_drop_regex }}'
+        action: labeldrop
+      - regex: '{{ prometheus_default_relabel_id_catchall_regex }}'
+        action: labeldrop
+
+  - job_name: otel_metrics
+    # D-42: OTLP-pushed app metrics in Prometheus format on :8889.
+    # Source of container_restarts_total (from docker_stats opt-in).
+    static_configs:
+      - targets: ['{{ prometheus_otel_metrics_target }}']
+        labels:
+          service: opentelemetry-collector-app-metrics
+    metric_relabel_configs:
+      - regex: '{{ prometheus_default_relabel_drop_regex }}'
+        action: labeldrop
+      - regex: '{{ prometheus_default_relabel_id_catchall_regex }}'
+        action: labeldrop
+
+  - job_name: node_exporter
+    # INGEST-08: host metrics scraped from Plan 03-01.
+    static_configs:
+      - targets: ['{{ prometheus_node_exporter_target }}']
+        labels:
+          service: node-exporter
+    metric_relabel_configs:
+      - regex: '{{ prometheus_default_relabel_drop_regex }}'
+        action: labeldrop
+      - regex: '{{ prometheus_default_relabel_id_catchall_regex }}'
+        action: labeldrop
+
+  # Operator-extensible scrape jobs. Sorted-keys (D-20) for idempotency.
+{% for job in prometheus_extra_scrape_configs | default([]) | sort(attribute='job_name') %}
+  - job_name: {{ job.job_name }}
+    static_configs: {{ job.static_configs }}
+{% if job.metric_relabel_configs is defined %}
+    metric_relabel_configs:
+{% for rl in job.metric_relabel_configs %}
+      - regex: '{{ rl.regex }}'
+        action: {{ rl.action }}
+{% endfor %}
+{% endif %}
+{% endfor %}
