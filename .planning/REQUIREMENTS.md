@@ -41,7 +41,7 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 - [ ] **INGEST-05**: OTel Collector pipeline ships with `processors: [memory_limiter, batch, ...]` in that order (reversing OOMs the box). `GOMEMLIMIT` env var is set to ~80% of the container's Docker memory limit. Every exporter has `sending_queue` enabled and `retry_on_failure` configured.
 - [ ] **INGEST-06**: Operator can run the playbook and have Fluent Bit running (`fluent/fluent-bit:4.2.3`) tailing host logs and shipping them through the OTel Collector to Loki (default path). FB → Loki direct is documented as an alternative in `roles/fluentbit/README.md`. Fluent Bit's `Time_System_Timezone Etc/UTC` and `Multiline_Flush 5` are set by default to mitigate DST and multiline parsing pitfalls.
 - [ ] **INGEST-07**: Fluent Bit ships only a small allowlist of labels to Loki: `{job, host, service, env, level}`. High-cardinality fields go to Loki structured metadata, not labels. Allowlist documented in `roles/fluentbit/README.md`.
-- [ ] **INGEST-08**: Operator can run the playbook and have node_exporter running, scraped by Prometheus, exposing host metrics (CPU, memory, disk, network, filesystem) on `:9100/metrics`.
+- [x] **INGEST-08**: Operator can run the playbook and have node_exporter running, scraped by Prometheus, exposing host metrics (CPU, memory, disk, network, filesystem) on `:9100/metrics`.
 
 ### Alert plane (ALERT)
 

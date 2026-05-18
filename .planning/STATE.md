@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.3.0
+milestone: v1.11.1
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 02-03-PLAN.md (mimir role port) -- Phase 2 FEATURE-COMPLETE
-last_updated: "2026-05-17T17:47:46.850Z"
-last_activity: 2026-05-17
+status: executing
+stopped_at: Completed 03-01-node-exporter-PLAN.md
+last_updated: "2026-05-18T13:35:32.987Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 10
+  completed_plans: 7
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17)
 
 **Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 02 — telemetry-backends
+**Current focus:** Phase 03 — ingest-plane
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-17
+Phase: 03 (ingest-plane) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-05-18
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-telemetry-backends P01 | 7 min | 3 tasks | 12 files |
 | Phase 02-telemetry-backends P02 | 8 min | 3 tasks | 11 files |
 | Phase 02-telemetry-backends P03 | 7 min | 3 tasks | 11 files |
+| Phase 03-ingest-plane P01 | 7min | 8 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,11 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 02-telemetry-backends]: D-39 / BACK-04 / Pitfall G three-distinct-bucket S3 trinity in Mimir -- blocks_storage.s3.bucket_name=mimir-blocks, ruler_storage.s3.bucket_name=mimir-ruler, alertmanager_storage.s3.bucket_name=mimir-alerts; Mimir refuses to start sharing bucket+prefix across stores
 - [Phase 02-telemetry-backends]: Mimir image probe confirmed Outcome B: no native -health flag in grafana/mimir:3.0.6; default mimir_healthcheck_test=[CMD,/bin/mimir,-version] binary-alive proxy; authoritative readiness gate is verify task's /ready curl probe -- reuses Plan 02-02 Tempo conditional-healthcheck pattern verbatim
 - [Phase 02-telemetry-backends]: Phase 2 FEATURE-COMPLETE: deploy_docker.yml roles list is minio -> loki -> tempo -> mimir in dependency order; D-27 vault alias surface complete (six keys: 2x Loki + 2x Tempo + 2x Mimir aliasing to MinIO root creds); canonical role template proven across four roles
+- [Phase 03-ingest-plane]: Image registry: Quay (quay.io/prometheus/node-exporter) over Docker Hub matches Phase-1 alertmanager registry choice and avoids Docker Hub rate-limit risk
+- [Phase 03-ingest-plane]: node_exporter pinned to v1.11.1 (RESEARCH Finding 6, 2026-04-07 release) -- corrects CONTEXT.md's stale v1.8.x mention
+- [Phase 03-ingest-plane]: Conditional-HEALTHCHECK Outcome B (--version binary-alive proxy) is the safe default for from-scratch node_exporter image; authoritative readiness gate is verify task's in-network /metrics curl asserting node_cpu_seconds_total
+- [Phase 03-ingest-plane]: Container hardening (read-only/cap_drop/no-new-privileges/tmpfs/pids_limit) kept from upstream but guarded by node_exporter_container_hardening_enabled knob -- six fields collapse to omit when false for RHEL/SELinux flexibility
+- [Phase 03-ingest-plane]: Phase-3 canonical role shape (Wave 1) proven on a stateless no-config role: no rendered config dir, no Docker volume, three RO bind-mounts (/proc /sys /), pid_mode host -- template for subsequent Phase-3 plans
 
 ### Pending Todos
 
@@ -103,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-17T17:34:17.214Z
-Stopped at: Completed 02-03-PLAN.md (mimir role port) -- Phase 2 FEATURE-COMPLETE
+Last session: 2026-05-18T13:35:21.926Z
+Stopped at: Completed 03-01-node-exporter-PLAN.md
 Resume file: None
