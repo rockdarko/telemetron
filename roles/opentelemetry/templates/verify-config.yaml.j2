@@ -1,1 +1,55 @@
-# placeholder; populated in Task 4
+# /opt/telemetron/opentelemetry/verify-config.yaml
+# {{ ansible_managed }}
+# VERIFY-ONLY OTel Collector config (D-54 approach (a)).
+#
+# Loaded into a one-shot otel-collector-contrib container by
+# roles/opentelemetry/tasks/verify.yml. The metrics pipeline forces
+# `prometheusremotewrite` -> Mimir so a synthetic OTLP metric can be
+# asserted in Mimir BEFORE Plan 03-03 wires Prometheus.
+#
+# This config is NEVER loaded by the production OTel container; it
+# exists alongside the production config but is referenced explicitly
+# by the verify one-shot container's command. The production OTel
+# stays on the `prometheus` exporter -- the operator never sees the
+# flip. D-43 forward-compat is exercised here, not in production.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:{{ opentelemetry_otlp_grpc_port }}
+      http:
+        endpoint: 0.0.0.0:{{ opentelemetry_otlp_http_port }}
+
+processors:
+  memory_limiter:
+    check_interval: {{ opentelemetry_memory_limiter_check_interval }}
+    limit_mib: {{ opentelemetry_memory_limiter_limit_mib }}
+    spike_limit_mib: {{ opentelemetry_memory_limiter_spike_limit_mib }}
+
+  batch:
+    timeout: 1s
+    send_batch_size: 8
+    send_batch_max_size: 8
+
+exporters:
+  # Verify path: push directly to Mimir via prometheusremotewrite so the
+  # synthetic metric reaches the backend before Prometheus is wired.
+  prometheusremotewrite:
+    endpoint: {{ opentelemetry_mimir_endpoint }}
+    sending_queue:
+      enabled: true
+      num_consumers: 1
+      queue_size: 100
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 30s
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
