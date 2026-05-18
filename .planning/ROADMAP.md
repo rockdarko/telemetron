@@ -121,3 +121,66 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 4. Alert Plane | 0/TBD | Not started | - |
 | 5. UI Plane | 0/TBD | Not started | - |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
+
+## Backlog
+
+Captured during Phase 03 autonomous UAT on leviathan (2026-05-18). All four
+items are non-blocking follow-ups; none affect the stack converging or the
+SC1-SC5 acceptance. Promote with `/gsd:review-backlog` when triaging.
+
+### Phase 999.1: Mimir blocks_retention_period — re-wire under per-tenant `limits:` (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Context:
+- Phase 2 UAT removed `compactor.blocks_retention_period` from `mimir.yaml.j2` because Mimir 3.0 moved it out of `compactor.Config`. Mimir crashed at parse with "field blocks_retention_period not found in type compactor.Config".
+- The intended value (`telemetron_default_metric_retention`, default 30d) is now silently dropped — Mimir falls back to its built-in default of 1 week.
+- `mimir_compactor_blocks_retention_period` var still defined in `roles/mimir/defaults/main.yml` but no template references it (orphan dead code).
+- Right home in Mimir 3.0 is the per-tenant `limits:` block: `limits.compactor_blocks_retention_period`.
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
+
+### Phase 999.2: Tempo compactor.block_ranges_period — clean up or re-wire (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Context:
+- Phase 2 UAT removed `compactor.compaction.block_ranges_period` from `tempo.yaml.j2` because Tempo 2.10 dropped the field from `tempodb.CompactorConfig`.
+- `tempo_compactor_block_ranges_period: 5m` var still exists in `roles/tempo/defaults/main.yml` but is no longer referenced (orphan dead code).
+- Either delete the var (cosmetic cleanup) OR re-wire to the actual Tempo 2.10 knob `-compactor.compaction.compaction-window` (controls compaction time-range; default 1h0m).
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
+
+### Phase 999.3: Fluent Bit timestamp_fallback — re-enable with FB-4-compatible syntax (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Context:
+- Phase 3 UAT disabled the `[FILTER] modify` block that added `@timestamp ${ingest_time}` because FB 4.2.3 rejected it with "Invalid operation add : @timestamp in configuration". Suspected causes: (a) `${ingest_time}` isn't a defined env var so substitution leaves value empty, (b) keys starting with `@` may need quoting in FB 4.
+- Currently commented out in `roles/fluentbit/templates/fluent-bit.conf.j2`. Docker logs include their own timestamp so the fallback is a no-op for the homelab Docker-tail path — but PITFALLS.md Pitfall 6 Mode 2 says this is the defensive safety net for log sources without timestamps.
+- Right fix: either inject `ingest_time` as a real FB env var (e.g. via the `record_modifier` filter using `Record ingest_time ${HOSTNAME}` style), or switch to FB's native `Time_Key` / `Time_Format` mechanism for the fallback.
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
+
+### Phase 999.4: Reconcile FB 5-label spec with OTel-first ingest reality (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Context:
+- Phase 3 SC5 spec calls for Loki labels exactly `{host, env, service, job, level}`. Live Loki labels on leviathan are `{host, job, service_name}` — `service_name` is OTel's resource-attribute convention (`service.name` → `service_name`) surfaced by the OTel Collector's `otlphttp/loki` exporter, not FB's intended `service` label.
+- The high-cardinality leak gate IS working (no `container_id`/`image_id` leaks); this is a naming-convention drift, not a correctness bug.
+- Three resolution paths: (a) accept that OTel-pushed logs surface OTel attribute names; rewrite the SC5 spec accordingly. (b) Wire FB's enriched labels to overwrite OTel attributes on the Loki side. (c) Move canonical naming to a relabel rule on the OTel Collector's `loki` exporter side (cleanest — single place owns the label contract).
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
