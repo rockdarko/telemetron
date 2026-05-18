@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: opentelemetry
+  author: Rock Martel-Langlois
+  description: >
+    Deploys OpenTelemetry Collector Contrib 0.152.0 -- OTLP ingest
+    (gRPC :4317 + HTTP :4318) plus signal fanout to Loki (via
+    otlphttp), Tempo (via OTLP gRPC), and Prometheus-or-Mimir
+    (via D-43 forward-compat knob) for Telemetron's observability
+    plane. Also surfaces the docker_stats receiver as the
+    ContainerRestartLoop signal source.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - opentelemetry
+    - otel
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin
