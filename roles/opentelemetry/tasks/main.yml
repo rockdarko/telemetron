@@ -1,2 +1,143 @@
 ---
-# placeholder; populated in Task 5
+# roles/opentelemetry/tasks/main.yml
+# OTel Collector Contrib deploy + in-network verify.
+# Mirrors the canonical roles/mimir/tasks/main.yml shape modulo
+# opentelemetry-specifics: TWO rendered configs (production +
+# verify-only per D-54 approach a), Docker socket bind-mount RO +
+# group_add Approach A (D-52 / RESEARCH Q6) for the docker_stats
+# receiver, OTLP-publish-conditional (only :4317/:4318 published;
+# :8888/:8889 stay internal for Prometheus DNS scrape per D-42).
+#
+# Conditional healthcheck pattern matches mimir/tempo (RESEARCH
+# Pitfall B): distroless image with no native --health flag, so the
+# default is the binary-alive proxy (/otelcol-contrib --version);
+# operator can flip to Outcome C (opentelemetry_healthcheck_enabled:
+# false) without touching the role.
+
+- name: Ensure opentelemetry config directory exists on host
+  ansible.builtin.file:
+    path: "{{ opentelemetry_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - opentelemetry
+    - opentelemetry-config
+
+- name: Render opentelemetry production config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ opentelemetry_config_dir }}/config.yaml"
+    mode: "0640"
+  notify: restart opentelemetry
+  tags:
+    - opentelemetry
+    - opentelemetry-config
+
+- name: Render opentelemetry verify-only config (D-54 approach a)
+  ansible.builtin.template:
+    src: verify-config.yaml.j2
+    dest: "{{ opentelemetry_config_dir }}/verify-config.yaml"
+    mode: "0640"
+  # No notify -- verify-config is loaded by the verify one-shot, never
+  # by the production container. Rendering it here keeps the file fresh
+  # alongside the production config; the production container never
+  # references it via command-line --config.
+  tags:
+    - opentelemetry
+    - opentelemetry-config
+
+- name: Detect docker group GID on the target host
+  # D-52 / RESEARCH Q6 Approach A: container joins the host's docker
+  # group rather than running as root. The OTel docker_stats receiver
+  # needs to read /var/run/docker.sock; group_add with the resolved
+  # host-docker GID is the least-privilege mount-pattern.
+  ansible.builtin.getent:
+    database: group
+    key: docker
+  register: opentelemetry_docker_group_info
+  changed_when: false
+  tags:
+    - opentelemetry
+
+- name: Pull opentelemetry image
+  community.docker.docker_image:
+    name: "{{ opentelemetry_image }}:{{ opentelemetry_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - opentelemetry
+
+- name: Run opentelemetry container (with conditional healthcheck and Docker socket RO)
+  community.docker.docker_container:
+    name: "{{ opentelemetry_container_name }}"
+    image: "{{ opentelemetry_image }}:{{ opentelemetry_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ opentelemetry_restart_policy }}"
+    memory: "{{ opentelemetry_memory_limit }}"
+    # D-52 Approach A: container joins host's docker GID.
+    groups:
+      - "{{ opentelemetry_docker_group_info.ansible_facts.getent_group.docker[1] }}"
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+    networks:
+      - name: "{{ opentelemetry_network }}"
+        aliases:
+          - "{{ opentelemetry_container_name }}"
+          - "{{ opentelemetry_container_alias }}"
+    # Per D-30 / D-12: only OTLP ingest ports (:4317 + :4318) are
+    # published by default so external producers (host-running apps,
+    # future operator workloads) can reach the collector. Self-metrics
+    # (:8888) and app-metrics (:8889) STAY INTERNAL ALWAYS -- Prometheus
+    # reaches them via Docker DNS (D-42 / Plan 03-03 scrape jobs).
+    published_ports: >-
+      {{
+        (
+          [
+            opentelemetry_otlp_grpc_port | string + ':' + opentelemetry_otlp_grpc_port | string,
+            opentelemetry_otlp_http_port | string + ':' + opentelemetry_otlp_http_port | string
+          ]
+          if (opentelemetry_publish_otlp | bool) else []
+        )
+      }}
+    volumes:
+      - "{{ opentelemetry_config_dir }}/config.yaml:/etc/otelcol-contrib/config.yaml:ro"
+      - "{{ opentelemetry_config_dir }}/verify-config.yaml:/etc/otelcol-contrib/verify-config.yaml:ro"
+    mounts:
+      - source: "{{ opentelemetry_docker_socket_host_path }}"
+        target: "/var/run/docker.sock"
+        type: bind
+        read_only: true
+    # Distroless image; CMD form (not CMD-SHELL). See RESEARCH.md
+    # Finding 6 + PITFALLS Pitfall B. The actual command form is set in
+    # defaults/main.yml per image probe (Outcome B default for
+    # otel-collector-contrib:0.152.0: --version as binary-alive proxy).
+    # When opentelemetry_healthcheck_enabled is false, the healthcheck
+    # key is omitted entirely via Ansible's `omit` magic value -- OPS-06
+    # compliance is then satisfied by verify.yml's State.Running poll
+    # plus the in-network OTLP /v1/{traces,logs,metrics} curl probes.
+    healthcheck: "{{ opentelemetry_container_healthcheck if (opentelemetry_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ opentelemetry_tz }}"
+      # D-45 ratio: GOMEMLIMIT is 80% of mem_limit so the Go runtime
+      # backs off BEFORE the container hits the Docker memory cliff.
+      GOMEMLIMIT: "{{ opentelemetry_gomemlimit }}"
+  vars:
+    opentelemetry_container_healthcheck:
+      test: "{{ opentelemetry_healthcheck_test }}"
+      interval: "{{ opentelemetry_healthcheck_interval }}"
+      timeout: "{{ opentelemetry_healthcheck_timeout }}"
+      retries: "{{ opentelemetry_healthcheck_retries }}"
+      start_period: "{{ opentelemetry_healthcheck_start_period }}"
+  tags:
+    - opentelemetry
+    - opentelemetry-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/{loki,tempo,mimir,
+# node_exporter}/tasks/main.yml pattern -- verify is included from main;
+# not a separate playbook.
+- name: Verify opentelemetry end-to-end (readiness + OTLP probes + D-54 one-shot push)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - opentelemetry
+    - opentelemetry-verify
