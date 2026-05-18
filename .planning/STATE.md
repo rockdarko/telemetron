@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.11.1
+milestone: v0.32.1
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-05-fluentbit-label-enrichment-PLAN.md
-last_updated: "2026-05-18T17:37:26.000Z"
+status: verifying
+stopped_at: Completed 04-01-PLAN.md (alertmanager role + Prometheus alerting wiring + doc cascade)
+last_updated: "2026-05-18T22:58:33.519Z"
 last_activity: 2026-05-18
 progress:
-  total_phases: 6
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 10
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 12
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17)
 
 **Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 03 — ingest-plane
+**Current focus:** Phase 04 — alert-plane
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to execute
+Phase: 04 (alert-plane) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
 Last activity: 2026-05-18
 
 Progress: [░░░░░░░░░░] 0%
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-ingest-plane P03-prometheus | 9 min | 11 tasks | 12 files |
 | Phase 03-ingest-plane P04-fluentbit | 8 min | 10 tasks | 9 files |
 | Phase 03 P05 | 9 min | 10 tasks | 16 files |
+| Phase 04-alert-plane P1 | 13min | 7 tasks tasks | 16 files files |
 
 ## Accumulated Context
 
@@ -124,6 +125,13 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 03-ingest-plane]: Plan 03-05 INGEST-07 gap closure: Lua filter (string.match, no cjson) extracts org.telemetron.{service,job} from /var/lib/docker/containers/<id>/config.v2.json; 8 stack roles stamp the labels; NO docker socket added
 - [Phase 03-ingest-plane]: Iteration-1 design call: NO cjson dependency in enrich.lua (FB 4.2.3 image lacks lua-cjson); string.match on raw JSON for service/job/Name fields; -json suffix strip (:sub(1, -6)) lives in Lua only, NOT in Plan 03-04 Tag_Regex
 - [Phase 03-ingest-plane]: Gate 7 added to roles/README.md per-role port-acceptance checklist: every community.docker.docker_container in a Telemetron role MUST stamp org.telemetron.service + org.telemetron.job; Phase 4/5 ports inherit (alertmanager, hook_router, grafana, karma, promlens)
+- [Phase 04-alert-plane]: D-58 doc-cascade atomicity: when a phase reshapes scope, spec rewrite and code write live in the same plan -- no in-flight inconsistency between spec saying 'hook router in M1' and code skipping it. Phase 4 dropped from 3-plans-with-hook-router to 1-plan-alertmanager-only (D-56/D-57)
+- [Phase 04-alert-plane]: D-63 corrected inhibit-rule syntax: source_matchers/target_matchers (PromQL-style) -- v0.32.1 still accepts deprecated source_match form but emits warnings; Research Q2 amtool check-config verified both syntaxes
+- [Phase 04-alert-plane]: Research Q1 explicit HEALTHCHECK via wget --spider in role defaults: image ships none (docker inspect HEALTHCHECK=null); busybox base means wget available (no distroless concern unlike Tempo/Mimir/OTel)
+- [Phase 04-alert-plane]: D-69 verify via docker_container_exec for amtool: bundled at /bin/amtool in AM image (Research Q3); avoids one-shot image churn and uses localhost:9093 from inside the container. /api/v2/status config.original is YAML-as-string (Research Q8 Risk-1) so verify uses grep-on-YAML not jq-on-nested-JSON
+- [Phase 04-alert-plane]: D-65 severity-label retrofit was a no-op (Research Q11): all four baseline rules already carry severity labels from Phase 3 ship; inline comment in rules-baseline.yml.j2 documents the verification so future regressions are caught
+- [Phase 04-alert-plane]: D-66 zero vault keys added in Phase 4: null receiver = no outbound destination; single-host telemetron bridge trust boundary; planning-stub hook-router keys cleaned from vault.yml.example with deferral note pointing at ALERT-V2-01..05
+- [Phase 04-alert-plane]: Hook router (Flask + role + bundles + auth) deferred to a future milestone: ALERT-02..06 moved to v2 Requirements as ALERT-V2-01..05; M1 trades 'turnkey runbook automation' pitch for 'single-host LGTM observability plane with alerts visible in Karma (Phase 5)'; design preserved in 04-DISCUSSION-LOG.md
 
 ### Pending Todos
 
@@ -135,6 +143,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T17:27:15.077Z
-Stopped at: Completed 03-05-fluentbit-label-enrichment-PLAN.md
+Last session: 2026-05-18T22:58:33.514Z
+Stopped at: Completed 04-01-PLAN.md (alertmanager role + Prometheus alerting wiring + doc cascade)
 Resume file: None

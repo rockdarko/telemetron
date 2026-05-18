@@ -83,7 +83,7 @@ Plans:
   5. `docker exec telemetron-alertmanager /bin/amtool --alertmanager.url=http://localhost:9093 alert add alertname=TestAlert severity=warning instance=verify-host` exits 0; the subsequent `amtool alert query alertname=TestAlert` lists the alert as active; `amtool silence add` followed by `amtool silence query` confirms silence persistence.
 **Plans**: 1
 Plans:
-- [ ] 04-01-PLAN.md -- Alertmanager role port (ALERT-01) + Prometheus alerting wiring (D-64) + doc-rework cascade (D-58, defers ALERT-02..06 to v2 as ALERT-V2-01..05); Wave 1
+- [x] 04-01-PLAN.md -- Alertmanager role port (ALERT-01) + Prometheus alerting wiring (D-64) + doc-rework cascade (D-58, defers ALERT-02..06 to v2 as ALERT-V2-01..05); Wave 1
 
 ### Phase 5: UI Plane
 **Goal**: Operator can run the playbook and have Grafana running with datasources explicitly provisioned at stable UIDs (`prometheus`, `loki`, `tempo`, `mimir`), 5-10 curated starter dashboards rendering real data on a fresh deploy, trace-to-logs correlation wired through Tempo's `tracesToLogsV2` + a derived `trace_id` field on Loki — plus Karma running against Alertmanager and PromLens pinned to `v0.3.0` and marked deprecation-candidate in its role README. Grafana's datasource provisioning is the de-facto smoke test for everything that came before.

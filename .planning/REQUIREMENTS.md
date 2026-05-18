@@ -45,7 +45,7 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### Alert plane (ALERT)
 
-- [ ] **ALERT-01**: Operator can run the playbook and have Alertmanager running (`quay.io/prometheus/alertmanager:v0.32.1`) on `:9093`, configured with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`.
+- [x] **ALERT-01**: Operator can run the playbook and have Alertmanager running (`quay.io/prometheus/alertmanager:v0.32.1`) on `:9093`, configured with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`.
 
 > **ALERT-02..06 moved to v2 Requirements as ALERT-V2-01..05** during the Phase 4 scope reshape (CONTEXT.md D-56/D-57/D-58). The hook router (Flask app + `roles/hook_router/` + sample bundles + outbound auth) is deferred to a future milestone. M1 ships Alertmanager with a `null` default receiver; alerts are visible in Karma (Phase 5) but not dispatched automatically.
 
