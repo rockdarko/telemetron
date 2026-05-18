@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.11.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-node-exporter-PLAN.md
-last_updated: "2026-05-18T13:35:32.987Z"
+stopped_at: Completed 03-02-opentelemetry-PLAN.md
+last_updated: "2026-05-18T13:50:39.436Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 03 (ingest-plane) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-18
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-telemetry-backends P02 | 8 min | 3 tasks | 11 files |
 | Phase 02-telemetry-backends P03 | 7 min | 3 tasks | 11 files |
 | Phase 03-ingest-plane P01 | 7min | 8 tasks | 9 files |
+| Phase 03-ingest-plane P02-opentelemetry | 9 min | 10 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,13 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 03-ingest-plane]: Conditional-HEALTHCHECK Outcome B (--version binary-alive proxy) is the safe default for from-scratch node_exporter image; authoritative readiness gate is verify task's in-network /metrics curl asserting node_cpu_seconds_total
 - [Phase 03-ingest-plane]: Container hardening (read-only/cap_drop/no-new-privileges/tmpfs/pids_limit) kept from upstream but guarded by node_exporter_container_hardening_enabled knob -- six fields collapse to omit when false for RHEL/SELinux flexibility
 - [Phase 03-ingest-plane]: Phase-3 canonical role shape (Wave 1) proven on a stateless no-config role: no rendered config dir, no Docker volume, three RO bind-mounts (/proc /sys /), pid_mode host -- template for subsequent Phase-3 plans
+- [Phase 03-ingest-plane]: D-44 AMENDED: loki exporter removed from contrib in v0.131.0 (RESEARCH Finding 2 PR 33169); v0.152.0 ships otlphttp/loki to http://loki:3100/otlp (Loki 3.7.2 native OTLP, auth_enabled:false) -- README subheading 'Loki exporter replaced by otlphttp (upstream removal)' documents amendment
+- [Phase 03-ingest-plane]: D-43 dual-exporter forward-compat: BOTH prometheus AND prometheusremotewrite declared unconditionally in production config.yaml.j2; metrics pipeline reference flips via Jinja conditional on telemetron_otel_metrics_path knob (default 'prometheus'); future flip requires no role rewrite
+- [Phase 03-ingest-plane]: D-54 approach (a) verify topology: SEPARATE verify-config.yaml.j2 template loaded by one-shot OTel container with auto_remove; exercises D-43 prometheusremotewrite to Mimir end-to-end without polluting production config -- two-template role layout pattern reusable for future roles with dual-mode knobs
+- [Phase 03-ingest-plane]: D-52 Approach A Docker socket bind: ansible.builtin.getent detects host docker GID; docker_container.groups: wires container into that GID at runtime; /var/run/docker.sock bind-mount is :ro (kernel-level write block); Threat Model section in README documents API-layer caveat + docker-socket-proxy deferred hardening
+- [Phase 03-ingest-plane]: D-51 docker_stats receiver: container.restarts AND container.uptime explicitly opt-in (default-disabled per RESEARCH correction #4); scope = ALL containers per D-53 (no excluded_images); after OTel-to-Prometheus translation surfaces as container_restarts_total (Plan 03-03 alert rule expects this exact name)
+- [Phase 03-ingest-plane]: D-45 Pitfall 5 LOCKED ratios baked in: mem_limit 512m, GOMEMLIMIT 400MiB (80%), memory_limiter.limit_mib 260 (65% of GOMEMLIMIT), spike_limit_mib 80 (20% of GOMEMLIMIT); pipeline order LOCKED [memory_limiter, batch] LITERAL in all three pipelines; sending_queue + retry_on_failure on every push exporter (pull prometheus exporter intentionally omits)
+- [Phase 03-ingest-plane]: OTLP-publish-conditional per-port-set knob: only :4317/:4318 follow opentelemetry_publish_otlp (default true); :8888 self-metrics + :8889 app-metrics stay INTERNAL ALWAYS for Prometheus DNS scrape (D-42); pattern emerges when a role has external-facing ports AND internal-only scrape ports
 
 ### Pending Todos
 
@@ -109,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T13:35:21.926Z
-Stopped at: Completed 03-01-node-exporter-PLAN.md
+Last session: 2026-05-18T13:50:39.432Z
+Stopped at: Completed 03-02-opentelemetry-PLAN.md
 Resume file: None
