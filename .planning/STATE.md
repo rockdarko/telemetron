@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.11.1
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-03-prometheus-PLAN.md
-last_updated: "2026-05-18T14:04:49.260Z"
+status: verifying
+stopped_at: Completed 03-04-fluentbit-PLAN.md
+last_updated: "2026-05-18T14:19:08.108Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 
 Phase: 03 (ingest-plane) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-18
 
 Progress: [░░░░░░░░░░] 0%
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-ingest-plane P01 | 7min | 8 tasks | 9 files |
 | Phase 03-ingest-plane P02-opentelemetry | 9 min | 10 tasks | 11 files |
 | Phase 03-ingest-plane P03-prometheus | 9 min | 11 tasks | 12 files |
+| Phase 03-ingest-plane P04-fluentbit | 8 min | 10 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,11 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 03-ingest-plane]: D-25 audit dropped three forbidden Prometheus CLI flags (--web.enable-remote-write-receiver, --enable-feature=remote-write-receiver, --web.enable-otlp-receiver): Telemetron Prometheus WRITES remote_write to Mimir; does not RECEIVE it
 - [Phase 03-ingest-plane]: Retention 15d (vs upstream 30d) -- deliberately longer than Mimir query_store_after 12h so Grafana resolves recent queries against Prometheus while Mimir handles long-term
 - [Phase 03-ingest-plane]: Phase-3 canonical role shape extended to THREE-template layout (production config + two supplementary rule docs) -- all three notify single restart handler; precedent for any future role with config + dashboards/datasources/rules
+- [Phase 03-ingest-plane]: Fluent Bit 4.2.3 pinned (last 4.x stable, Feb 2026); 5.x line GA May 2026 too new for M1 per CLAUDE.md tech-stack constraints
+- [Phase 03-ingest-plane]: D-46 role inversion as headline deviation: Telemetron M1 colocates FB with workloads on a single Docker host (tail /var/lib/docker/containers/*/*-json.log); inverts upstream legacy-host-scoop pattern; user memory project_fluentbit_role_shift.md is source-of-truth narrative
+- [Phase 03-ingest-plane]: D-47 Loki label allowlist baked in: {host, env, service, job, level}; high-cardinality keys (container_id, image_id, image_name) NOT promoted (Pitfall 4 source-side mitigation); Q3 simplification - service/job default to container_name; Docker-label promotion deferred to Lua-filter enhancement documented under 'Labeling operator apps'
+- [Phase 03-ingest-plane]: D-50 Pitfall 6 mitigation pack THE biggest D-25 improvement: Time_System_Timezone Etc/UTC (Mode 1 DST avoidance, single most impactful one-liner) + Multiline_Flush 5 (Mode 3 fail-fast) + Read_from_Head false (Mode 4 no replay) + storage.type filesystem + storage.max_chunks_up 128 + fallback @timestamp filter (Mode 2); upstream had zero of these
+- [Phase 03-ingest-plane]: Phase 3 FEATURE-COMPLETE: all four ingest plane roles ported (node_exporter, opentelemetry, prometheus, fluentbit); deploy_docker.yml orchestrates minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry -> prometheus -> fluentbit; canonical Phase-3 role shape proven in four patterns (stateless no-config, two-template production+verify, three-template config+rules, two-template production+parsers)
 
 ### Pending Todos
 
@@ -125,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T14:04:32.730Z
-Stopped at: Completed 03-03-prometheus-PLAN.md
+Last session: 2026-05-18T14:18:48.676Z
+Stopped at: Completed 03-04-fluentbit-PLAN.md
 Resume file: None
