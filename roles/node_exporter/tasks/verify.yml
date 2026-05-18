@@ -1,4 +1,84 @@
 ---
 # roles/node_exporter/tasks/verify.yml
-# D-10a HEALTHCHECK / State.Running poll + in-network /metrics curl.
-# Content lands in Task 4.
+# Pre-poll node_exporter readiness, then curl-probe /metrics in-network
+# asserting the body contains `node_cpu_seconds_total` (the canonical
+# always-present collector metric).
+#
+# Mirrors the canonical roles/mimir/tasks/verify.yml conditional readiness
+# shape (D-10a + W7 + D-32 + D-54). Authoritative readiness gate is the
+# in-network curl probe of /metrics (Step 2) -- the Docker HEALTHCHECK
+# (when enabled) is a binary-alive proxy at best.
+
+# Step 1a: poll HEALTHCHECK status (when healthcheck enabled).
+# Per D-10a: read State.Health.Status via docker_container_info -- the
+# control host cannot reach :9100 directly (D-30 no host publish).
+- name: Wait for node_exporter container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ node_exporter_container_name }}"
+  register: ne_health_check
+  until: >-
+    ne_health_check.container is defined
+    and ne_health_check.container.State is defined
+    and ne_health_check.container.State.Health is defined
+    and ne_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ node_exporter_health_retries }}"
+  delay: "{{ node_exporter_health_delay }}"
+  changed_when: false
+  when: node_exporter_healthcheck_enabled | bool
+  tags:
+    - node_exporter
+    - node_exporter-verify
+
+# Step 1b: poll container running state (when healthcheck disabled).
+# PITFALLS Pitfall B context -- from-scratch image with no useful health flag.
+- name: Wait for node_exporter container to reach running state
+  community.docker.docker_container_info:
+    name: "{{ node_exporter_container_name }}"
+  register: ne_running_check
+  until: >-
+    ne_running_check.container is defined
+    and ne_running_check.container.State is defined
+    and ne_running_check.container.State.Running is true
+  retries: "{{ node_exporter_health_retries }}"
+  delay: "{{ node_exporter_health_delay }}"
+  changed_when: false
+  when: not (node_exporter_healthcheck_enabled | bool)
+  tags:
+    - node_exporter
+    - node_exporter-verify
+
+# Step 2: in-network curl probe of /metrics asserting node_cpu_seconds_total
+# in the body (D-54 authoritative readiness gate). 60s budget = 30 iterations
+# x 2s sleep. node_cpu_seconds_total is emitted by the stock `cpu` collector
+# which is always enabled in node_exporter v1.11.1 -- if it never appears, the
+# binary did not finish initialization.
+- name: Curl-probe node_exporter /metrics in-network and assert node_cpu_seconds_total
+  community.docker.docker_container:
+    name: "{{ node_exporter_container_name }}-verify-metrics"
+    image: "{{ node_exporter_curl_image }}:{{ node_exporter_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ node_exporter_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          BODY=$(curl -sS -o - -w "HTTPCODE=%{http_code}" http://{{ node_exporter_container_name }}:{{ node_exporter_port }}/metrics 2>/dev/null) ;
+          CODE=$(echo "$BODY" | grep -oE 'HTTPCODE=[0-9]+' | cut -d= -f2) ;
+          if [ "$CODE" = "200" ] && echo "$BODY" | grep -q '^node_cpu_seconds_total' ; then echo "metrics_ok=200_with_node_cpu_seconds_total" ; exit 0 ; fi ;
+          i=$((i+1)) ;
+          sleep 2 ;
+        done ;
+        echo "node-exporter /metrics never returned 200 with node_cpu_seconds_total within 60s" ;
+        exit 1
+  register: ne_verify_metrics
+  failed_when: ne_verify_metrics.status is defined and ne_verify_metrics.status != 0
+  changed_when: false
+  tags:
+    - node_exporter
+    - node_exporter-verify
