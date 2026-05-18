@@ -1,0 +1,79 @@
+# {{ ansible_managed }}
+# Alertmanager v0.32.1 -- Telemetron M1 default config.
+# D-60: null receiver default -- alerts visible in UI and Karma (Phase 5)
+#       but dispatched to nothing automatically. Add a real receiver before
+#       relying on this stack to wake you up.
+# D-61: ALERT-01 routing intervals explicit (not defaulted).
+# D-63: One inhibit rule bounds critical->warning replay flood.
+#       NEW source_matchers / target_matchers syntax (PromQL-style matcher
+#       list) -- v0.32.1 accepts both old `source_match` and new
+#       `source_matchers` forms, but `source_match` is DEPRECATED and emits
+#       a warning. We use the current syntax.
+
+route:
+  receiver: 'null'
+  group_by:
+{% for label in alertmanager_group_by %}
+    - {{ label }}
+{% endfor %}
+  group_wait: {{ alertmanager_group_wait }}
+  group_interval: {{ alertmanager_group_interval }}
+  repeat_interval: {{ alertmanager_repeat_interval }}
+  routes:
+{% for r in alertmanager_extra_routes | default([]) | sort(attribute='receiver') %}
+    - receiver: {{ r.receiver }}
+{% if r.matchers is defined %}
+      matchers:
+{% for m in r.matchers %}
+        - '{{ m }}'
+{% endfor %}
+{% endif %}
+{% if r.continue is defined %}
+      continue: {{ r.continue | to_json }}
+{% endif %}
+{% endfor %}
+
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: [instance]
+{% for rule in alertmanager_extra_inhibit_rules | default([]) | sort(attribute='name') %}
+  - source_matchers: {{ rule.source_matchers | to_json }}
+    target_matchers: {{ rule.target_matchers | to_json }}
+{% if rule.equal is defined %}
+    equal: {{ rule.equal | to_json }}
+{% endif %}
+{% endfor %}
+
+receivers:
+  - name: 'null'
+{% for r in alertmanager_extra_receivers | default([]) | sort(attribute='name') %}
+  - name: {{ r.name }}
+{% if r.webhook_configs is defined %}
+    webhook_configs:
+{% for w in r.webhook_configs %}
+      - url: {{ w.url }}
+{% if w.send_resolved is defined %}
+        send_resolved: {{ w.send_resolved | to_json }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% if alertmanager_extra_time_intervals | default([]) | length > 0 %}
+time_intervals:
+{% for ti in alertmanager_extra_time_intervals | sort(attribute='name') %}
+  - name: {{ ti.name }}
+    time_intervals: {{ ti.time_intervals | to_json }}
+{% endfor %}
+{% endif %}
+
+{% if alertmanager_extra_mute_time_intervals | default([]) | length > 0 %}
+mute_time_intervals:
+{% for mti in alertmanager_extra_mute_time_intervals | sort(attribute='name') %}
+  - name: {{ mti.name }}
+    time_intervals: {{ mti.time_intervals | to_json }}
+{% endfor %}
+{% endif %}

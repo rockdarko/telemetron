@@ -1,0 +1,31 @@
+---
+galaxy_info:
+  role_name: alertmanager
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Prometheus Alertmanager v0.32.1 on the telemetron Docker bridge
+    network in single-instance monolithic mode. Ships ALERT-01 routing
+    intervals (group_by [alertname, cluster, service], group_interval 5m,
+    repeat_interval 4h), a single default null receiver (Karma in Phase 5
+    is the operator UX), one default inhibit rule (severity=critical ->
+    severity=warning, equal [instance]), and a persistent
+    telemetron_alertmanager_data named volume preserving silences and
+    nflog across container restarts.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - alerting
+    - alertmanager
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin

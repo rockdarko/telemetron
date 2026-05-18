@@ -1,0 +1,83 @@
+---
+# roles/alertmanager/defaults/main.yml
+# Alertmanager v0.32.1 role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/alertmanager.yml.
+#
+# Single-instance monolithic Alertmanager on :9093. Single default
+# 'null' receiver (D-60). One inhibit rule using NEW source_matchers
+# syntax (D-63 + Research Q2 -- source_match is deprecated in v0.32.1).
+# Persistent telemetron_alertmanager_data volume mounted at /alertmanager
+# (D-62; preserves silences + nflog across restarts).
+
+# --- Image pin (OPS-01; ALERT-01; D-59) ---
+# See: https://github.com/prometheus/alertmanager/releases/tag/v0.32.1
+# Quay (not Docker Hub) -- co-published with the Prometheus family;
+# matches Phase-3 node_exporter registry choice.
+alertmanager_image: quay.io/prometheus/alertmanager
+alertmanager_image_tag: "v0.32.1"
+
+# --- Container identity ---
+alertmanager_container_name: telemetron-alertmanager
+
+# --- Host port publishing (D-30) ---
+# Default false. Operator UI access via SSH local-forward:
+#   ssh -L 9093:localhost:9093 <host>
+alertmanager_publish_host: "{{ alertmanager_publish_host | default(false) }}"
+
+# --- Port matrix ---
+alertmanager_http_port: 9093
+
+# --- Storage layout (D-16, D-17, D-18) ---
+alertmanager_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_alertmanager_data"
+alertmanager_data_path: /alertmanager           # image VOLUME (Research Q6)
+alertmanager_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/alertmanager"
+alertmanager_config_container_path: /etc/alertmanager/alertmanager.yml
+
+# --- Routing intervals (ALERT-01; D-61) ---
+# Default values are the ALERT-01-mandated values. Operator override
+# per environment via group_vars/all/alertmanager.yml.
+alertmanager_group_by: [alertname, cluster, service]
+alertmanager_group_wait: 30s
+alertmanager_group_interval: 5m
+alertmanager_repeat_interval: 4h
+
+# --- Logging ---
+alertmanager_log_level: info
+
+# --- Operator extension knobs (D-60; sorted-keys per D-20) ---
+alertmanager_extra_receivers: []
+alertmanager_extra_routes: []
+alertmanager_extra_inhibit_rules: []
+alertmanager_extra_time_intervals: []
+alertmanager_extra_mute_time_intervals: []
+
+# --- Healthcheck (Research Q1: image has NO built-in HEALTHCHECK; explicit required) ---
+# busybox base means wget is available (no distroless concern).
+alertmanager_healthcheck_enabled: true
+alertmanager_healthcheck_test: ["CMD-SHELL", "wget --spider -q http://localhost:9093/-/healthy || exit 1"]
+alertmanager_healthcheck_interval: 15s
+alertmanager_healthcheck_timeout: 5s
+alertmanager_healthcheck_retries: 5
+alertmanager_healthcheck_start_period: 30s
+
+# --- Verify pre-poll (D-10a) ---
+# 60s total budget = 30 retries x 2s. Alertmanager cold-start is fast
+# (config parse + start HTTP server).
+alertmanager_health_retries: 30
+alertmanager_health_delay: 2
+
+# --- Restart policy (OPS-06) ---
+alertmanager_restart_policy: unless-stopped
+
+# --- Resource limits ---
+alertmanager_memory_limit: 256m
+
+# --- Network ---
+alertmanager_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06; Pitfall 6) ---
+alertmanager_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Curl image pin for verify (OPS-01) ---
+alertmanager_curl_image: curlimages/curl
+alertmanager_curl_image_tag: "8.10.1"

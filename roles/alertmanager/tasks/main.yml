@@ -1,0 +1,113 @@
+---
+# roles/alertmanager/tasks/main.yml
+# Alertmanager v0.32.1 deploy + in-network verify.
+# Mirrors the canonical roles/node_exporter/tasks/main.yml shape modulo
+# alertmanager specifics: rendered config bind-mount, persistent named
+# data volume on /alertmanager, --cluster.listen-address="" disables
+# gossip (Research Q4; D-59 single-instance), explicit HEALTHCHECK
+# (Research Q1: image has none).
+
+- name: Ensure alertmanager config directory exists (D-18 flat layout)
+  ansible.builtin.file:
+    path: "{{ alertmanager_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - alertmanager
+    - alertmanager-config
+
+- name: Render alertmanager.yml from template (D-60/D-61/D-63)
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ alertmanager_config_dir }}/alertmanager.yml"
+    mode: "0644"
+  notify: restart alertmanager
+  tags:
+    - alertmanager
+    - alertmanager-config
+
+- name: Ensure telemetron_alertmanager_data named volume exists (D-16/D-62)
+  community.docker.docker_volume:
+    name: "{{ alertmanager_data_volume }}"
+    state: present
+  tags:
+    - alertmanager
+
+- name: Pull alertmanager image
+  community.docker.docker_image:
+    name: "{{ alertmanager_image }}:{{ alertmanager_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - alertmanager
+
+- name: Run alertmanager container (single-instance monolithic, explicit HEALTHCHECK)
+  community.docker.docker_container:
+    name: "{{ alertmanager_container_name }}"
+    image: "{{ alertmanager_image }}:{{ alertmanager_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ alertmanager_restart_policy }}"
+    memory: "{{ alertmanager_memory_limit }}"
+    networks:
+      - name: "{{ alertmanager_network }}"
+        aliases:
+          - "{{ alertmanager_container_name }}"
+          - alertmanager
+    # Gate 7: telemetron label stamp (INGEST-07 / Plan 03-05).
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: alertmanager
+    # D-30 / D-12: no host publish by default. Operators reach the AM UI
+    # from the workstation via SSH local-forward
+    # (ssh -L 9093:localhost:9093 <host>); Prometheus reaches AM over
+    # the telemetron Docker bridge at alertmanager:9093.
+    published_ports: >-
+      {{
+        (
+          [ alertmanager_http_port | string + ':' + alertmanager_http_port | string ]
+          if alertmanager_publish_host is sameas true else
+          [ '127.0.0.1:' + alertmanager_http_port | string + ':' + alertmanager_http_port | string ]
+          if alertmanager_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    command:
+      - "--config.file={{ alertmanager_config_container_path }}"
+      - "--storage.path={{ alertmanager_data_path }}"
+      - "--web.listen-address=:{{ alertmanager_http_port }}"
+      # Research Q4 -- empty string disables gossip cluster. Without
+      # this AM tries to bind :9094 and emits noisy peer-connect errors
+      # even in single-instance mode.
+      - "--cluster.listen-address="
+      - "--log.level={{ alertmanager_log_level }}"
+    mounts:
+      - source: "{{ alertmanager_data_volume }}"
+        target: "{{ alertmanager_data_path }}"
+        type: volume
+      - source: "{{ alertmanager_config_dir }}/alertmanager.yml"
+        target: "{{ alertmanager_config_container_path }}"
+        type: bind
+        read_only: true
+    # Research Q1 -- image ships no HEALTHCHECK. Explicit probe via
+    # wget (busybox base, wget available -- no distroless concern).
+    healthcheck: "{{ alertmanager_container_healthcheck if (alertmanager_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ alertmanager_tz }}"
+  vars:
+    alertmanager_container_healthcheck:
+      test: "{{ alertmanager_healthcheck_test }}"
+      interval: "{{ alertmanager_healthcheck_interval }}"
+      timeout: "{{ alertmanager_healthcheck_timeout }}"
+      retries: "{{ alertmanager_healthcheck_retries }}"
+      start_period: "{{ alertmanager_healthcheck_start_period }}"
+  tags:
+    - alertmanager
+    - alertmanager-container
+
+# Verify MUST be the final task (D-32). Mirrors roles/{node_exporter,prometheus,fluentbit}/tasks/main.yml pattern.
+- name: Verify alertmanager end-to-end (readiness + Prom->AM round-trip + amtool synthetic alert + silence)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - alertmanager
+    - alertmanager-verify

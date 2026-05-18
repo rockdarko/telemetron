@@ -1,0 +1,189 @@
+---
+# roles/alertmanager/tasks/verify.yml
+# Pre-poll alertmanager readiness, then exercise the public API surface
+# in-network: /-/ready, /-/healthy, /api/v2/receivers (null receiver
+# structural check), /api/v2/status (YAML config grep for route knobs --
+# Research Q8: config.original is YAML-as-string, NOT nested JSON), the
+# Prometheus alertmanagers API (round-trip), and amtool synthetic alert
+# add/query + silence add/query (Research Q3: amtool is bundled at
+# /bin/amtool in the AM image -- use docker_container_exec, not a
+# separate one-shot image).
+#
+# Mirrors roles/node_exporter/tasks/verify.yml conditional readiness
+# shape (D-10a + W7 + D-32 + D-54). Authoritative readiness gate is the
+# in-network curl probe (Step 2) plus the Prom->AM and amtool steps.
+
+# Step 1: poll HEALTHCHECK status (D-10a; per W7 changed_when:false).
+- name: Wait for alertmanager container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ alertmanager_container_name }}"
+  register: am_health_check
+  until: >-
+    am_health_check.container is defined
+    and am_health_check.container.State is defined
+    and am_health_check.container.State.Health is defined
+    and am_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ alertmanager_health_retries }}"
+  delay: "{{ alertmanager_health_delay }}"
+  changed_when: false
+  when: alertmanager_healthcheck_enabled | bool
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 2: /-/ready + /-/healthy probes (W7 auto_remove + changed_when:false).
+- name: Curl-probe /-/ready and /-/healthy in-network
+  community.docker.docker_container:
+    name: "{{ alertmanager_container_name }}-verify-ready"
+    image: "{{ alertmanager_curl_image }}:{{ alertmanager_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ alertmanager_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        curl -fsS http://{{ alertmanager_container_name }}:{{ alertmanager_http_port }}/-/ready
+        && curl -fsS http://{{ alertmanager_container_name }}:{{ alertmanager_http_port }}/-/healthy
+        && echo "ready_and_healthy_ok"
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 3: /api/v2/receivers assertion (proper JSON shape; Research Q8).
+# Asserts a receiver named 'null' exists (D-60 default).
+- name: Curl-probe /api/v2/receivers and assert null receiver exists
+  community.docker.docker_container:
+    name: "{{ alertmanager_container_name }}-verify-receivers"
+    image: "{{ alertmanager_curl_image }}:{{ alertmanager_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ alertmanager_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS http://{{ alertmanager_container_name }}:{{ alertmanager_http_port }}/api/v2/receivers) ;
+        echo "$BODY" | grep -q '"name":"null"' || { echo "null receiver not found in $BODY" ; exit 1 ; } ;
+        echo "receivers_null_ok"
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 4: /api/v2/status YAML-grep assertions (Research Q8; Risk 1).
+# config.original is a YAML-formatted string -- grep it for the D-61
+# route knobs rather than jq-ing nested fields that do not exist.
+- name: Curl-probe /api/v2/status and grep route knobs in config.original
+  community.docker.docker_container:
+    name: "{{ alertmanager_container_name }}-verify-status"
+    image: "{{ alertmanager_curl_image }}:{{ alertmanager_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ alertmanager_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS http://{{ alertmanager_container_name }}:{{ alertmanager_http_port }}/api/v2/status) ;
+        echo "$BODY" | grep -q '"status":"disabled"' || { echo "cluster status not disabled" ; exit 1 ; } ;
+        echo "$BODY" | grep -q 'group_interval: 5m' || { echo "group_interval 5m not found" ; exit 1 ; } ;
+        echo "$BODY" | grep -q 'repeat_interval: 4h' || { echo "repeat_interval 4h not found" ; exit 1 ; } ;
+        echo "$BODY" | grep -q 'group_wait: 30s' || { echo "group_wait 30s not found" ; exit 1 ; } ;
+        echo "$BODY" | grep -q 'alertname' && echo "$BODY" | grep -q 'cluster' && echo "$BODY" | grep -q 'service' || { echo "group_by labels missing" ; exit 1 ; } ;
+        echo "status_route_knobs_ok"
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 5: Prometheus -> Alertmanager round-trip (D-64 wiring live).
+# Asserts prometheus' activeAlertmanagers list includes alertmanager:9093.
+- name: Curl-probe Prometheus /api/v1/alertmanagers and assert AM target present
+  community.docker.docker_container:
+    name: "{{ alertmanager_container_name }}-verify-promam"
+    image: "{{ alertmanager_curl_image }}:{{ alertmanager_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ alertmanager_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        i=0 ;
+        while [ $i -lt 30 ] ; do
+          BODY=$(curl -fsS http://prometheus:9090/api/v1/alertmanagers 2>/dev/null || true) ;
+          if echo "$BODY" | grep -q 'http://alertmanager:9093/api/v2/alerts' ; then echo "prom_am_wiring_ok" ; exit 0 ; fi ;
+          i=$((i+1)) ; sleep 2 ;
+        done ;
+        echo "Prometheus did not register alertmanager:9093 within 60s. Last response: $BODY" ;
+        exit 1
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 6: amtool synthetic alert add (Research Q3 -- docker_container_exec
+# on the running AM container; amtool is at /bin/amtool inside the image).
+- name: amtool synthetic alert add (D-69)
+  community.docker.docker_container_exec:
+    container: "{{ alertmanager_container_name }}"
+    command: >-
+      /bin/amtool --alertmanager.url=http://localhost:9093
+      alert add alertname=TestAlert severity=warning instance=verify-host
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 7: amtool alert query -- assert TestAlert listed.
+- name: amtool alert query and assert TestAlert active
+  community.docker.docker_container_exec:
+    container: "{{ alertmanager_container_name }}"
+    command: >-
+      /bin/amtool --alertmanager.url=http://localhost:9093 alert query alertname=TestAlert
+  register: am_alert_query
+  failed_when: "'TestAlert' not in am_alert_query.stdout"
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+# Step 8: amtool silence add + query -- assert silence persistence.
+- name: amtool silence add for TestAlert
+  community.docker.docker_container_exec:
+    container: "{{ alertmanager_container_name }}"
+    command: >-
+      /bin/amtool --alertmanager.url=http://localhost:9093
+      silence add --comment="telemetron verify silence" alertname=TestAlert
+  register: am_silence_add
+  failed_when: am_silence_add.rc is defined and am_silence_add.rc != 0
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
+- name: amtool silence query and assert one active silence on TestAlert
+  community.docker.docker_container_exec:
+    container: "{{ alertmanager_container_name }}"
+    command: >-
+      /bin/amtool --alertmanager.url=http://localhost:9093 silence query alertname=TestAlert
+  register: am_silence_query
+  failed_when: "'TestAlert' not in am_silence_query.stdout"
+  changed_when: false
+  tags:
+    - alertmanager
+    - alertmanager-verify

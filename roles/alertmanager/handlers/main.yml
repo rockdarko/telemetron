@@ -1,0 +1,16 @@
+---
+# roles/alertmanager/handlers/main.yml
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>`. The module-level state parameter is never
+# used for restarts -- force-recreate is non-idempotent.
+#
+# tasks/main.yml renders templates/alertmanager.yml.j2 with
+# `notify: restart alertmanager`. Re-rendering on knob change triggers
+# this handler which docker-restarts the container so the new config
+# is loaded. Alertmanager picks up the new file on restart.
+
+- name: Docker restart alertmanager
+  ansible.builtin.command:
+    cmd: "docker restart {{ alertmanager_container_name }}"
+  changed_when: true
+  listen: restart alertmanager
