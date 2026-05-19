@@ -1,0 +1,82 @@
+# {{ ansible_managed }}
+# Grafana datasource provisioning -- UI-02 + UI-04.
+# Hardcoded UIDs per D-77: prometheus, loki, tempo, mimir.
+# These UIDs are referenced by the seven role-shipped dashboard JSONs;
+# do not change without coordinating with files/dashboards/*.json.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: {{ grafana_prometheus_url }}
+    access: proxy
+    isDefault: false
+    editable: false
+    jsonData:
+      prometheusType: Prometheus
+      prometheusVersion: "3.11.3"
+
+  - name: Loki
+    type: loki
+    uid: loki
+    url: {{ grafana_loki_url }}
+    access: proxy
+    editable: false
+    # D-79: derivedFields for trace_id -> Tempo navigation.
+    # matcherType: label works for Loki 3.x structured metadata fields
+    # (RESEARCH §4 -- Grafana docs explicit: "any type of label - indexed,
+    # parsed or structured metadata").
+    jsonData:
+      derivedFields:
+        - name: trace_id
+          matcherType: label
+          matcherRegex: trace_id
+          url: '${__value.raw}'
+          datasourceUid: tempo
+          urlDisplayLabel: 'View in Tempo'
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: {{ grafana_tempo_url }}
+    access: proxy
+    editable: false
+    # D-79 + D-80: tracesToLogsV2 customQuery. service.name -> service_name
+    # is the only forwarded tag (D-80; matches OTel-native Loki label shape
+    # per D-81 / 999.4 backlog acceptance).
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        tags:
+          - key: 'service.name'
+            value: 'service_name'
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        query: '{${__tags}} | trace_id="${__span.traceId}"'
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+
+  - name: Mimir
+    type: prometheus
+    uid: mimir
+    url: {{ grafana_mimir_url }}
+    access: proxy
+    isDefault: false
+    editable: false
+    # D-26 multitenancy_enabled:false in Mimir -- no X-Scope-OrgID header.
+    # Mimir exposes a Prometheus-compatible API at /prometheus subpath;
+    # type: prometheus + url: http://mimir:9009/prometheus is correct
+    # (NOT type: mimir; Grafana has no first-party mimir datasource type).
+    jsonData:
+      prometheusType: Mimir
+
+{% for ds in grafana_extra_datasources | default([]) | sort(attribute='name') %}
+  - {{ ds | to_nice_yaml(indent=2) | indent(4) }}
+{% endfor %}

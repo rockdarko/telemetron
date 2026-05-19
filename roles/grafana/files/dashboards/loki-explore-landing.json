@@ -1,0 +1,29 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "panels": [
+    {
+      "type": "text",
+      "title": "Loki Explore -- Quick Links",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "datasource", "uid": "-- Grafana --" },
+      "options": {
+        "mode": "markdown",
+        "content": "## Loki Explore\n\nClick a link to open Loki Explore filtered to a common Telemetron stream.\n\n- **All Telemetron stack logs**: [`{job=\"telemetron\"}`](/explore?orgId=1&left=%7B%22datasource%22%3A%22loki%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bjob%3D%5C%22telemetron%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D)\n- **Per-service shortcuts**: `{service_name=\"telemetron-grafana\"}`, `{service_name=\"telemetron-loki\"}`, `{service_name=\"telemetron-prometheus\"}`, `{service_name=\"telemetron-alertmanager\"}`.\n- **Errors only**: `{job=\"telemetron\"} |= \"error\" | json | __error__ = \"\"`.\n\n### Trace-to-logs\n\nLogs from OTel-SDK-instrumented apps carry `trace_id` as structured metadata. Click the **View in Tempo** link beside any log line containing `trace_id` to jump to the matching trace.\n\nSee `roles/grafana/README.md` -> Trace-to-logs correlation for the honest scope (FB-tailed Docker stdout/stderr does NOT carry `trace_id` unless the app embeds it)."
+      }
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["telemetron", "loki"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Loki -- Explore Landing",
+  "uid": "telemetron-loki-explore",
+  "version": 1
+}

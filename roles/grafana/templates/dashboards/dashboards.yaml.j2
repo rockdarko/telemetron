@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+# Grafana dashboard provisioning -- D-76 two-provider manifest.
+# telemetron folder: role-shipped, read-only (disableDeletion:true / allowUiUpdates:false).
+# operator folder: operator drop-in (writable; only effective when grafana_dashboard_extra_dir is set).
+
+apiVersion: 1
+
+providers:
+  - name: telemetron
+    type: file
+    folder: Telemetron
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/telemetron
+
+  - name: operator
+    type: file
+    folder: Operator
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/operator

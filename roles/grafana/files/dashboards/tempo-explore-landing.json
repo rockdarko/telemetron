@@ -1,0 +1,29 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "panels": [
+    {
+      "type": "text",
+      "title": "Tempo Explore -- Quick Links",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "datasource", "uid": "-- Grafana --" },
+      "options": {
+        "mode": "markdown",
+        "content": "## Tempo Explore\n\nOpen [Tempo Explore](/explore?orgId=1&left=%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceqlSearch%22%2C%22filters%22%3A%5B%5D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D) to search recent traces.\n\n### Common queries\n\n- **All spans from a service**: TraceQL `{ resource.service.name = \"<service>\" }`\n- **Slow requests**: `{ duration > 1s }`\n- **Errors**: `{ status = error }`\n\n### Trace-to-logs\n\nClick a trace span and use the **Logs for this span** link to pivot to Loki Explore with `{service_name=\"<svc>\"} | trace_id=\"<id>\"` pre-applied (D-79 + D-80). The link works only for OTel-SDK-instrumented apps whose logs carry `trace_id` in structured metadata."
+      }
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["telemetron", "tempo"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tempo -- Explore Landing",
+  "uid": "telemetron-tempo-explore",
+  "version": 1
+}
