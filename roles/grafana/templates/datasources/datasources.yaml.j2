@@ -24,18 +24,32 @@ datasources:
     url: {{ grafana_loki_url }}
     access: proxy
     editable: false
-    # D-79: derivedFields for trace_id -> Tempo navigation.
-    # matcherType: label works for Loki 3.x structured metadata fields
-    # (RESEARCH sec.4 -- Grafana docs explicit: "any type of label - indexed,
-    # parsed or structured metadata").
+    # D-79 + 05-07 UAT gap 3 fix: trace_id derivedField wired for TWO sources:
+    # 1. structured_metadata -- canonical OTel-native path per D-78. Loki 3.x
+    #    OTLP-native ingestion stores trace_id as structured metadata on records
+    #    pushed by OTel-instrumented apps (NOT as a stream label, to avoid
+    #    cardinality explosion). The pre-05-07 `matcherType: label` form did
+    #    not match because telemetron's live Loki labels are
+    #    {env, host, job, service_name} -- no trace_id label exists.
+    # 2. regex (matcherType: regex) -- extracts trace_id from log BODY content
+    #    via `(?:trace_id|traceID)[=:]"?([a-f0-9]+)`. Belt-and-suspenders for
+    #    uninstrumented apps that hand-format the id in stdout/stderr.
+    # Both fire independently; produce two links (different name keys).
+    # Per Grafana 13 Loki datasource docs (UI-04 / D-79).
     jsonData:
       derivedFields:
         - name: trace_id
-          matcherType: label
+          matcherType: structured_metadata
           matcherRegex: trace_id
           url: '${__value.raw}'
           datasourceUid: tempo
           urlDisplayLabel: 'View in Tempo'
+        - name: trace_id_body
+          matcherType: regex
+          matcherRegex: '(?:trace_id|traceID)[=:]"?([a-f0-9]+)'
+          url: '${__value.raw}'
+          datasourceUid: tempo
+          urlDisplayLabel: 'View in Tempo (from body)'
 
   - name: Tempo
     type: tempo
