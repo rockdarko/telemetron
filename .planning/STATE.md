@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-05-PLAN.md (gap closure)
-last_updated: "2026-05-19T16:51:37.338Z"
+stopped_at: "Completed 05-08-PLAN.md (gap closure: karma healthcheck opt-in + auto_remove race fix + Rule-1 karma->AM probe)"
+last_updated: "2026-05-19T16:55:24.485Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
   percent: 0
 ---
 
@@ -73,6 +73,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05-ui-plane P06 | 8min | 4 tasks | 3 files |
 | Phase 05 P07 | 4 min | 4 tasks tasks | 3 files files |
 | Phase 05-ui-plane P05 | 6min | 3 tasks tasks | 2 files files |
+| Phase 05-ui-plane P08 | 8min | 5 tasks tasks | 5 files files |
 
 ## Accumulated Context
 
@@ -166,6 +167,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 05]: Grafana 13.0.1 does NOT hot-reload provisioning files; POST /api/admin/provisioning/datasources/reload is the canonical operator step after disk render
 - [Phase 05-ui-plane]: 8 grafana verify curl-probes rewritten to docker_container_exec against live container (mirrors Phase-4 Bug 1 fix); eliminates ansible/ansible#45272 auto_remove+detach:false race; UAT gaps 1/6/7 closed on leviathan with both deploys ok=22 changed=0 failed=0
 - [Phase 05-ui-plane]: Rule 1 auto-fix during 05-05 UAT: Gate 9.5 cmd block converted from YAML folded scalar (>-) to block literal (|) with backslash line-continuations -- folded scalar preserved newlines on deeper-indented lines, broke bash parsing of  pipeline; latent bug in 05-04 surfaced once verify ran end-to-end
+- [Phase 05-ui-plane]: [05-08] Karma container HEALTHCHECK defaults to DISABLED -- ghcr.io/prymitive/karma:v0.130 is FROM scratch (no /bin/sh); CMD-SHELL probes guaranteed to fail. In-network curl-probe in verify.yml is the canonical health gate. Operators wanting Docker-level autohealing must explicitly opt in AND provide a scratch-image-compatible healthcheck test (sidecar or custom image rebuild, both out of M1 scope).
+- [Phase 05-ui-plane]: [05-08] auto_remove:false + cleanup:true + detach:false is the documented community.docker escape hatch from the auto_remove race when docker_container_exec isn't viable (target container has no shell). Applied to karma's 3 verify probe tasks and promlens's 2 verify probe tasks pre-emptively (same defect class as 04-02 alertmanager + 05-05 grafana).
+- [Phase 05-ui-plane]: [05-08 Rule-1 auto-fix] YAML folded-scalar more-indented continuation lines preserve newlines (do NOT collapse to spaces). Multi-line shell commands with || / | chains across more-indented lines will produce sh syntax errors. Use plain scalar (single-line) for shell commands -- fixed karma->AM probe that was silently failing on every pre-05-08 deploy. Also: karma /alerts.json endpoint is POST-only (returns 405 on GET); /api/v1/alerts does not exist on karma v0.130.
 
 ### Roadmap Evolution
 
@@ -181,6 +185,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T16:51:31.895Z
-Stopped at: Completed 05-05-PLAN.md (gap closure)
+Last session: 2026-05-19T16:55:19.889Z
+Stopped at: Completed 05-08-PLAN.md (gap closure: karma healthcheck opt-in + auto_remove race fix + Rule-1 karma->AM probe)
 Resume file: None

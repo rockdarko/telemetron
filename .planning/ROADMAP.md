@@ -125,6 +125,7 @@ Plans:
 - [x] 05-05-PLAN.md -- gap closure (grafana verify.yml auto_remove race + Gate 9.5 reachability); Wave 1
 - [x] 05-06-PLAN.md -- gap closure (tempo-self-metrics 51 upstream-org UIDs normalized); Wave 1
 - [x] 05-07-PLAN.md -- gap closure (Loki derivedField matcherType structured_metadata + regex fallback); Wave 1
+- [x] 05-08-PLAN.md -- gap closure (karma healthcheck OPT-IN by default; scratch-image constraint + karma/promlens verify.yml auto_remove race fix); Wave 1
 **UI hint**: yes
 
 ### Phase 6: Opt-in, Orchestration, Docs & Smoke Test
