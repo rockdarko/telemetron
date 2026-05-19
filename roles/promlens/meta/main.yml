@@ -1,0 +1,32 @@
+---
+galaxy_info:
+  role_name: promlens
+  author: Rock Martel-Langlois
+  description: >
+    Deploys PromLens v0.3.0 -- a PromQL query editor with tree-view
+    expression analysis -- on the telemetron Docker bridge network.
+    DEPRECATION CANDIDATE: Prometheus 3.x's built-in UI absorbs the
+    tree-view feature; PromLens upstream has been functionally frozen
+    since 2022-12. Ships UI-06 for upstream parity; likely dropped in
+    a future Telemetron milestone. Stateless (no volume, no config
+    file -- pure CLI flags per RESEARCH §2.3).
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - deprecated
+    - observability
+    - promlens
+    - promql
+    - telemetron
+    - ui
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin

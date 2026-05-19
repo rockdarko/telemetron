@@ -1,0 +1,15 @@
+---
+# roles/promlens/handlers/main.yml
+# Per D-19: container restart handler.
+# Not currently used in M1 (PromLens has no config file -- pure CLI flags
+# resolved at container-create time, so changes to the CLI flag values
+# come into effect via docker_container's natural recreate-on-spec-change
+# behavior). Kept for OPS-03 schema consistency and so a future config
+# knob (e.g. shared-links SQLite enablement) can wire to this handler
+# without restructuring the role.
+
+- name: Docker restart promlens
+  ansible.builtin.command:
+    cmd: "docker restart {{ promlens_container_name }}"
+  changed_when: true
+  listen: restart promlens

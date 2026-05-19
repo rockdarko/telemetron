@@ -1,0 +1,79 @@
+---
+# roles/promlens/tasks/main.yml
+# PromLens v0.3.0 deploy + in-network verify.
+# Simplest of the three Phase-5 roles: NO config file (pure CLI flags
+# per RESEARCH §2.3), NO volume (stateless), NO templates dir.
+# Mirrors roles/alertmanager/tasks/main.yml shape modulo: no render-config
+# step, no bind-mount, healthcheck via root path (no /health endpoint).
+
+- name: Pull promlens image
+  community.docker.docker_image:
+    name: "{{ promlens_image }}:{{ promlens_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - promlens
+
+- name: Run promlens container (stateless, CLI-flag config, explicit HEALTHCHECK)
+  community.docker.docker_container:
+    name: "{{ promlens_container_name }}"
+    image: "{{ promlens_image }}:{{ promlens_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ promlens_restart_policy }}"
+    memory: "{{ promlens_memory_limit }}"
+    networks:
+      - name: "{{ promlens_network }}"
+        aliases:
+          - "{{ promlens_container_name }}"
+          - promlens
+    # Gate 7: telemetron label stamp.
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: promlens
+    # D-82 + D-83 + D-84: UI plane is browser-reachable by default.
+    published_ports: >-
+      {{
+        (
+          [ promlens_bind_address + ':' + promlens_http_port | string + ':' + promlens_container_port | string ]
+          if promlens_publish_host is sameas true else
+          [ '127.0.0.1:' + promlens_http_port | string + ':' + promlens_container_port | string ]
+          if promlens_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    # PromLens v0.3.0 uses CLI flags via kingpin (RESEARCH §2.3 source-confirmed).
+    # There is NO env-var for the default Prometheus URL (RESEARCH §2.3 corrects
+    # the CONTEXT.md Claude's Discretion suggestion). Only PROMLENS_SHARED_LINKS_DSN
+    # exists (SQL link sharing -- M1 omits).
+    # M1 explicitly DOES NOT wire Grafana integration (no --grafana.url /
+    # --grafana.api-token) -- adds secrets surface for no value on a
+    # deprecation-candidate role (D-25 audit per RESEARCH §6.3).
+    command:
+      - "--web.default-prometheus-url={{ promlens_prometheus_url }}"
+      - "--web.listen-address=:{{ promlens_container_port }}"
+    healthcheck: "{{ promlens_container_healthcheck if (promlens_healthcheck_enabled | bool) else omit }}"
+    env:
+      TZ: "{{ promlens_tz }}"
+  vars:
+    promlens_container_healthcheck:
+      test: "{{ promlens_healthcheck_test }}"
+      interval: "{{ promlens_healthcheck_interval }}"
+      timeout: "{{ promlens_healthcheck_timeout }}"
+      retries: "{{ promlens_healthcheck_retries }}"
+      start_period: "{{ promlens_healthcheck_start_period }}"
+  tags:
+    - promlens
+    - promlens-container
+
+- name: Flush handlers before verify (OPS-03 schema consistency; no-op in M1 since no template change triggers a handler here)
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - promlens
+    - promlens-verify
+
+- name: Verify promlens end-to-end (HEALTHCHECK + root path + Prometheus reachability)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - promlens
+    - promlens-verify

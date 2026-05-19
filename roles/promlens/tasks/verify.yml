@@ -1,0 +1,68 @@
+---
+# roles/promlens/tasks/verify.yml
+# Pre-poll PromLens readiness then exercise the public surface:
+# - D-10a HEALTHCHECK poll
+# - Root path probe (PromLens 0.3.0 has NO /health endpoint per RESEARCH §2.3
+#   -- the UI HTML page on / is the readiness signal)
+# - Prometheus reachability cross-check (probe http://prometheus:9090/-/healthy
+#   from the same network to confirm PromLens's upstream Prometheus is alive)
+
+- name: Wait for promlens container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ promlens_container_name }}"
+  register: promlens_health_check
+  until: >-
+    promlens_health_check.container is defined
+    and promlens_health_check.container.State is defined
+    and promlens_health_check.container.State.Health is defined
+    and promlens_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ promlens_health_retries }}"
+  delay: "{{ promlens_health_delay }}"
+  changed_when: false
+  when: promlens_healthcheck_enabled | bool
+  tags:
+    - promlens
+    - promlens-verify
+
+- name: Curl-probe root path in-network (PromLens UI HTML; no /health endpoint in 0.3.0)
+  community.docker.docker_container:
+    name: "{{ promlens_container_name }}-verify-root"
+    image: "{{ promlens_curl_image }}:{{ promlens_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ promlens_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        curl -fsS http://{{ promlens_container_name }}:{{ promlens_container_port }}/
+        | grep -qiE 'promlens|<html|<title' || { echo "promlens UI HTML smoke FAIL" ; exit 1 ; } ;
+        echo "promlens_root_ok"
+  changed_when: false
+  tags:
+    - promlens
+    - promlens-verify
+
+- name: Curl-probe upstream Prometheus reachability (sanity that PromLens's configured backend is alive)
+  community.docker.docker_container:
+    name: "{{ promlens_container_name }}-verify-prom-reach"
+    image: "{{ promlens_curl_image }}:{{ promlens_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ promlens_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        curl -fsS {{ promlens_prometheus_url }}/-/healthy
+        && echo "promlens_upstream_prometheus_ok"
+  changed_when: false
+  tags:
+    - promlens
+    - promlens-verify
