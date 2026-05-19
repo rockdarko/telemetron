@@ -118,8 +118,13 @@
         )
       }}
     volumes:
-      - "{{ opentelemetry_config_dir }}/config.yaml:/etc/otelcol-contrib/config.yaml:ro"
-      - "{{ opentelemetry_config_dir }}/verify-config.yaml:/etc/otelcol-contrib/verify-config.yaml:ro"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
+      # Container still sees /etc/otelcol-contrib/config.yaml AND
+      # /etc/otelcol-contrib/verify-config.yaml at exactly the same paths.
+      # The verify-config one-shot still references its path via --config
+      # CLI flag; production container's --config flag is unchanged.
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - "{{ opentelemetry_config_dir }}:/etc/otelcol-contrib:ro"
     mounts:
       - source: "{{ opentelemetry_docker_socket_host_path }}"
         target: "/var/run/docker.sock"

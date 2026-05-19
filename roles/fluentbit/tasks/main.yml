@@ -105,9 +105,13 @@
         type: bind
         read_only: true
     volumes:
-      - "{{ fluentbit_config_dir }}/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro"
-      - "{{ fluentbit_config_dir }}/parsers.conf:/fluent-bit/etc/parsers.conf:ro"
-      - "{{ fluentbit_config_dir }}/enrich.lua:{{ fluentbit_enrich_lua_path }}:ro"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
+      # Container sees /fluent-bit/etc/{fluent-bit.conf,parsers.conf,enrich.lua}.
+      # enrich.lua is now alongside the .conf files inside the directory mount;
+      # fluentbit_enrich_lua_path default (/fluent-bit/etc/enrich.lua) already
+      # resolves into the parent-directory mount, so no defaults edit needed.
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - "{{ fluentbit_config_dir }}:/fluent-bit/etc:ro"
     # Distroless image; CMD form (not CMD-SHELL). The actual command form
     # is set in defaults/main.yml per image probe. When
     # fluentbit_healthcheck_enabled is false, the healthcheck key is
