@@ -1,43 +1,96 @@
 # Telemetron
 
-**One-stop self-hosted observability stack** — driven by Ansible, targeting Docker/VM or Kubernetes/OpenShift.
-
-Bring up a full observability plane on your own hardware in one playbook run:
-
-- **OpenTelemetry Collector** — OTLP ingest and signal routing (traces, metrics, logs)
-- **Loki** — log backend (monolithic or microservices mode)
-- **Tempo** — distributed traces (monolithic or microservices mode)
-- **Prometheus + Mimir** — short-term metrics + long-term retention
-- **MinIO** — S3-compatible object storage for Loki / Tempo / Mimir
-- **Grafana** — dashboards, exploration, alerting UI
-- **Alertmanager + Karma + PromLens** — alert routing, triage UI, PromQL editor
-- **Fluent Bit** — log shipping
-- **HAProxy** — load balancing for distributed-mode components
-- **Hook Router** — bridge from Alertmanager webhooks to your CI/CD for automated runbooks
-
-> **Status: early.** This is a clean-slate fork of an internal Quebec-government deployment originally authored at INSPQ. It's being normalized to English and freed of org-specific assumptions. Don't expect a one-liner installer yet — see the milestone tracker in `docs/` for progress.
+**Self-hosted observability in one playbook.** Bring up Prometheus + Loki +
+Tempo + Grafana + Alertmanager on your own hardware with one Ansible
+command. Single-host Docker. Homelab-friendly.
 
 ## Quick start
 
-> Coming soon as roles land in `roles/`.
+```bash
+git clone https://github.com/rockdarko/telemetron.git && cd telemetron
+# edit inventory/example-homelab/example-homelab.hosts (one hostname + SSH user)
+# copy + fill secrets.yml from inventory/example-homelab/group_vars/all/secrets.yml.example
+ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml \
+  --ask-vault-pass
+```
+
+Full walkthrough with prerequisites, expected outputs, and troubleshooting:
+[`docs/quickstart.md`](docs/quickstart.md).
+
+After the deploy, validate with the included smoke test:
+
+```bash
+ansible-playbook -i inventory/example-homelab playbooks/smoke_test.yml \
+  --ask-vault-pass
+```
+
+The smoke test pushes a synthetic log + metric + trace through the stack
+and confirms visibility in Grafana within 60 seconds.
+
+## What's included
+
+| Component | Image | Purpose |
+|-----------|-------|---------|
+| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.152.0` | OTLP ingest and signal fan-out |
+| Loki | `grafana/loki:3.7.2` | Log backend (monolithic mode) |
+| Tempo | `grafana/tempo:2.10.5` | Trace backend (monolithic mode) |
+| Mimir | `grafana/mimir:3.0.6` | Long-term metrics (monolithic mode) |
+| Prometheus | `prom/prometheus:v3.11.3` | Short-term metrics + alert evaluation |
+| node_exporter | `quay.io/prometheus/node-exporter:v1.11.1` | Host metrics |
+| Fluent Bit | `fluent/fluent-bit:4.2.3` | Container log shipping |
+| MinIO | `minio/minio:RELEASE.2025-04-22T22-12-26Z` | S3-compatible object storage |
+| Alertmanager | `quay.io/prometheus/alertmanager:v0.32.1` | Alert routing (null receiver default) |
+| Grafana | `grafana/grafana-oss:13.0.1` | Dashboards + Explore |
+| Karma | `ghcr.io/prymitive/karma:v0.130` | Alert triage UI |
+| PromLens | `prom/promlens:v0.3.0` | PromQL editor (deprecation candidate) |
+| nfsd (opt-in) | host package (`nfs-utils` / `nfs-kernel-server`) | Optional NFS server for legacy log ingestion |
+
+Architecture detail: [`docs/architecture.md`](docs/architecture.md).
+
+### Not in M1
+
+- **Hook router** (Alertmanager -> CI/automation webhook bridge) is deferred to a future milestone. Alerts are visible in Karma but not auto-dispatched.
+- **HAProxy** (load balancing for distributed-mode backends) is only useful when Loki / Mimir / Tempo run in microservices mode, which is a future-milestone deployment topology.
+- **Kubernetes / OpenShift deployment path** is a future milestone; M1 ships the Docker path only.
+- **Multi-host inventory** is a future milestone; M1 ships a single-host example.
+
+## Requirements
+
+- Ansible 2.15+
+- `community.docker` collection 4.x+
+- Docker 24+ on the target host (27+ recommended)
+- SSH key-based access; passwordless `sudo` if applicable
+- One Docker host (homelab box, VM, or bare metal)
 
 ## Layout
 
 ```
-roles/        ansible roles, one directory per component
-playbooks/    top-level orchestration (deploy_docker.yml, deploy_kube.yml)
+roles/        Ansible roles, one directory per component
+playbooks/    deploy_docker.yml (orchestrator) + smoke_test.yml (acceptance)
 inventory/    one subdirectory per environment; symlink yours in
-hooks/        hook router source + sample runbook job definitions
-docs/         architecture, alerts catalog, retention strategy, etc.
+docs/         architecture, quickstart, inventory model
 ```
 
 ## Inventory model
 
-Each environment is a directory under `inventory/`. See [`inventory/README.md`](inventory/README.md) for the expected shape.
+Each environment is a directory under `inventory/`. The shipped example
+is `inventory/example-homelab/`. Build your own from scratch or symlink
+an out-of-tree inventory in: see [`docs/inventory.md`](docs/inventory.md).
+
+## Origin
+
+Telemetron is a clean-slate fork of an internal observability stack
+originally authored at INSPQ (Quebec public health institute). The fork
+has been normalized to English, stripped of org-specific assumptions
+(vault paths, internal domains, NFS share roots, cert chains), and
+re-licensed MIT. The component selection, monolithic-mode deployment
+shape, and Ansible-driven orchestration are inherited; the role
+implementations are rewritten against current upstream image versions
+and homelab-first defaults.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT -- see [LICENSE](LICENSE).
 
 ## Author
 
