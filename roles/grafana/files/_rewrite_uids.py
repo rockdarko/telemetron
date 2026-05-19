@@ -52,6 +52,16 @@ import sys
 # Loki operational dashboard uses RAW STRINGS "$datasource" / "$loki_datasource"
 # (no template vars defined in JSON) -- requires string-level replace,
 # substituting in JSON objects per Type B procedure in RESEARCH sec.3.
+#
+# Key form NOTE: Grafana panel JSON uses two forms for datasource var refs:
+#   * "$VAR"   (no curly braces) -- the modern Jsonnet/mixin-generated form;
+#     used by otel-collector dashboard-15983, tempo-operational, mimir-overview.
+#   * "${VAR}" (curly braces)    -- the legacy Grafana.com export form;
+#     used by host-health (dashboard-1860-rev45, panel datasource refs).
+# uid_refs keys MUST match the form the panel JSON actually contains, NOT
+# the template-var name itself. Mismatch -> walk() silently no-ops and
+# dashboards ship with unresolved $VAR refs (root cause of 05-VERIFICATION
+# Gap 2; fixed in 05-04).
 SUBSTITUTIONS = {
     "dashboard-1860-rev45.json": {
         "output": "host-health.json",
@@ -63,7 +73,7 @@ SUBSTITUTIONS = {
         "output": "otel-collector-self-metrics.json",
         "type": "template_var",
         "vars": {"datasource": "prometheus"},
-        "uid_refs": {"${datasource}": {"type": "prometheus", "uid": "prometheus"}},
+        "uid_refs": {"$datasource": {"type": "prometheus", "uid": "prometheus"}},
     },
     "dashboard-loki-operational.json": {
         "output": "loki-self-metrics.json",
@@ -78,8 +88,8 @@ SUBSTITUTIONS = {
         "type": "template_var",
         "vars": {"ds": "prometheus", "logsds": "loki"},
         "uid_refs": {
-            "${ds}": {"type": "prometheus", "uid": "prometheus"},
-            "${logsds}": {"type": "loki", "uid": "loki"},
+            "$ds": {"type": "prometheus", "uid": "prometheus"},
+            "$logsds": {"type": "loki", "uid": "loki"},
         },
     },
     "mimir-overview.json": {
@@ -88,7 +98,7 @@ SUBSTITUTIONS = {
         # OQ-4: $datasource is the Prometheus scraper of Mimir self-metrics
         # (NOT the Mimir long-term store).
         "vars": {"datasource": "prometheus"},
-        "uid_refs": {"${datasource}": {"type": "prometheus", "uid": "prometheus"}},
+        "uid_refs": {"$datasource": {"type": "prometheus", "uid": "prometheus"}},
     },
 }
 
