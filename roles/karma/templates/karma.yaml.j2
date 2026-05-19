@@ -1,0 +1,49 @@
+# {{ ansible_managed }}
+# Karma v0.130 -- Telemetron M1 default config.
+# RESEARCH §6.2 D-25 audit: alertmanager URL is the Docker bridge DNS
+# (NOT localhost -- D-25 fix; bridge DNS resolves alertmanager:9093 correctly).
+# Default name is `telemetron` (clearer than upstream's `alertmanager`).
+
+alertmanager:
+  servers:
+    - name: {{ karma_alertmanager_name }}
+      uri: "http://{{ karma_alertmanager_host }}:{{ karma_alertmanager_port }}"
+      proxy: {{ karma_alertmanager_proxy | to_json }}
+{% for am in karma_extra_alertmanager_servers | default([]) | sort(attribute='name') %}
+    - name: {{ am.name }}
+      uri: "{{ am.uri }}"
+{% if am.proxy is defined %}
+      proxy: {{ am.proxy | to_json }}
+{% endif %}
+{% if am.external_uri is defined %}
+      external_uri: "{{ am.external_uri }}"
+{% endif %}
+{% endfor %}
+
+alertAcknowledgement:
+  enabled: {{ karma_ack_enabled | to_json }}
+  duration: "{{ karma_ack_duration }}"
+  author: "{{ karma_ack_author }}"
+  comment: "Acknowledged via Karma [%NOW%]"
+
+ui:
+  refresh: "{{ karma_ui_refresh }}"
+  minimalGroupWidth: {{ karma_ui_minimal_group_width }}
+  collapseGroups: {{ karma_ui_collapse_groups }}
+  theme: {{ karma_ui_theme }}
+
+{% if karma_default_filters | length > 0 %}
+filters:
+  default:
+{% for f in karma_default_filters | sort %}
+    - "{{ f }}"
+{% endfor %}
+{% endif %}
+
+{% if karma_labels_keep | length > 0 %}
+labels:
+  keep:
+{% for l in karma_labels_keep | sort %}
+    - {{ l }}
+{% endfor %}
+{% endif %}

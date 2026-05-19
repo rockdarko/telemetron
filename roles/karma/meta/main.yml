@@ -1,0 +1,28 @@
+---
+galaxy_info:
+  role_name: karma
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Karma v0.130 (GHCR official, NOT the Docker Hub fork) on the
+    telemetron Docker bridge network as the operator alert UX for the
+    Phase-4 Alertmanager. Karma reads alerts from http://alertmanager:9093
+    via the v2 API. Ships UI-05. Stateless (no volume; in-memory cache).
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - alerting
+    - karma
+    - observability
+    - telemetron
+    - ui
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin

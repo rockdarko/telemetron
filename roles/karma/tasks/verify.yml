@@ -1,0 +1,102 @@
+---
+# roles/karma/tasks/verify.yml
+# Pre-poll Karma readiness, then exercise the public surface in-network:
+# - D-10a HEALTHCHECK poll
+# - /health probe (Karma's built-in endpoint)
+# - root path HTML smoke (Karma UI loaded)
+# - Alertmanager connection assertion (Karma's /alerts.json endpoint
+#   returns 200 with our alertmanager source registered)
+
+- name: Wait for karma container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ karma_container_name }}"
+  register: karma_health_check
+  until: >-
+    karma_health_check.container is defined
+    and karma_health_check.container.State is defined
+    and karma_health_check.container.State.Health is defined
+    and karma_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ karma_health_retries }}"
+  delay: "{{ karma_health_delay }}"
+  changed_when: false
+  when: karma_healthcheck_enabled | bool
+  tags:
+    - karma
+    - karma-verify
+
+- name: Curl-probe /health in-network (Karma source-confirmed endpoint per RESEARCH §2.2)
+  community.docker.docker_container:
+    name: "{{ karma_container_name }}-verify-health"
+    image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ karma_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        curl -fsS http://{{ karma_container_name }}:{{ karma_container_port }}/health
+        && echo "karma_health_ok"
+  changed_when: false
+  tags:
+    - karma
+    - karma-verify
+
+- name: Curl-probe root path (Karma UI HTML smoke)
+  community.docker.docker_container:
+    name: "{{ karma_container_name }}-verify-ui"
+    image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ karma_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        curl -fsS http://{{ karma_container_name }}:{{ karma_container_port }}/
+        | grep -qiE 'karma|<html' || { echo "karma UI HTML smoke FAIL" ; exit 1 ; } ;
+        echo "karma_ui_ok"
+  changed_when: false
+  tags:
+    - karma
+    - karma-verify
+
+# UI-05 wiring assertion: Karma reports our alertmanager as a configured upstream.
+# Karma's /alerts.json endpoint exposes the alertmanager source name in the
+# response payload. Assert the configured name appears.
+# Poll with until: -- Karma's first Alertmanager poll is async after startup.
+- name: Karma -> Alertmanager connection assertion (poll until source registered)
+  community.docker.docker_container:
+    name: "{{ karma_container_name }}-verify-amconn"
+    image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ karma_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS http://{{ karma_container_name }}:{{ karma_container_port }}/alerts.json 2>/dev/null
+               || curl -fsS http://{{ karma_container_name }}:{{ karma_container_port }}/api/v1/alerts 2>/dev/null
+               || echo "") ;
+        echo "$BODY" | grep -qi '{{ karma_alertmanager_name }}'
+        || { echo "alertmanager source {{ karma_alertmanager_name }} not registered in karma response: $BODY" ; exit 1 ; } ;
+        echo "karma_am_connection_ok"
+  register: karma_amconn_probe
+  retries: 15
+  delay: 4
+  until: karma_amconn_probe is succeeded
+  changed_when: false
+  failed_when: karma_amconn_probe is failed and karma_amconn_probe.attempts | default(0) >= 15
+  tags:
+    - karma
+    - karma-verify

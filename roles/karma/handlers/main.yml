@@ -1,0 +1,9 @@
+---
+# roles/karma/handlers/main.yml
+# Per D-19: container restart on karma.yaml change.
+
+- name: Docker restart karma
+  ansible.builtin.command:
+    cmd: "docker restart {{ karma_container_name }}"
+  changed_when: true
+  listen: restart karma

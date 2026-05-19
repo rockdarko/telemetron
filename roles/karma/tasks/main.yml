@@ -1,0 +1,100 @@
+---
+# roles/karma/tasks/main.yml
+# Karma v0.130 deploy + in-network verify.
+# Mirrors roles/alertmanager/tasks/main.yml shape modulo Karma specifics:
+# stateless (no volume), CONFIG_FILE env var (RESEARCH §2.2 -- required so
+# Karma's binary finds the config from a non-CWD path), explicit HEALTHCHECK
+# (image has none -- RESEARCH §2.2), parent-dir bind mount (Gate 8).
+
+- name: Ensure karma config directory exists (D-18 flat layout)
+  ansible.builtin.file:
+    path: "{{ karma_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - karma
+    - karma-config
+
+- name: Render karma.yaml from template
+  ansible.builtin.template:
+    src: karma.yaml.j2
+    dest: "{{ karma_config_dir }}/karma.yaml"
+    mode: "0644"
+  notify: restart karma
+  tags:
+    - karma
+    - karma-config
+
+- name: Pull karma image (GHCR official, NOT Docker Hub fork)
+  community.docker.docker_image:
+    name: "{{ karma_image }}:{{ karma_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - karma
+
+- name: Run karma container (stateless, explicit HEALTHCHECK, CONFIG_FILE env, parent-dir bind)
+  community.docker.docker_container:
+    name: "{{ karma_container_name }}"
+    image: "{{ karma_image }}:{{ karma_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ karma_restart_policy }}"
+    memory: "{{ karma_memory_limit }}"
+    networks:
+      - name: "{{ karma_network }}"
+        aliases:
+          - "{{ karma_container_name }}"
+          - karma
+    # Gate 7: telemetron label stamp.
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: karma
+    # D-82 + D-83 + D-84: UI plane is browser-reachable by default.
+    published_ports: >-
+      {{
+        (
+          [ karma_bind_address + ':' + karma_http_port | string + ':' + karma_container_port | string ]
+          if karma_publish_host is sameas true else
+          [ '127.0.0.1:' + karma_http_port | string + ':' + karma_container_port | string ]
+          if karma_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      # Gate 8 parent-directory bind: container sees /etc/karma/karma.yaml
+      # at the path CONFIG_FILE points to.
+      - source: "{{ karma_config_dir }}"
+        target: "{{ karma_config_container_path }}"
+        type: bind
+        read_only: true
+    healthcheck: "{{ karma_container_healthcheck if (karma_healthcheck_enabled | bool) else omit }}"
+    env:
+      # RESEARCH §2.2: Karma searches for karma.yaml in CWD by default; CWD
+      # in the distroless-like image is `/`. CONFIG_FILE env var points it
+      # at the parent-dir-mounted config. Without this, Karma starts with
+      # empty defaults and no Alertmanager configured.
+      CONFIG_FILE: "{{ karma_config_file_container_path }}"
+      TZ: "{{ karma_tz }}"
+  vars:
+    karma_container_healthcheck:
+      test: "{{ karma_healthcheck_test }}"
+      interval: "{{ karma_healthcheck_interval }}"
+      timeout: "{{ karma_healthcheck_timeout }}"
+      retries: "{{ karma_healthcheck_retries }}"
+      start_period: "{{ karma_healthcheck_start_period }}"
+  tags:
+    - karma
+    - karma-container
+
+- name: Flush handlers before verify (so verify sees post-restart state)
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - karma
+    - karma-verify
+
+- name: Verify karma end-to-end (HEALTHCHECK + /health + Alertmanager connection)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - karma
+    - karma-verify
