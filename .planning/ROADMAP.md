@@ -101,10 +101,10 @@ Plans:
   4. All four affected roles pass Gates 1-8 (grep-clean, image-pin, secrets-discipline using new naming, idempotency, healthcheck+restart, README schema, label-stamp, parent-dir bind-mount) on a re-run.
   5. Leviathan smoke test: after Phase 4.1 lands, `ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml` runs to convergence and a synthetic log push to Loki + synthetic metric push to Mimir both succeed (validating that the rename did not break credential plumbing).
 
-**Plans:** 1 plan (planned)
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 04.1-01-PLAN.md -- Vault-prefix rename across 4 roles + secrets.yml.example + doc cascade + gate re-run + leviathan smoke test
+- [x] 04.1-01-PLAN.md -- Vault-prefix rename across 4 roles + secrets.yml.example + doc cascade + gate re-run + leviathan smoke test
 
 ### Phase 5: UI Plane
 **Goal**: Operator can run the playbook and have Grafana running with datasources explicitly provisioned at stable UIDs (`prometheus`, `loki`, `tempo`, `mimir`), 5-10 curated starter dashboards rendering real data on a fresh deploy, trace-to-logs correlation wired through Tempo's `tracesToLogsV2` + a derived `trace_id` field on Loki — plus Karma running against Alertmanager and PromLens pinned to `v0.3.0` and marked deprecation-candidate in its role README. Grafana's datasource provisioning is the de-facto smoke test for everything that came before.

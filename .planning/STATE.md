@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 5 context gathered (D-70..D-89 + cross-phase D-90: drop vault_ prefix via phase 4.1 insertion)"
-last_updated: "2026-05-19T01:34:34.941Z"
+status: verifying
+stopped_at: Completed 04.1-drop-vault-prefix-01-PLAN.md
+last_updated: "2026-05-19T02:46:38.092Z"
 last_activity: 2026-05-19
 progress:
-  total_phases: 10
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_phases: 11
+  completed_phases: 5
+  total_plans: 14
+  completed_plans: 14
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17)
 
 **Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 04 — alert-plane
+**Current focus:** Phase 04.1 — drop-vault-prefix
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Status: Ready to execute
+Phase: 04.1 (drop-vault-prefix) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
 Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P05 | 9 min | 10 tasks | 16 files |
 | Phase 04-alert-plane P1 | 13min | 7 tasks tasks | 16 files files |
 | Phase 04-alert-plane P02 | 13min | 7 tasks | 10 files |
+| Phase 04.1-drop-vault-prefix P01 | 105 | 7 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,8 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 04-alert-plane]: Auto-fix during UAT (Rule 1): alertmanager verify steps 7 + 9 (amtool alert/silence query) converted from single-shot read to until:/retries:/delay: polling -- amtool alert add returns synchronously but AM dispatch processes async; same race class as Bug 1, same fix shape, same file
 - [Phase 04-alert-plane]: TIER 3 deferred: 9 latent docker_container+auto_remove sites in loki/tempo/mimir/prometheus/opentelemetry/fluentbit/node_exporter verify files captured in debug doc; convert when a Phase 5 cross-role probe makes any of them firing rather than latent
 - [Phase 04-alert-plane]: All 6 Phase 4 UAT tests pass on leviathan post-04-02 (HEALTHCHECK + receivers + status + Prom->AM + amtool + idempotency); manual atomic-rename inode test proves parent-directory mount semantics work definitively (524589 -> 2097216 visible immediately inside container)
+- [Phase 04.1-drop-vault-prefix]: D-90: Drop vault_ prefix -- role-namespace+suffix is self-documenting; prefix implied Ansible Vault tooling enforcement that was never present
+- [Phase 04.1-drop-vault-prefix]: vault.yml.example renamed to secrets.yml.example via git mv to preserve rename history; **/secrets.yml added to .gitignore
 
 ### Roadmap Evolution
 
@@ -155,6 +158,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T01:34:34.937Z
-Stopped at: Phase 5 context gathered (D-70..D-89 + cross-phase D-90: drop vault_ prefix via phase 4.1 insertion)
-Resume file: .planning/phases/05-ui-plane/05-CONTEXT.md
+Last session: 2026-05-19T02:46:38.087Z
+Stopped at: Completed 04.1-drop-vault-prefix-01-PLAN.md
+Resume file: None
