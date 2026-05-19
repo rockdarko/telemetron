@@ -46,6 +46,26 @@
     Buffer_Max_Size   1MB
     Buffer_Chunk_Size 32KB
 
+{% if enable_nfsd | default(false) | bool %}
+# D-92 + D-95: opt-in NFS path tail. Fires when enable_nfsd is true in
+# inventory (default false). Path tails `<share-root>/<hostname>/*.log` per
+# the share-root sub-dir-per-host convention (see roles/nfsd/README.md
+# "How this integrates with Fluent Bit"). Tag asterisk expansion produces
+# `nfs.srv.telemetron-nfs.<hostname>.<filename...>` -- the sibling
+# [FILTER] lua Match nfs.* below extracts the hostname from segment 4.
+[INPUT]
+    Name              tail
+    Alias             nfs_logs
+    Path              {{ nfsd_share_root | default('/srv/telemetron-nfs') }}/*/*.log
+    Tag               nfs.*
+    Refresh_Interval  10
+    Read_from_Head    false
+    Skip_Long_Lines   On
+    Mem_Buf_Limit     5MB
+    storage.type      filesystem
+    DB                /var/log/flb-nfs.db
+{% endif %}
+
 # D-48: extension knobs (default-off).
 {% if fluentbit_tail_system_logs | default(false) %}
 [INPUT]
@@ -91,6 +111,21 @@
     Match             docker.*
     script            {{ fluentbit_enrich_lua_path }}
     call              enrich
+
+{% if enable_nfsd | default(false) | bool %}
+# D-95: NFS path branch -- sibling [FILTER] lua with Match nfs.*. Calls
+# the SAME enrich() function in the SAME enrich.lua file (single source of
+# truth for label enrichment). Pitfall 4 (RESEARCH Common Pitfalls): this
+# block MUST use `Match nfs.*` -- NEVER `Match *` -- because the same
+# enrich.lua handles Docker container logs via the Match docker.* filter
+# above; cross-matching corrupts host labels on Docker records.
+[FILTER]
+    Name              lua
+    Alias             telemetron_enrich_nfs
+    Match             nfs.*
+    script            {{ fluentbit_enrich_lua_path }}
+    call              enrich
+{% endif %}
 
 # D-47 label allowlist: static deploy-time labels.
 [FILTER]

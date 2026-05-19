@@ -111,10 +111,44 @@ local function read_container_config(container_id)
     return svc, job, name, true
 end
 
+-- D-95: extract hostname from NFS tail tag. Tag shape is
+--   nfs.srv.telemetron-nfs.<hostname>.<filename_with_dots>
+-- which arises from Fluent Bit's asterisk expansion in `Tag nfs.*` when
+-- the tailed path is `/srv/telemetron-nfs/<hostname>/<file>.log`
+-- (slashes become dots, leading slash stripped).
+-- Segments (1-indexed in Lua): parts[1]=nfs, parts[2]=srv,
+-- parts[3]=telemetron-nfs, parts[4]=hostname.
+--
+-- CONSTANT: parts[4] assumes nfsd_share_root = /srv/telemetron-nfs
+-- (depth 2 after the leading /). If an operator overrides nfsd_share_root
+-- in inventory to a different depth, this constant MUST be updated.
+-- Documented in roles/nfsd/README.md "How this integrates with Fluent Bit".
+local function hostname_from_nfs_tag(tag)
+    local parts = {}
+    for part in string.gmatch(tag or "", "[^.]+") do
+        parts[#parts + 1] = part
+    end
+    return parts[4]
+end
+
 -- Public callback. Signature per Fluent Bit Lua filter docs:
 --   function name(tag, timestamp, record)
 --   returns code, timestamp, record  -- code 2 = record modified
 function enrich(tag, timestamp, record)
+    -- D-95: NFS path branch -- dispatch on tag prefix. The companion
+    -- [FILTER] lua block in fluent-bit.conf.j2 uses `Match nfs.*` so this
+    -- function only sees `^nfs%.` tags from that input; the existing
+    -- `Match docker.*` filter never reaches this branch. Belt-and-braces:
+    -- still guard with string.match in case the Match predicate is ever
+    -- relaxed (Pitfall 4 in RESEARCH).
+    if string.match(tag or "", "^nfs%.") then
+        local host = hostname_from_nfs_tag(tag) or "unknown-nfs-host"
+        record["host"]    = host
+        record["service"] = "remote"
+        record["job"]     = "remote-syslog"
+        return 2, timestamp, record
+    end
+
     local container_id = container_id_from_tag(tag)
     if not container_id then
         record["service"] = UNLABELED_SERVICE
