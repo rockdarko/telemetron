@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: nfsd
+  author: telemetron
+  description: >-
+    Opt-in host-package NFSv4 server for legacy log ingestion. The ONLY
+    host-package (not container) role in Telemetron M1 -- see role README
+    "Deviations from upstream" for the D-91 rationale.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["jammy", "noble"]
+dependencies: []

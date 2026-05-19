@@ -1,0 +1,55 @@
+---
+# roles/nfsd/tasks/main.yml
+# Telemetron nfsd entrypoint. Distro-branches between RedHat (EL8+) and
+# Debian (Ubuntu 22.04+ / Debian 11+) for the package install, then runs
+# a single shared exports management task.
+#
+# Targets EL8+ and Ubuntu 22.04+ only. Other distros are not supported.
+
+- name: Verify supported OS family
+  ansible.builtin.assert:
+    that: ansible_os_family in ['RedHat', 'Debian']
+    fail_msg: "nfsd role supports RedHat (EL8+) and Debian (Ubuntu 22.04+) only; got ansible_os_family={{ ansible_os_family }}"
+    success_msg: "nfsd: OS family {{ ansible_os_family }} is supported"
+
+- name: Install nfsd packages (RedHat family)
+  ansible.builtin.include_tasks: install_redhat.yml
+  when: ansible_os_family == 'RedHat'
+
+- name: Install nfsd packages (Debian family)
+  ansible.builtin.include_tasks: install_debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure nfsd share root directory exists
+  ansible.builtin.file:
+    path: "{{ nfsd_share_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Ensure per-remote-host export sub-dirs exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ nfsd_exports }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+
+- name: Manage nfsd exports
+  ansible.builtin.include_tasks: exports.yml
+
+- name: Enable and start nfs-server.service
+  ansible.builtin.systemd:
+    name: "{{ nfsd_service_name }}"
+    state: started
+    enabled: true
+  become: true
+
+- name: Flush handlers to apply any exports change before further tasks
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,21 @@
+---
+# roles/nfsd/tasks/exports.yml
+# Idempotent /etc/exports management via blockinfile with stable marker.
+# RESEARCH Pitfall 3: When nfsd_exports is empty, SKIP this task entirely
+# so /etc/exports is not touched (no orphan marker lines).
+
+- name: Manage nfsd exports in /etc/exports
+  ansible.builtin.blockinfile:
+    path: /etc/exports
+    marker: "# {mark} TELEMETRON NFSD ANSIBLE MANAGED BLOCK"
+    block: |
+      {% for export in nfsd_exports %}
+      {{ export.path }} {{ export.allow }}
+      {% endfor %}
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: reload nfsd exports
+  when: nfsd_exports | length > 0

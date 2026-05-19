@@ -1,0 +1,10 @@
+---
+# roles/nfsd/handlers/main.yml
+# Handler-triggered idempotent NFS exports reload.
+
+- name: Reload nfsd exports
+  ansible.builtin.command:
+    cmd: exportfs -ra
+  changed_when: false
+  become: true
+  listen: reload nfsd exports

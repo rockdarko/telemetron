@@ -1,0 +1,11 @@
+---
+# roles/nfsd/tasks/install_debian.yml
+# Debian family (Ubuntu 22.04+, Debian 11+): install nfs-kernel-server.
+
+- name: Install nfs-kernel-server
+  ansible.builtin.package:
+    name: nfs-kernel-server
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true

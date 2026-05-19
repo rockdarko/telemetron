@@ -1,0 +1,11 @@
+---
+# roles/nfsd/tasks/install_redhat.yml
+# RedHat family (EL8+, Rocky, AlmaLinux): install nfs-utils.
+# Note: rpcbind is socket-activated by nfs-server.service dependency on
+# EL8+ -- no explicit rpcbind task needed (RESEARCH E4).
+
+- name: Install nfs-utils
+  ansible.builtin.package:
+    name: nfs-utils
+    state: present
+  become: true

@@ -1,0 +1,48 @@
+---
+# roles/nfsd/defaults/main.yml
+# Telemetron nfsd role -- OPT-IN host-package NFSv4 server for legacy log
+# ingestion. Default off (enable_nfsd: false in inventory/.../nfsd.yml).
+#
+# DEVIATION: Per D-91, this is the only host-package (not container) role
+# in M1. The obvious container path (erichough/nfs-server) was archived
+# in 2022 and requires --privileged. Kernel NFS via systemd is simpler,
+# more reliable, and the proven upstream-port approach.
+#
+# Targets EL8+ (RHEL, Rocky, AlmaLinux) and Ubuntu 22.04+ / Debian 11+
+# only. EL7 is intentionally NOT supported (the upstream yum-binary
+# workaround is dropped -- see RESEARCH State of the Art).
+
+# --- Master knob (D-92: SINGLE inventory knob flips BOTH this role AND
+# the conditional Fluent Bit NFS tail input). ---
+enable_nfsd: false
+
+# --- Share root + per-remote-host sub-dirs (D-93). ---
+# Default share root. Sub-dirs per remote hostname provide a deterministic
+# Fluent Bit path-to-host-label mapping (see roles/fluentbit/files/enrich.lua
+# NFS branch: parts[4] = hostname). CHANGING THIS PATH requires a matching
+# update to the Lua segment-count constant -- see roles/nfsd/README.md and
+# Open Question 2 in RESEARCH.
+nfsd_share_root: /srv/telemetron-nfs
+
+# --- Exports (D-93: default empty -- fail-safe). ---
+# List of {path, allow} dicts. Operator adds entries like:
+#   nfsd_exports:
+#     - path: /srv/telemetron-nfs/oldbox
+#       allow: "10.0.0.42(rw,sync,root_squash,no_subtree_check)"
+# Empty list = NFS server installed/running but ZERO exports rendered into
+# /etc/exports. Safer than rendering a default that exposes the share root
+# to anyone (Pitfall 3 in RESEARCH).
+nfsd_exports: []
+
+# --- Protocol (D-94: NFSv4 only; AUTH_SYS + IP allow-list; no Kerberos). ---
+# Documentary only -- modern Linux defaults to v4. The role does not
+# explicitly configure protocol versions; this default exists so the
+# README's "what protocol does this run?" question has a one-line answer.
+nfsd_protocol: nfsv4
+
+# --- Service unit (RESEARCH E1). ---
+# Both EL8+ (nfs-utils) and Ubuntu 22.04+ (nfs-kernel-server) ship the
+# canonical unit as nfs-server.service. The upstream port's
+# nfs_ubuntu.yml inconsistently calls it nfs-kernel-server for one task
+# and nfs-server for another -- we use nfs-server for ALL tasks.
+nfsd_service_name: nfs-server.service
