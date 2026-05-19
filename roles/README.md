@@ -51,7 +51,7 @@ grep -rPn '[^\x00-\x7F]' roles/<name>/
 
 **2. Image-pin gate (OPS-01):** `grep -rE 'image:.*:latest' roles/<name>/` returns zero matches. Every image reference uses an explicit pinned tag.
 
-**3. Vault-discipline gate (OPS-02):** every `{{ vault_* }}` reference in the role has a matching key declared in `inventory/example-homelab/group_vars/all/vault.yml.example` with a `CHANGE_ME` placeholder and a comment naming the consuming role. The vault naming convention is `vault_<role>_<purpose>`.
+**3. Secrets-discipline gate (OPS-02):** every sensitive `{{ <role>_<purpose> }}` reference in the role has a matching key declared in `inventory/example-homelab/group_vars/all/secrets.yml.example` with a `CHANGE_ME` placeholder and a comment naming the consuming role. The naming convention is role-namespaced — `<role>_<purpose>` (no `vault_` prefix); per D-90 the prefix added no value and implied tooling enforcement Ansible doesn't provide. The protection mechanism is the operator's choice (ansible-vault, sops, env-var injection, external secret manager, or chmod 600 on a homelab); Telemetron documents keys, not mechanism.
 
 **4. Idempotency gate (OPS-04 + Pitfall 8 from PITFALLS.md):** run the playbook twice in a row against the same target host. The second run's PLAY RECAP must report `changed=0`. Container restarts on config change use handlers (`docker restart <name>` via `community.docker.docker_container_exec` or notify-handler), never `state: restarted`.
 
