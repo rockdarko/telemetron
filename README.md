@@ -8,7 +8,7 @@ command. Single-host Docker. Homelab-friendly.
 
 ```bash
 git clone https://github.com/rockdarko/telemetron.git && cd telemetron
-# edit inventory/example-homelab/example-homelab.hosts (one hostname + SSH user)
+# edit inventory/example-homelab/hosts.yml (one hostname + SSH user)
 # copy + fill secrets.yml from inventory/example-homelab/group_vars/all/secrets.yml.example
 ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml \
   --ask-vault-pass
