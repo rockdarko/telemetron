@@ -91,7 +91,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Accepted: count/rate of spans successfully pushed into the pipeline.\nRefused: count/rate of spans that could not be pushed into the pipeline.",
       "fieldConfig": {
@@ -201,7 +201,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -216,7 +216,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -236,7 +236,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Accepted: count/rate of metric points successfully pushed into the pipeline.\nRefused: count/rate of metric points that could not be pushed into the pipeline.",
       "fieldConfig": {
@@ -346,7 +346,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -361,7 +361,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -381,7 +381,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Accepted: count/rate of log records successfully pushed into the pipeline.\nRefused: count/rate of log records that could not be pushed into the pipeline.",
       "fieldConfig": {
@@ -491,7 +491,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -506,7 +506,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -539,7 +539,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -667,7 +667,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -682,7 +682,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -702,7 +702,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -830,7 +830,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -845,7 +845,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -865,7 +865,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -993,7 +993,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1008,7 +1008,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1028,7 +1028,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Accepted: count/rate of spans successfully pushed into the next component in the pipeline.\nRefused: count/rate of spans that were rejected by the next component in the pipeline.\nDropped: count/rate of spans that were dropped",
       "fieldConfig": {
@@ -1157,7 +1157,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1172,7 +1172,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1188,7 +1188,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1208,7 +1208,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Accepted: count/rate of metric points successfully pushed into the next component in the pipeline.\nRefused: count/rate of metric points that were rejected by the next component in the pipeline.\nDropped: count/rate of metric points that were dropped",
       "fieldConfig": {
@@ -1337,7 +1337,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1352,7 +1352,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1368,7 +1368,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1388,7 +1388,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Accepted: count/rate of log records successfully pushed into the next component in the pipeline.\nRefused: count/rate of log records that were rejected by the next component in the pipeline.\nDropped: count/rate of log records that were dropped",
       "fieldConfig": {
@@ -1517,7 +1517,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1532,7 +1532,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1548,7 +1548,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1568,7 +1568,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Number of units in the batch",
       "fieldConfig": {
@@ -1635,7 +1635,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1655,7 +1655,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -1758,7 +1758,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1774,7 +1774,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1794,7 +1794,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Number of times the batch was sent due to a size trigger. Number of times the batch was sent due to a timeout trigger.",
       "fieldConfig": {
@@ -1897,7 +1897,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1913,7 +1913,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1946,7 +1946,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Sent: count/rate of spans successfully sent to destination.\nEnqueue: count/rate of spans failed to be added to the sending queue.\nFailed: count/rate of spans in failed attempts to send to destination.",
       "fieldConfig": {
@@ -2056,7 +2056,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2071,7 +2071,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2087,7 +2087,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2107,7 +2107,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Sent: count/rate of metric points successfully sent to destination.\nEnqueue: count/rate of metric points failed to be added to the sending queue.\nFailed: count/rate of metric points in failed attempts to send to destination.",
       "fieldConfig": {
@@ -2217,7 +2217,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2232,7 +2232,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2248,7 +2248,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2268,7 +2268,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Sent: count/rate of log records successfully sent to destination.\nEnqueue: count/rate of log records failed to be added to the sending queue.\nFailed: count/rate of log records in failed attempts to send to destination.",
       "fieldConfig": {
@@ -2378,7 +2378,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2393,7 +2393,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2409,7 +2409,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2429,7 +2429,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Current size of the retry queue (in batches)",
       "fieldConfig": {
@@ -2517,7 +2517,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2536,7 +2536,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Fixed capacity of the retry queue (in batches)",
       "fieldConfig": {
@@ -2624,7 +2624,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2643,7 +2643,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -2732,7 +2732,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2764,7 +2764,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Total physical memory (resident set size)",
       "fieldConfig": {
@@ -2924,7 +2924,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2940,7 +2940,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2955,7 +2955,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2975,7 +2975,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Total bytes of memory obtained from the OS (see 'go doc runtime.MemStats.Sys')",
       "fieldConfig": {
@@ -3135,7 +3135,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3151,7 +3151,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3166,7 +3166,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3186,7 +3186,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Bytes of allocated heap objects (see 'go doc runtime.MemStats.HeapAlloc')",
       "fieldConfig": {
@@ -3346,7 +3346,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3362,7 +3362,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3377,7 +3377,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3397,7 +3397,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Total CPU user and system time in percentage",
       "fieldConfig": {
@@ -3553,7 +3553,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3569,7 +3569,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3585,7 +3585,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3605,7 +3605,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Number of service instances, which are reporting metrics",
       "fieldConfig": {
@@ -3696,7 +3696,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3716,7 +3716,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -3806,7 +3806,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3826,7 +3826,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -3885,7 +3885,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3932,7 +3932,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Receivers -> Processor(s) -> Exporters (Node Graph panel is beta, so this panel may not show data correctly).",
       "gridPos": {
@@ -3954,7 +3954,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -3969,7 +3969,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -4011,7 +4011,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Receivers -> Processor(s) -> Exporters (Node Graph panel is beta, so this panel may not show data correctly).",
       "gridPos": {
@@ -4033,7 +4033,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -4048,7 +4048,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -4090,7 +4090,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$datasource"
+        "uid": "prometheus"
       },
       "description": "Receivers -> Processor(s) -> Exporters (Node Graph panel is beta, so this panel may not show data correctly).",
       "gridPos": {
@@ -4112,7 +4112,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -4127,7 +4127,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -4179,7 +4179,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -4269,7 +4269,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -4288,7 +4288,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -4378,7 +4378,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -4397,7 +4397,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -4487,7 +4487,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -4520,7 +4520,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "Measures the number of messages received per RPC. Should be 1 for all non-streaming RPCs. GRPC status codes: https://grpc.github.io/grpc/core/md_doc_statuscodes.html",
           "fieldConfig": {
@@ -4816,7 +4816,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum by(rpc_grpc_status_code) (${metric:value}(${prefix:raw}rpc_server_responses_per_rpc_count{job=\"$job\"}[$__rate_interval]))",
@@ -4832,7 +4832,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "Measures the number of messages received per RPC. Should be 1 for all non-streaming RPCs. GRPC status codes: https://grpc.github.io/grpc/core/md_doc_statuscodes.html",
           "fieldConfig": {
@@ -5128,7 +5128,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum by(rpc_grpc_status_code) (${metric:value}(${prefix:raw}rpc_client_responses_per_rpc_count{job=\"$job\"}[$__rate_interval]))",
@@ -5144,7 +5144,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -5212,7 +5212,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5232,7 +5232,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -5300,7 +5300,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5320,7 +5320,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -5388,7 +5388,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5408,7 +5408,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -5476,7 +5476,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5510,7 +5510,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -5578,7 +5578,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5598,7 +5598,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "",
           "fieldConfig": {
@@ -5666,7 +5666,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5700,7 +5700,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "Added: Number of namespace add events received.\nUpdated: Number of namespace update events received.",
           "fieldConfig": {
@@ -5809,7 +5809,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5825,7 +5825,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5845,7 +5845,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$datasource"
+            "uid": "prometheus"
           },
           "description": "Added: Number of pod add events received.\nUpdated: Number of pod update events received.\nDeleted: Number of pod delete events received.",
           "fieldConfig": {
@@ -5934,7 +5934,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5950,7 +5950,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -5966,7 +5966,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "$datasource"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -6034,7 +6034,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result({__name__=~\"otelcol_process_uptime.*\"})",
         "includeAll": false,
@@ -6115,7 +6115,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result(avg by (receiver) ({__name__=~\"otelcol_receiver_.+\",job=\"$job\"}))",
         "includeAll": true,
@@ -6137,7 +6137,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result(avg by (processor) ({__name__=~\"otelcol_processor_.+\",job=\"$job\"}))",
         "includeAll": true,
@@ -6159,7 +6159,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result(avg by (exporter) ({__name__=~\"otelcol_exporter_.+\",job=\"$job\"}))",
         "includeAll": true,
@@ -6211,7 +6211,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result({__name__=~\"otelcol_process_uptime.+\",job=\"$job\"})",
         "description": "Some exporter(s) configuration(s) may add the metric suffix _total. This variable will detect this case.",
@@ -6233,7 +6233,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result({__name__=~\"otelcol_process_uptime.+\",job=\"$job\"})",
         "description": "Detect if _ or . is used as a divider in labels",
@@ -6255,7 +6255,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result({__name__=~\"otelcol_process_uptime.+\",job=\"$job\"})",
         "description": "Some exporter(s) configuration(s) may add the metric suffix _seconds_total. This variable will detect this \"_seconds\" suffix part.",
@@ -6277,7 +6277,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result({__name__=~\"otelcol_process_memory_rss.+\",job=\"$job\"})",
         "description": "Some exporter(s) configuration(s) may add the metric suffix _bytes. This variable will detect this \"_bytes\" suffix part.",
@@ -6299,7 +6299,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "definition": "query_result({__name__=~\".*.*rpc_server_duration_bucket|.*rpc_client_duration_bucket|.*http_server_duration_bucket|.*http_client_duration_bucket.*\",job=\"$job\"})",
         "description": "Some metrics (e.g., RPC, HTTP) may no longer have the otelcol_ prefix. This will detect it. See https://github.com/open-telemetry/opentelemetry-collector/pull/9759",
@@ -6321,7 +6321,7 @@
         "baseFilters": [],
         "datasource": {
           "type": "prometheus",
-          "uid": "$datasource"
+          "uid": "prometheus"
         },
         "filters": [],
         "label": "Ad Hoc",
