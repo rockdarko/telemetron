@@ -2,7 +2,7 @@
 # roles/grafana/handlers/main.yml
 # Per D-19 / Pitfall 8: container restarts on grafana.ini changes use
 # `docker restart <name>`. Datasource / dashboard provisioning files
-# hot-reload without restart (RESEARCH §2.1), so they don't notify here.
+# hot-reload without restart (RESEARCH sec.2.1), so they don't notify here.
 #
 # tasks/main.yml renders templates/grafana.ini.j2 with
 # `notify: restart grafana`. Re-rendering on knob change triggers this

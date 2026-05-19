@@ -6,7 +6,7 @@
 # (provisioning/datasources, provisioning/dashboards, provisioning/dashboards/telemetron),
 # rendered grafana.ini + two YAML manifests + seven JSON dashboards,
 # parent-dir bind mount of /opt/telemetron/grafana -> /etc/grafana
-# (Gate 8), env-injected GF_SECURITY_ADMIN_* (RESEARCH §2.1 first-boot-only),
+# (Gate 8), env-injected GF_SECURITY_ADMIN_* (RESEARCH sec.2.1 first-boot-only),
 # explicit HEALTHCHECK (image has none -- RESEARCH Risk 3).
 
 - name: Ensure grafana config dirs exist
@@ -39,7 +39,7 @@
     src: datasources/datasources.yaml.j2
     dest: "{{ grafana_config_dir }}/provisioning/datasources/datasources.yaml"
     mode: "0644"
-  # No notify -- Grafana hot-reloads provisioning files (RESEARCH §2.1).
+  # No notify -- Grafana hot-reloads provisioning files (RESEARCH sec.2.1).
   tags:
     - grafana
     - grafana-config
@@ -157,7 +157,7 @@
     # Healthcheck conditional-omit (mirrors alertmanager pattern; RESEARCH Risk 3).
     healthcheck: "{{ grafana_container_healthcheck if (grafana_healthcheck_enabled | bool) else omit }}"
     env:
-      # RESEARCH §2.1 Risk 2: GF_SECURITY_ADMIN_PASSWORD is FIRST-BOOT-ONLY.
+      # RESEARCH sec.2.1 Risk 2: GF_SECURITY_ADMIN_PASSWORD is FIRST-BOOT-ONLY.
       # Documented in README "Secrets" subsection.
       GF_SECURITY_ADMIN_USER: "{{ grafana_admin_user }}"
       GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"

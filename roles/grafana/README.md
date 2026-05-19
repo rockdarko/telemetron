@@ -202,13 +202,13 @@ Trace-to-logs correlation works for apps instrumented with an OTel SDK that push
 
 Clicking **View in Tempo** on a Loki log line with `trace_id` structured metadata navigates to the corresponding trace in Tempo Explore (D-79 derivedFields). Clicking **Logs for this span** on a Tempo trace navigates to Loki Explore with `{service_name='<svc>'} | trace_id='<id>'` pre-applied (D-79 + D-80 customQuery).
 
-See ROADMAP.md §999.4 backlog for the future option of reconciling the label naming convention (D-81).
+See ROADMAP.md sec.999.4 backlog for the future option of reconciling the label naming convention (D-81).
 
 ---
 
 ## Label mapping
 
-Live Loki labels are `{host, job, service_name}`. The Phase-3 spec'd `service` label is surfaced as `service_name` because the OTel Collector's `otlphttp/loki` exporter promotes the `service.name` resource attribute to `service_name` (Loki 3.x OTLP-native ingestion default). Telemetron M1 accepts this and standardises on `service_name`; D-80 forwards `service.name -> service_name` as the only `tracesToLogsV2` tag. A future post-M1 milestone may retrofit canonical `service` naming via an OTel exporter relabel rule -- see ROADMAP.md §999.4.
+Live Loki labels are `{host, job, service_name}`. The Phase-3 spec'd `service` label is surfaced as `service_name` because the OTel Collector's `otlphttp/loki` exporter promotes the `service.name` resource attribute to `service_name` (Loki 3.x OTLP-native ingestion default). Telemetron M1 accepts this and standardises on `service_name`; D-80 forwards `service.name -> service_name` as the only `tracesToLogsV2` tag. A future post-M1 milestone may retrofit canonical `service` naming via an OTel exporter relabel rule -- see ROADMAP.md sec.999.4.
 
 ---
 
@@ -232,7 +232,7 @@ Gates 1-9 apply to this role. Gate 9 (D-73) is specific to the Grafana role (dat
 
 ## Deviations from upstream INSPQ
 
-D-25 audit summary (RESEARCH §6.1):
+D-25 audit summary (RESEARCH sec.6.1):
 
 - **File provisioning replaces API-call provisioning**: upstream used `community.grafana.grafana_datasource` / `grafana_folder` Ansible modules that call the Grafana HTTP API at playbook time. Replaced with Grafana's native file-provisioning (`/etc/grafana/provisioning/`). File provisioning is idempotent, works before Grafana is running, and survives `docker volume rm` + fresh deploy.
 - **Image pin**: upstream used `grafana/grafana:latest`. Changed to `grafana/grafana-oss:13.0.1` (explicit OSS variant, pinned tag).

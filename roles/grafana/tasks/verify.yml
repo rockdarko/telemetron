@@ -6,7 +6,7 @@
 # Step pattern: curlimages/curl one-shot per assertion. Auth via Basic Auth
 # with admin + {{ grafana_admin_password }} -- the password stored in
 # Grafana's SQLite matches whatever was set on first boot
-# (RESEARCH §2.1 Risk 2 -- FIRST-BOOT-ONLY behavior).
+# (RESEARCH sec.2.1 Risk 2 -- FIRST-BOOT-ONLY behavior).
 #
 # Mirrors roles/alertmanager/tasks/verify.yml conditional readiness shape
 # (D-10a + W7 + D-32 + D-54 + D-69).

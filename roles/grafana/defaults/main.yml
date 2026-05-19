@@ -8,7 +8,7 @@
 # Container runs as GF_UID=472 (image default); DO NOT override `user:`.
 # Embedded SQLite at /var/lib/grafana/grafana.db on telemetron_grafana_data
 # volume (D-04 / UI-01). HEALTHCHECK is explicit -- image ships none
-# (RESEARCH §2.1).
+# (RESEARCH sec.2.1).
 
 # --- Image pin (OPS-01; UI-01) ---
 # OSS variant explicitly -- avoids Enterprise feature gates.
@@ -63,7 +63,7 @@ grafana_dashboard_extra_dir: ""                         # empty = no operator dr
 grafana_extra_datasources: []                           # operator-supplied datasources to merge
 grafana_extra_env: {}                                   # extra container env vars (operator escape hatch)
 
-# --- Healthcheck (RESEARCH §2.1 Risk 3: image has NO built-in HEALTHCHECK; explicit required) ---
+# --- Healthcheck (RESEARCH sec.2.1 Risk 3: image has NO built-in HEALTHCHECK; explicit required) ---
 # busybox base means wget is available (no distroless concern).
 grafana_healthcheck_enabled: true
 grafana_healthcheck_test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/health || exit 1"]

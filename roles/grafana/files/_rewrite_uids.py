@@ -3,7 +3,7 @@
 roles/grafana/files/_rewrite_uids.py
 
 Fork-time helper for substituting upstream dashboard datasource template
-variables for Telemetron's hardcoded UIDs (D-77 + RESEARCH §3 per-dashboard
+variables for Telemetron's hardcoded UIDs (D-77 + RESEARCH sec.3 per-dashboard
 substitution map).
 
 This script is committed alongside the JSONs it generates so the
@@ -27,7 +27,7 @@ The --src-dir is expected to contain the FIVE upstream JSONs
   - tempo-operational.json               (grafana/tempo v2.10.5)
   - mimir-overview.json                  (grafana/mimir mimir-3.0.6)
 
-Source URLs (RESEARCH §3 table):
+Source URLs (RESEARCH sec.3 table):
   https://grafana.com/api/dashboards/1860/revisions/45/download
   https://grafana.com/api/dashboards/15983/revisions/29/download
   https://raw.githubusercontent.com/grafana/loki/v3.7.2/production/loki-mixin/dashboards/dashboard-loki-operational.json
@@ -41,7 +41,7 @@ import os
 import sys
 
 
-# Per RESEARCH §3 table + OQ-4:
+# Per RESEARCH sec.3 table + OQ-4:
 # All five upstream dashboards have datasource template variables that
 # Telemetron substitutes for hardcoded UID references at fork time.
 #
@@ -51,7 +51,7 @@ import sys
 #
 # Loki operational dashboard uses RAW STRINGS "$datasource" / "$loki_datasource"
 # (no template vars defined in JSON) -- requires string-level replace,
-# substituting in JSON objects per Type B procedure in RESEARCH §3.
+# substituting in JSON objects per Type B procedure in RESEARCH sec.3.
 SUBSTITUTIONS = {
     "dashboard-1860-rev45.json": {
         "output": "host-health.json",
