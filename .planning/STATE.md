@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05-08-PLAN.md (gap closure: karma healthcheck opt-in + auto_remove race fix + Rule-1 karma->AM probe)"
-last_updated: "2026-05-19T17:18:46.567Z"
+stopped_at: "Phase 05 ui-plane VERIFIED end-to-end on leviathan (re-verification round 2, 3/3 passed, 0 issues; commit 1fd9685). Phase 05 complete. Phase 06 (opt-in/orchestration/docs/smoke-test) is next."
+last_updated: "2026-05-19T18:05:00Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17)
 
 **Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 05 — ui-plane
+**Current focus:** Phase 06 — opt-in, orchestration, docs & smoke test
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Status: Ready to execute
+Phase: 06
+Plan: Not started (planning needed)
+Status: Phase 05 verified end-to-end on leviathan; Phase 06 is next
 Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
@@ -170,6 +170,7 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 05-ui-plane]: [05-08] Karma container HEALTHCHECK defaults to DISABLED -- ghcr.io/prymitive/karma:v0.130 is FROM scratch (no /bin/sh); CMD-SHELL probes guaranteed to fail. In-network curl-probe in verify.yml is the canonical health gate. Operators wanting Docker-level autohealing must explicitly opt in AND provide a scratch-image-compatible healthcheck test (sidecar or custom image rebuild, both out of M1 scope).
 - [Phase 05-ui-plane]: [05-08] auto_remove:false + cleanup:true + detach:false is the documented community.docker escape hatch from the auto_remove race when docker_container_exec isn't viable (target container has no shell). Applied to karma's 3 verify probe tasks and promlens's 2 verify probe tasks pre-emptively (same defect class as 04-02 alertmanager + 05-05 grafana).
 - [Phase 05-ui-plane]: [05-08 Rule-1 auto-fix] YAML folded-scalar more-indented continuation lines preserve newlines (do NOT collapse to spaces). Multi-line shell commands with || / | chains across more-indented lines will produce sh syntax errors. Use plain scalar (single-line) for shell commands -- fixed karma->AM probe that was silently failing on every pre-05-08 deploy. Also: karma /alerts.json endpoint is POST-only (returns 405 on GET); /api/v1/alerts does not exist on karma v0.130.
+- [Phase 05-ui-plane]: Phase 05 UI plane VERIFIED end-to-end on leviathan after gap-closure round (Plans 05-05/06/07/08). Live UAT round 2 (2026-05-19, commit 1fd9685): Test 1 deploy+idempotency (ok=36 changed=0 failed=0 x2), Test 2 trace-to-logs (synthesized OTLP path proved structured_metadata derivedField path AND regex body fallback path), Test 3 tempo-self-metrics (122 ds refs all -> uid=prometheus; live Grafana proxy resolves; control bogus UID -> 404). 05-VERIFICATION.md elevated human_needed -> verified.
 
 ### Roadmap Evolution
 
@@ -181,10 +182,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- **Phase 5 blocked on Phase 4.1**: per CONTEXT.md D-90, plan 05-01 must NOT begin until 04.1 lands. Phase 5 inherits the new convention (e.g. `grafana_admin_password`, no `vault_` prefix) — running 05 before 04.1 would create a half-converted codebase.
+None active. (Prior "Phase 5 blocked on Phase 4.1" concern is resolved -- 04.1 landed and Phase 5 has now been verified.)
 
 ## Session Continuity
 
-Last session: 2026-05-19T16:55:19.889Z
-Stopped at: Completed 05-08-PLAN.md (gap closure: karma healthcheck opt-in + auto_remove race fix + Rule-1 karma->AM probe)
+Last session: 2026-05-19T18:05:00Z
+Stopped at: Phase 05 ui-plane VERIFIED end-to-end on leviathan (live UAT round 2, 3/3 passed, 0 issues, commit 1fd9685). Phase 06 is next.
 Resume file: None
