@@ -30,7 +30,7 @@
     image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"
     state: started
     detach: false
-    auto_remove: true
+    auto_remove: false   # 05-08: was true; auto_remove+detach:false combo is invalid -- ansible can't read result post-removal. cleanup:true handles post-run removal.
     recreate: true
     cleanup: true
     networks:
@@ -51,7 +51,7 @@
     image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"
     state: started
     detach: false
-    auto_remove: true
+    auto_remove: false   # 05-08: was true; auto_remove+detach:false combo is invalid -- ansible can't read result post-removal. cleanup:true handles post-run removal.
     recreate: true
     cleanup: true
     networks:
@@ -77,7 +77,7 @@
     image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"
     state: started
     detach: false
-    auto_remove: true
+    auto_remove: false   # 05-08: was true; auto_remove+detach:false combo is invalid -- ansible can't read result post-removal. cleanup:true handles post-run removal.
     recreate: true
     cleanup: true
     networks:
