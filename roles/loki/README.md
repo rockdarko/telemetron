@@ -58,19 +58,19 @@ touch `loki_retention_period` (default `14d`) and `loki_publish_host`
 | `loki_network` | `telemetron` | Docker network |
 | `loki_tz` | `Etc/UTC` | Container timezone |
 
-## Vault keys
+## Secrets
 
-Required keys in `inventory/<env>/group_vars/all/vault.yml`:
+Required keys in `inventory/<env>/group_vars/all/secrets.yml`:
 
 | Key | Purpose |
 |-----|---------|
-| `vault_loki_s3_access_key` | MinIO access key for the `loki-chunks` bucket |
-| `vault_loki_s3_secret_key` | MinIO secret key for the `loki-chunks` bucket |
+| `loki_s3_access_key` | MinIO access key for the `loki-chunks` bucket |
+| `loki_s3_secret_key` | MinIO secret key for the `loki-chunks` bucket |
 
-Per CONTEXT.md D-27, both keys are aliased to `vault_minio_root_user` /
-`vault_minio_root_password` in `vault.yml.example` for now. A future
-hardening milestone will split MinIO into per-backend users with
-bucket-scoped IAM policies; only `vault.yml` changes -- the role
+Per CONTEXT.md D-27 (superseded by D-90 naming), both keys are aliased to
+`minio_root_user` / `minio_root_password` in `secrets.yml.example` for now.
+A future hardening milestone will split MinIO into per-backend users with
+bucket-scoped IAM policies; only `secrets.yml` changes -- the role
 templates do not.
 
 ## Tags
@@ -127,9 +127,9 @@ ssh -L 3100:localhost:3100 <homelab-host>
 
 - **Default: no host port publish.** Operator access via SSH local
   forward.
-- **S3 credentials from vault.** The rendered `/opt/telemetron/loki/loki.yaml`
-  is written with mode `0600` and contains the resolved vault values
-  at rest. If you trust the host's filesystem permissions but not
+- **S3 credentials from operator-supplied secrets.** The rendered
+  `/opt/telemetron/loki/loki.yaml` is written with mode `0600` and contains
+  the resolved secret values at rest. If you trust the host's filesystem permissions but not
   the host itself, this is the same posture as the minio role's
   env file. Future hardening: per-backend MinIO users with bucket-scoped
   IAM (deferred from M1 per D-27).
@@ -161,8 +161,8 @@ This role passes all five gates documented in `roles/README.md`:
 - **Grep gates (Pitfall 9):** zero matches for INSPQ leftovers; zero
   non-ASCII characters in `roles/loki/`.
 - **Image-pin gate:** zero floating-tag references.
-- **Vault-discipline gate:** every `{{ vault_* }}` reference has a
-  matching key in `vault.yml.example`.
+- **Secrets-discipline gate:** every sensitive `{{ <role>_<purpose> }}`
+  reference has a matching key in `secrets.yml.example`.
 - **Idempotency gate:** twice-in-a-row playbook run reports `changed=0`.
 - **Healthcheck + restart-policy gate:** `docker inspect` returns
   `healthy` and `unless-stopped`.

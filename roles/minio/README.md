@@ -67,16 +67,16 @@ touch `minio_publish_host` (default `false` -- see Security below).
 | `minio_tz` | `Etc/UTC` | Container timezone (Pitfall 6) |
 | `minio_browser_redirect_url` | `""` | Empty disables console redirect |
 
-## Vault keys
+## Secrets
 
-Required keys in `inventory/<env>/group_vars/all/vault.yml`:
+Required keys in `inventory/<env>/group_vars/all/secrets.yml`:
 
 | Key | Purpose |
 |-----|---------|
-| `vault_minio_root_user` | MinIO root username (>= 3 chars) |
-| `vault_minio_root_password` | MinIO root password (>= 8 chars; 32+ recommended) |
+| `minio_root_user` | MinIO root username (>= 3 chars) |
+| `minio_root_password` | MinIO root password (>= 8 chars; 32+ recommended) |
 
-Placeholders ship in `inventory/example-homelab/group_vars/all/vault.yml.example`.
+Placeholders ship in `inventory/example-homelab/group_vars/all/secrets.yml.example`.
 
 ## Tags
 
@@ -115,9 +115,11 @@ publishing.
 - **Default: no host port publish.** Operator access via
   `ssh -L 9001:localhost:9001 <host>` and a web browser, or via
   `docker exec` on the host.
-- **Root credentials from vault.** No `minioadmin/minioadmin` default
-  anywhere; the role refuses to render the env file if vault keys
-  are missing (Ansible errors out on the undefined vault variable).
+- **Root credentials from operator-supplied secrets.** No
+  `minioadmin/minioadmin` default anywhere; the role refuses to render the
+  env file if the secret keys are missing (Ansible errors out on the
+  undefined variable). Mechanism is the operator's choice
+  (ansible-vault / sops / env / external manager).
 - **Inter-component traffic on the `telemetron` Docker bridge network only.**
   Loki, Tempo, and Mimir (Phase 2) will reach MinIO at
   `http://minio:9000` over the bridge -- never via the host.
@@ -161,8 +163,9 @@ This role passes all five gates documented in `roles/README.md`:
   Fork-leftover grep gate (see `roles/README.md` port process for the full pattern) returns 0 matches against `roles/minio/`.
   Non-ASCII grep gate returns 0 matches against `roles/minio/`.
 - **Image-pin gate:** zero floating-tag references in `roles/minio/` (all images pinned to explicit release tags).
-- **Vault-discipline gate:** every `{{ vault_* }}` reference has a
-  matching key in `vault.yml.example` with the consuming-role comment.
+- **Secrets-discipline gate:** every sensitive `{{ <role>_<purpose> }}`
+  reference has a matching key in `secrets.yml.example` with the
+  consuming-role comment.
 - **Idempotency gate:** twice-in-a-row playbook run reports `changed=0`.
 - **Healthcheck + restart-policy gate:** `docker inspect` returns
   `healthy` and `unless-stopped`.

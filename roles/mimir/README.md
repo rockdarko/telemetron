@@ -94,19 +94,19 @@ PITFALLS.md references.
 | `mimir_network` | `telemetron` | Docker network |
 | `mimir_tz` | `Etc/UTC` | Container timezone |
 
-## Vault keys
+## Secrets
 
-Required keys in `inventory/<env>/group_vars/all/vault.yml`:
+Required keys in `inventory/<env>/group_vars/all/secrets.yml`:
 
 | Key | Purpose |
 |-----|---------|
-| `vault_mimir_s3_access_key` | MinIO access key for all three mimir-* buckets |
-| `vault_mimir_s3_secret_key` | MinIO secret key for all three mimir-* buckets |
+| `mimir_s3_access_key` | MinIO access key for all three mimir-* buckets |
+| `mimir_s3_secret_key` | MinIO secret key for all three mimir-* buckets |
 
-Per CONTEXT.md D-27, both alias to `vault_minio_root_user` /
-`vault_minio_root_password` in `vault.yml.example`. Future hardening
-milestone splits MinIO into per-backend users (vault values change;
-role templates do not). Cheap forward-compat per D-27.
+Per CONTEXT.md D-27 (superseded by D-90 naming), both alias to
+`minio_root_user` / `minio_root_password` in `secrets.yml.example`.
+Future hardening milestone splits MinIO into per-backend users (secret
+values change; role templates do not). Cheap forward-compat per D-27.
 
 ## Tags
 
@@ -170,7 +170,7 @@ curl http://localhost:9009/services   # operational debug -- shows component sta
 ## Security model
 
 - **Default: no host port publish.** Operator access via SSH local-forward.
-- **S3 credentials from vault.** Rendered config at mode `0600`.
+- **S3 credentials from operator-supplied secrets.** Rendered config at mode `0600`.
 - **Inter-component traffic on the `telemetron` bridge only.** Mimir
   reaches MinIO at `minio:9000` over the bridge; never via the host.
 - **Multitenancy off** -- all data lives in tenant `anonymous`.
@@ -205,8 +205,8 @@ project name):
 - **Grep gate (Pitfall 9):** zero matches in code/config files for
   upstream-org leftovers.
 - **Non-ASCII gate (OPS-05):** zero non-ASCII characters in the role.
-- **Vault-discipline (OPS-02):** every `{{ vault_* }}` reference has
-  a matching key in `vault.yml.example`.
+- **Secrets-discipline (OPS-02):** every sensitive `{{ <role>_<purpose> }}`
+  reference has a matching key in `secrets.yml.example`.
 - **Idempotency (OPS-04):** twice-in-a-row run reports `changed=0`.
 - **Healthcheck + restart-policy (OPS-06):** `docker inspect` returns
   `healthy` (Outcome A/B) or the verify task's `State.Running` + `/ready`
