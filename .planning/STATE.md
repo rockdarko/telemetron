@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
-status: executing
-stopped_at: "Completed 06-03-PLAN.md -- 3 M1 docs (architecture/quickstart/inventory) authored + Gate-1-scrubbed + leviathan UAT verbatim PASS. Next: 06-04 README rewrite + idempotency revalidation."
-last_updated: "2026-05-19T22:15:22.928Z"
+status: verifying
+stopped_at: "Completed 06-04-PLAN.md -- M1 SHIPPED on leviathan 2026-05-19. README rewritten per D-106; docs/README.md ticks 3/7 M1/v2 split; PROJECT/ROADMAP/REQUIREMENTS declare M1 complete; full-surface idempotency (enable_nfsd:true) ok=138 changed=0; INV-01 fresh-clone PASS; INV-03 13-role tag audit PASS. Next: v2 milestone scoping."
+last_updated: "2026-05-19T22:48:16.015Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 26
-  completed_plans: 25
+  completed_plans: 26
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 
 Phase: 06 (opt-in-orchestration-docs-smoke-test) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
@@ -77,6 +77,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 06 P01 | 24min | 4 tasks tasks | 12 files files |
 | Phase 06-opt-in-orchestration-docs-smoke-test P02 | 12min | 4 tasks tasks | 5 files files |
 | Phase 06-opt-in-orchestration-docs-smoke-test P03 | 10min | 4 tasks | 3 files |
+| Phase 06-opt-in-orchestration-docs-smoke-test P04 | 28min | 4 tasks tasks | 6 files files |
 
 ## Accumulated Context
 
@@ -184,6 +185,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 06-opt-in-orchestration-docs-smoke-test]: Plan 06-03 delivers DOCS-01/02/03: 3 M1 docs (architecture.md terse 3-4pg, quickstart.md teaching 6-8pg, inventory.md deep-dive 2-3pg). Gate 1 scrub PASS on all (zero D-XX, zero .planning paths, zero vault_ prefix, zero INSPQ heritage, zero non-ASCII).
 - [Phase 06-opt-in-orchestration-docs-smoke-test]: Quickstart DOCS-02 acceptance proven verbatim on leviathan: full-stack idempotency (ok=132 changed=0), 12 containers up, smoke 4/4 signals PASS, 7 dashboards visible, Loki smoke-test query returns data, 4 datasources health OK, Karma+Grafana URLs 200.
 - [Phase 06-opt-in-orchestration-docs-smoke-test]: [Rule 1 auto-fix during 06-03 UAT] Quickstart Step 6 healthy-container expectation corrected (11/12 healthy, Karma scratch image has no shell for probe). Fact-check authoring also caught plan-skeleton drift on inventory filename (hosts.yml not example-homelab.hosts).
+- [Phase 06-opt-in-orchestration-docs-smoke-test]: Plan 06-04 DELIVERS M1 CLOSE-OUT: DOCS-04 (README rewritten per D-106) + INV-01 (fresh-clone walkthrough proven on leviathan) + INV-03 (13-role tag audit PASS) + OPS-04 idempotency revalidation (two back-to-back deploys with enable_nfsd:true both changed=0). M1 SHIPPED 2026-05-19.
+- [Phase 06-opt-in-orchestration-docs-smoke-test]: Top-level README.md rewritten per D-106: 'Self-hosted observability in one playbook' value prop + 3-line Quick start + 13-row component table + Not in M1 subsection (Hook router, HAProxy, Kubernetes, Multi-host explicit deferrals) + INSPQ Origin paragraph at the bottom. ZERO 'Status: early', ZERO 'Coming soon', ZERO vault_, ZERO non-ASCII.
+- [Phase 06-opt-in-orchestration-docs-smoke-test]: docs/README.md split into '## Shipped (M1)' (3 docs from Plan 06-03) + '## Deferred (v2)' (7 docs mapped to DOCS-V2-01..07 in REQUIREMENTS.md). Catalog is now source-of-truth for what shipped vs what's deferred.
 
 ### Roadmap Evolution
 
@@ -199,6 +203,6 @@ None active. (Prior "Phase 5 blocked on Phase 4.1" concern is resolved -- 04.1 l
 
 ## Session Continuity
 
-Last session: 2026-05-19T22:15:10.814Z
-Stopped at: Completed 06-03-PLAN.md -- 3 M1 docs (architecture/quickstart/inventory) authored + Gate-1-scrubbed + leviathan UAT verbatim PASS. Next: 06-04 README rewrite + idempotency revalidation.
+Last session: 2026-05-19T22:48:16.010Z
+Stopped at: Completed 06-04-PLAN.md -- M1 SHIPPED on leviathan 2026-05-19. README rewritten per D-106; docs/README.md ticks 3/7 M1/v2 split; PROJECT/ROADMAP/REQUIREMENTS declare M1 complete; full-surface idempotency (enable_nfsd:true) ok=138 changed=0; INV-01 fresh-clone PASS; INV-03 13-role tag audit PASS. Next: v2 milestone scoping.
 Resume file: None
