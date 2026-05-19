@@ -87,9 +87,25 @@ SUBSTITUTIONS = {
         "output": "tempo-self-metrics.json",
         "type": "template_var",
         "vars": {"ds": "prometheus", "logsds": "loki"},
+        # uid_refs entries handle TWO categories:
+        # 1. Template-var refs ($ds, $logsds) -- the modern jsonnet form on
+        #    panels[*].datasource.uid (handled by 05-04's key-form fix).
+        # 2. Upstream-org-environment hex UIDs that appear directly on
+        #    panels[*].targets[*].datasource.uid as literal strings. These are
+        #    artifacts of the grafana/tempo v2.10.5 mixin's source Grafana env
+        #    and have no template-var indirection -- they must be substituted
+        #    by raw uid match. All four are prometheus-type in upstream;
+        #    pin to telemetron `prometheus` UID per D-77.
+        #    Audit on leviathan 2026-05-19 (05-HUMAN-UAT.md gap 2):
+        #      22 mimir-ops-03, 22 cortex-ops-01, 6 P666011C0B63BDCA4,
+        #      1 P1809F7CD0C75ACF3 = 51 target-level refs total.
         "uid_refs": {
             "$ds": {"type": "prometheus", "uid": "prometheus"},
             "$logsds": {"type": "loki", "uid": "loki"},
+            "mimir-ops-03": {"type": "prometheus", "uid": "prometheus"},
+            "cortex-ops-01": {"type": "prometheus", "uid": "prometheus"},
+            "P666011C0B63BDCA4": {"type": "prometheus", "uid": "prometheus"},
+            "P1809F7CD0C75ACF3": {"type": "prometheus", "uid": "prometheus"},
         },
     },
     "mimir-overview.json": {
@@ -122,7 +138,11 @@ def rewrite_template_var(src_path, dest_path, vars_map, uid_refs):
             if v.get("type") != "datasource" or v.get("name") not in vars_map
         ]
 
-    # 2. Walk panels (and nested rows.panels) substituting datasource.uid
+    # 2. Walk all nested datasource refs (panels, rows.panels, panels[*].targets,
+    #    templating, anything else with a `datasource` key) and substitute uid via
+    #    uid_refs map. The walker recurses through dict.values() so target-level
+    #    refs (panels[*].targets[*].datasource.uid) are naturally visited even
+    #    though the comment originally only mentioned panels.
     def walk(obj):
         if isinstance(obj, dict):
             if "datasource" in obj and isinstance(obj["datasource"], dict):
