@@ -54,8 +54,26 @@ karma_default_filters: []               # list of default LogQL-style filter str
 karma_labels_keep: []                   # list of label names to display in grid view
 karma_extra_alertmanager_servers: []    # additional AM endpoints (for multi-AM ops; v2)
 
-# --- Healthcheck (RESEARCH sec.2.2 -- image has NO built-in HEALTHCHECK; explicit required) ---
-karma_healthcheck_enabled: true
+# --- Healthcheck (OPT-IN per UAT 05-08 gap fix) ---
+# ghcr.io/prymitive/karma:v0.130 is built FROM scratch -- ships ONLY the /karma
+# binary plus /etc/ssl certificates. No /bin/sh, no wget, no curl. Any
+# CMD-SHELL HEALTHCHECK form fails immediately ("exec: /bin/sh: stat /bin/sh:
+# no such file or directory") and docker marks the container unhealthy after
+# 5 failed retries even though karma itself is serving traffic correctly.
+#
+# Karma's binary has no self-probe subcommand suitable for tight-loop
+# healthcheck (no --check-config, no -version that's safe to call repeatedly).
+#
+# Default disposition: HEALTHCHECK disabled. The canonical health gate is
+# the in-network curl-probe in roles/karma/tasks/verify.yml line 27, which
+# runs at deploy time on the telemetron Docker bridge and is independent
+# of the container-level HEALTHCHECK.
+#
+# To re-enable: set karma_healthcheck_enabled:true in inventory AND override
+# karma_healthcheck_test with a probe that works against a scratch image
+# (sidecar pattern or custom image rebuild -- both out of M1 scope).
+# See roles/karma/README.md "Healthcheck" section for details.
+karma_healthcheck_enabled: false
 karma_healthcheck_test: ["CMD-SHELL", "wget --spider -q http://localhost:{{ karma_container_port }}/health || exit 1"]
 karma_healthcheck_interval: 15s
 karma_healthcheck_timeout: 5s
