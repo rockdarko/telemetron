@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-07-PLAN.md (gap closure)
-last_updated: "2026-05-19T16:50:23.822Z"
+stopped_at: Completed 05-05-PLAN.md (gap closure)
+last_updated: "2026-05-19T16:51:37.338Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 05 (ui-plane) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-05-19
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05 P04 | 12 | 4 tasks | 14 files |
 | Phase 05-ui-plane P06 | 8min | 4 tasks | 3 files |
 | Phase 05 P07 | 4 min | 4 tasks tasks | 3 files files |
+| Phase 05-ui-plane P05 | 6min | 3 tasks tasks | 2 files files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 05]: matcherType: structured_metadata is the canonical Loki 3.x derivedField path for OTel-native trace_id (D-78); matcherType: label form was wrong because telemetron's live Loki labels don't include trace_id
 - [Phase 05]: Two derivedFields with distinct name keys (trace_id + trace_id_body) renders both clickable links in Grafana log detail panel
 - [Phase 05]: Grafana 13.0.1 does NOT hot-reload provisioning files; POST /api/admin/provisioning/datasources/reload is the canonical operator step after disk render
+- [Phase 05-ui-plane]: 8 grafana verify curl-probes rewritten to docker_container_exec against live container (mirrors Phase-4 Bug 1 fix); eliminates ansible/ansible#45272 auto_remove+detach:false race; UAT gaps 1/6/7 closed on leviathan with both deploys ok=22 changed=0 failed=0
+- [Phase 05-ui-plane]: Rule 1 auto-fix during 05-05 UAT: Gate 9.5 cmd block converted from YAML folded scalar (>-) to block literal (|) with backslash line-continuations -- folded scalar preserved newlines on deeper-indented lines, broke bash parsing of  pipeline; latent bug in 05-04 surfaced once verify ran end-to-end
 
 ### Roadmap Evolution
 
@@ -178,6 +181,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T16:50:23.818Z
-Stopped at: Completed 05-07-PLAN.md (gap closure)
+Last session: 2026-05-19T16:51:31.895Z
+Stopped at: Completed 05-05-PLAN.md (gap closure)
 Resume file: None
