@@ -39,11 +39,12 @@ inventory/*/
 !inventory/example-homelab/
 !inventory/example-homelab/**
 
-# --- Ansible vault (OPS-02, Phase 1 D-15) ---
-# Real vault files are NEVER committed (overrides the negations above for
+# --- Ansible vault / secrets (OPS-02, Phase 1 D-15, updated Phase 4.1 D-90) ---
+# Real secrets files are NEVER committed (overrides the negations above for
 # example-homelab/**). The .example template IS committed.
-# Naming convention: vault_<role>_<purpose>.
+# Naming convention: role-namespaced <role>_<purpose> (no vault_ prefix, per D-90).
 **/vault.yml
+**/secrets.yml
 .vault_password
 ansible-vault-password.txt
 

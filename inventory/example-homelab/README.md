@@ -13,7 +13,7 @@ single Docker host.
     |       |-- network.yml                    # telemetron_network, publish default, TZ
     |       |-- storage.yml                    # volume prefix, MinIO bucket names, retention defaults
     |       |-- minio.yml                      # MinIO-specific operator knobs
-    |       `-- vault.yml.example              # vault placeholders (copy to vault.yml, fill in, encrypt)
+    |       `-- secrets.yml.example            # secret placeholders (copy to secrets.yml, fill in, protect with your tool of choice)
     `-- README.md                              # this file
 
 Phase 2 onward will add per-role files under `group_vars/all/` as the
@@ -38,16 +38,18 @@ annotated with what it does and what its homelab default means.
    Default behavior (no edit) runs against the Ansible control host
    itself via local connection.
 
-3. **Set up the vault file:**
+3. **Set up the secrets file:**
 
    ```bash
-   cp inventory/example-homelab/group_vars/all/vault.yml.example \
-      inventory/example-homelab/group_vars/all/vault.yml
+   cp inventory/example-homelab/group_vars/all/secrets.yml.example \
+      inventory/example-homelab/group_vars/all/secrets.yml
 
-   # Edit vault.yml -- replace every CHANGE_ME with a strong random value.
-   # vault.yml is gitignored; vault.yml.example is committed.
+   # Edit secrets.yml -- replace every CHANGE_ME with a strong random value.
+   # secrets.yml is gitignored; secrets.yml.example is committed.
 
-   ansible-vault encrypt inventory/example-homelab/group_vars/all/vault.yml
+   # Protect the file. Operator's choice -- ansible-vault is the path that
+   # matches the rest of this README:
+   ansible-vault encrypt inventory/example-homelab/group_vars/all/secrets.yml
    # Choose a vault password when prompted; remember it.
    ```
 
@@ -69,15 +71,20 @@ annotated with what it does and what its homelab default means.
                     --ask-vault-pass
    ```
 
-## Vault discipline (OPS-02)
+## Secrets discipline (OPS-02)
 
-- Naming convention: `vault_<role>_<purpose>` (e.g. `vault_minio_root_password`).
-- Every `{{ vault_* }}` reference in a role MUST have a matching key in
-  `vault.yml.example` with a `CHANGE_ME` placeholder and a comment naming
+- Naming convention: role-namespaced — `<role>_<purpose>` (e.g. `minio_root_password`).
+  No `vault_` prefix; the role namespace + descriptive suffix carry the meaning
+  (per D-90 / [[feedback-no-decorative-convention-prefixes]]).
+- Every sensitive `{{ <role>_<purpose> }}` reference in a role MUST have a matching
+  key in `secrets.yml.example` with a `CHANGE_ME` placeholder and a comment naming
   the consuming role.
-- The real `vault.yml` is in `.gitignore`; the `.example` file ships in-repo.
-- Vault password sources: `--ask-vault-pass` (interactive),
-  `--vault-password-file <path>`, or the `ANSIBLE_VAULT_PASSWORD_FILE` env var.
+- The real `secrets.yml` is in `.gitignore`; the `.example` file ships in-repo.
+- Protection mechanism is the operator's choice: ansible-vault (use
+  `--ask-vault-pass`, `--vault-password-file <path>`, or
+  `ANSIBLE_VAULT_PASSWORD_FILE` env var), sops, environment-variable injection,
+  an external secret manager, or chmod 600 on a homelab. Telemetron documents
+  keys, not mechanism.
 
 ## Prerequisites
 
