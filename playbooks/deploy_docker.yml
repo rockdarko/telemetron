@@ -69,7 +69,11 @@
     - role: promlens
       tags:
         - promlens
-  # Phase 5 is FEATURE-COMPLETE: node_exporter + opentelemetry + prometheus
-  # + fluentbit + alertmanager + grafana + karma + promlens are all wired.
-  # Remaining:
-  #   Phase 6: nfsd (opt-in via enable_nfsd flag)
+    - role: nfsd
+      tags:
+        - nfsd
+      when: enable_nfsd | default(false) | bool
+  # M1 deploy order is FEATURE-COMPLETE:
+  # minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry
+  # -> prometheus -> fluentbit -> alertmanager -> grafana -> karma
+  # -> promlens -> nfsd (opt-in via enable_nfsd).

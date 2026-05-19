@@ -1,0 +1,39 @@
+# Telemetron -- nfsd opt-in inventory knobs (Phase 6, D-91..D-96)
+#
+# Consumed by:
+#   - roles/nfsd                                     (this whole file)
+#   - roles/fluentbit/templates/fluent-bit.conf.j2   (enable_nfsd gate)
+#   - roles/fluentbit/files/enrich.lua               (path-segment-to-host)
+#   - playbooks/deploy_docker.yml                    (when: enable_nfsd guard)
+#
+# COUPLING (D-92): enable_nfsd is a SINGLE knob that flips BOTH the nfsd
+# role AND a conditional [INPUT] tail block inside roles/fluentbit/. There
+# is no honest configuration where one runs without the other on a
+# Telemetron host: nfsd ingests files; Fluent Bit ships them.
+#
+# Default off. Most operators do not need this -- see roles/nfsd/README.md
+# "When to use this role" for the decision tree.
+
+# Master opt-in. Default false -- nfsd does not deploy.
+enable_nfsd: false
+
+# Share root. Sub-dirs per remote hostname provide a deterministic
+# path-to-host-label mapping for Fluent Bit (segment 4 of the FB tag
+# after splitting on `.`). CHANGING THIS PATH requires a matching update
+# to roles/fluentbit/files/enrich.lua hostname_from_nfs_tag() segment
+# constant -- see roles/nfsd/README.md "How this integrates with Fluent Bit".
+nfsd_share_root: /srv/telemetron-nfs
+
+# Exports list. Default empty -- fail-safe. With enable_nfsd: true and
+# nfsd_exports: [], the NFS server installs and starts but exposes
+# nothing until the operator names a remote host below.
+#
+# Example (one remote host):
+# nfsd_exports:
+#   - path: /srv/telemetron-nfs/oldbox
+#     allow: "10.0.0.42(rw,sync,root_squash,no_subtree_check)"
+nfsd_exports: []
+
+# Protocol. NFSv4 only (D-94: AUTH_SYS + IP allow-list; one-port TCP 2049).
+# Kerberos is a v2 hardening (REQUIREMENTS.md ALERT/HARDEN deferrals).
+nfsd_protocol: nfsv4

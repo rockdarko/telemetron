@@ -14,7 +14,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `loki`                   | log backend (monolithic mode)                     | ☑ |
 | `mimir`                  | long-term metrics (monolithic mode)               | ☑ |
 | `minio`                  | S3-compatible object storage                      | ☑ |
-| `nfsd`                   | NFS for legacy log ingestion (optional)           | ☐ |
+| `nfsd`                   | NFS for legacy log ingestion (optional)           | ☑ |
 | `node_exporter`          | host metrics exporter (CPU, memory, disk, network, FS) | ☑ |
 | `opentelemetry`          | OTel Collector                                    | ☑ |
 | `prometheus`             | short-term metrics + alerting eval                | ☑ |
