@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-06-PLAN.md (gap closure)
-last_updated: "2026-05-19T16:48:42.378Z"
-last_activity: 2026-05-19 -- Phase 05 execution started
+stopped_at: Completed 05-07-PLAN.md (gap closure)
+last_updated: "2026-05-19T16:50:23.822Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 05 (ui-plane) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 05
-Last activity: 2026-05-19 -- Phase 05 execution started
+Plan: 2 of 8
+Status: Ready to execute
+Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -71,6 +71,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05 P03 | 8 | 2 tasks | 10 files |
 | Phase 05 P04 | 12 | 4 tasks | 14 files |
 | Phase 05-ui-plane P06 | 8min | 4 tasks | 3 files |
+| Phase 05 P07 | 4 min | 4 tasks tasks | 3 files files |
 
 ## Accumulated Context
 
@@ -159,6 +160,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 05]: Phase 5 UI Plane complete: 3/3 plans (grafana+karma+promlens); UI-01..UI-06 all delivered; PromLens explicit HEALTHCHECK on root / (no /health endpoint in v0.3.0)
 - [Phase 05]: [Rule 1 auto-fix] Gate 9.5 exception uses actual ${ds_prometheus} (lowercase) from host-health.json panel content, not ${DS_PROMETHEUS} (plan had case mismatch vs actual JSON)
 - [Phase 05-ui-plane]: Gap closure 05-06: extended _rewrite_uids.py SUBSTITUTIONS for tempo-operational with 4 upstream-org hex UIDs (mimir-ops-03, cortex-ops-01, P666011C0B63BDCA4, P1809F7CD0C75ACF3) all mapping to prometheus; walker untouched (already recurses via dict.values); regenerated tempo-self-metrics.json 51 target-level refs normalized; UAT gap-truth #2 closed
+- [Phase 05]: matcherType: structured_metadata is the canonical Loki 3.x derivedField path for OTel-native trace_id (D-78); matcherType: label form was wrong because telemetron's live Loki labels don't include trace_id
+- [Phase 05]: Two derivedFields with distinct name keys (trace_id + trace_id_body) renders both clickable links in Grafana log detail panel
+- [Phase 05]: Grafana 13.0.1 does NOT hot-reload provisioning files; POST /api/admin/provisioning/datasources/reload is the canonical operator step after disk render
 
 ### Roadmap Evolution
 
@@ -174,6 +178,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T16:48:42.311Z
-Stopped at: Completed 05-06-PLAN.md (gap closure)
+Last session: 2026-05-19T16:50:23.818Z
+Stopped at: Completed 05-07-PLAN.md (gap closure)
 Resume file: None

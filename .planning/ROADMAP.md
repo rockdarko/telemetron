@@ -122,6 +122,7 @@ Plans:
 - [x] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
 - [x] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
 - [x] 05-04-PLAN.md -- gap closure (non-ASCII regression + dashboard uid rewrite bug + Gate 9.5); Wave 1
+- [x] 05-05-PLAN.md -- gap closure (grafana verify.yml auto_remove race + Gate 9.5 reachability); Wave 1
 - [x] 05-06-PLAN.md -- gap closure (tempo-self-metrics 51 upstream-org UIDs normalized); Wave 1
 - [x] 05-07-PLAN.md -- gap closure (Loki derivedField matcherType structured_metadata + regex fallback); Wave 1
 **UI hint**: yes
