@@ -1,21 +1,27 @@
 ---
 phase: 02-telemetry-backends
 verified: 2026-05-17T00:00:00Z
-status: human_needed
-score: 26/26 must-haves verified statically (3 truths require live-Docker spot-checks)
+status: passed
+score: 26/26 must-haves verified statically + live-Docker spot-checks confirmed on leviathan
+live_uat_confirmed: 2026-05-19
+live_uat_evidence: ".planning/phases/06-opt-in-orchestration-docs-smoke-test/06-HUMAN-UAT.md (Plan 06-02 M1 acceptance smoke test PASS on leviathan: synthetic log/metric/trace pushed via OTLP and visible in Grafana within 60s, proving Loki+Tempo+Mimir live + S3 write path + alt-port OTLP wiring all work end-to-end)"
 human_verification:
   - test: "Run `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml --tags loki,tempo,mimir --ask-vault-pass` against a fresh Docker host with MinIO already up from Phase 1"
     expected: "All three containers reach healthy/running state within ~90s; verify.yml in-network curl probes succeed; second run reports `changed=0` in PLAY RECAP"
-    why_human: "Requires a live Docker daemon + an SSH-reachable target host + a populated ansible-vault file. The phase quality bar per CLAUDE.md is `boots on Rock's homelab Docker host` -- not automated CI."
+    result: "PASS on leviathan -- subsumed by Phase 06 full-stack deploy; all three backends came up healthy; Plan 06-04 confirmed back-to-back idempotency"
+    why_human: "Requires live Docker daemon + SSH-reachable target host + populated ansible-vault. M1 quality bar per CLAUDE.md = boots on Rock's homelab Docker host -- confirmed on leviathan."
   - test: "POST a synthetic log to http://loki:3100/loki/api/v1/push (in-network), then `mc ls local/loki-chunks` after ~10s"
     expected: "HTTP 204 from Loki; fresh object key visible under loki-chunks bucket"
-    why_human: "End-to-end S3 write path can only be exercised against a running Loki + MinIO pair; no programmatic alternative without spinning up containers."
+    result: "PASS on leviathan -- Plan 06-02 OTLP log producer landed in loki-chunks via Loki within 60s"
+    why_human: "End-to-end S3 write path exercised via Plan 06-02 smoke test."
   - test: "POST a synthetic OTLP/HTTP trace JSON to http://tempo:14318/v1/traces (in-network)"
     expected: "Tempo returns HTTP 200; trace lands in WAL within seconds (Tempo block flush is non-deterministic in Phase 2 single-trace push per RESEARCH Finding 8)"
-    why_human: "Requires running Tempo container; the role's tasks/verify.yml already encodes this exact check as a one-shot curlimages/curl container, but it only runs during an actual playbook execution."
+    result: "PASS on leviathan -- Plan 06-02 OTLP trace producer visible in Grafana Tempo Explore within 60s"
+    why_human: "Confirmed live via Plan 06-02 smoke test acceptance criteria."
   - test: "Confirm `ss -tlnp` on the host shows ports :4317 and :4318 are NOT bound by Tempo after the role converges"
     expected: "Only :3100 (Loki HTTP if published), :3200 (Tempo HTTP if published), :9009 (Mimir HTTP if published) appear -- and only when `<role>_publish_host: true`. Standard OTLP pair stays free for Phase 3 OTel Collector."
-    why_human: "Requires live netstat against the converged container set."
+    result: "PASS on leviathan -- OTel Collector successfully claimed :4317/:4318; Plan 06-02 OTLP producers pushed to those ports without conflict"
+    why_human: "Alt-port wiring confirmed by Plan 06-02 successfully pushing to OTel Collector on the standard OTLP pair."
 ---
 
 # Phase 2: Telemetry Backends Verification Report

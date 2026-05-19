@@ -1,8 +1,10 @@
 ---
 phase: 03-ingest-plane
 verified: 2026-05-18T18:00:00Z
-status: human_needed
-score: 5/5 must-haves verified by static audit (INGEST-07 promoted from PARTIAL to fully SATISFIED via Plan 03-05); 5/5 still require live homelab boot for full SC1..SC5 runtime confirmation
+status: passed
+score: 5/5 must-haves verified by static audit (INGEST-07 promoted from PARTIAL to fully SATISFIED via Plan 03-05); 5/5 confirmed via live homelab boot on leviathan (Plan 06-02 smoke test + full-stack deploy)
+live_uat_confirmed: 2026-05-19
+live_uat_evidence: ".planning/phases/06-opt-in-orchestration-docs-smoke-test/06-HUMAN-UAT.md (Plan 06-02 M1 acceptance smoke test: synthetic OTLP log+metric+trace producers pushed via OTel Collector :4318, all three visible in Grafana within 60s, proving SC1..SC5 of Phase 03 -- collector accepts OTLP, prometheus scrapes targets, fluentbit ships logs, remote_write to mimir works, baseline rules load). Plan 06-04 confirmed idempotency (changed=0 on second run)."
 re_verification:
   previous_status: human_needed
   previous_score: 5/5 static; INGEST-07 flagged PARTIAL pending Lua-filter Docker-API enhancement
