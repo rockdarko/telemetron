@@ -93,17 +93,7 @@
           []
         )
       }}
-    mounts:
-      # D-50: filesystem buffer survives container restart without log loss.
-      - source: "{{ fluentbit_buffer_volume }}"
-        target: "/var/log/flb-storage"
-        type: volume
-      # D-46: tail the host's Docker container JSON logs (role inversion).
-      # Read-only -- FB never writes to /var/lib/docker/containers.
-      - source: "{{ fluentbit_docker_logs_path }}"
-        target: "{{ fluentbit_docker_logs_path }}"
-        type: bind
-        read_only: true
+    mounts: "{{ fluentbit_base_mounts + fluentbit_nfs_mounts }}"
     volumes:
       # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
       # Container sees /fluent-bit/etc/{fluent-bit.conf,parsers.conf,enrich.lua}.
@@ -128,6 +118,32 @@
       timeout: "{{ fluentbit_healthcheck_timeout }}"
       retries: "{{ fluentbit_healthcheck_retries }}"
       start_period: "{{ fluentbit_healthcheck_start_period }}"
+    fluentbit_base_mounts:
+      # D-50: filesystem buffer survives container restart without log loss.
+      - source: "{{ fluentbit_buffer_volume }}"
+        target: "/var/log/flb-storage"
+        type: volume
+      # D-46: tail the host's Docker container JSON logs (role inversion).
+      # Read-only -- FB never writes to /var/lib/docker/containers.
+      - source: "{{ fluentbit_docker_logs_path }}"
+        target: "{{ fluentbit_docker_logs_path }}"
+        type: bind
+        read_only: true
+    # D-92 / D-95: when enable_nfsd is true, bind-mount the NFS share root
+    # into the FB container so the conditional `[INPUT] tail nfs_logs` block
+    # in fluent-bit.conf.j2 can see `/srv/telemetron-nfs/<host>/*.log`.
+    # Read-only -- FB only tails the files it never writes to them.
+    fluentbit_nfs_mounts: >-
+      {{
+        [
+          {
+            'source': nfsd_share_root | default('/srv/telemetron-nfs'),
+            'target': nfsd_share_root | default('/srv/telemetron-nfs'),
+            'type': 'bind',
+            'read_only': true,
+          }
+        ] if (enable_nfsd | default(false) | bool) else []
+      }}
   tags:
     - fluentbit
     - fluentbit-container
