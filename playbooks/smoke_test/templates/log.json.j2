@@ -1,0 +1,40 @@
+{# Telemetron M1 smoke test -- OTLP/HTTP log payload. #}
+{# Spec source: opentelemetry-proto/examples logs.json (RESEARCH C1).   #}
+{# Posted to http://localhost:{{ otel_otlp_http_port }}/v1/logs.        #}
+{# Resource service.name = telemetron-smoke; body carries the literal   #}
+{# marker `telemetron-smoke-test` so the Loki LogQL query can pin it    #}
+{# to this smoke run via the `smoke=true` attribute + run_id.           #}
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": { "stringValue": "telemetron-smoke" }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": { "name": "telemetron-smoke" },
+          "logRecords": [
+            {
+              "timeUnixNano": "{{ ansible_date_time.epoch }}000000000",
+              "observedTimeUnixNano": "{{ ansible_date_time.epoch }}000000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "traceId": "{{ smoke_trace_id }}",
+              "spanId": "{{ smoke_span_id }}",
+              "body": { "stringValue": "telemetron-smoke-test smoke=true run_id={{ smoke_run_id }}" },
+              "attributes": [
+                { "key": "smoke",  "value": { "stringValue": "true" } },
+                { "key": "run_id", "value": { "stringValue": "{{ smoke_run_id }}" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

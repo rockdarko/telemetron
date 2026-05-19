@@ -1,0 +1,37 @@
+{# Telemetron M1 smoke test -- OTLP/HTTP trace payload.                  #}
+{# Spec source: opentelemetry-proto/examples traces.json (RESEARCH C3).  #}
+{# traceId = 32 hex chars; spanId = 16 hex chars (OTLP spec).            #}
+{# kind: 2 = SPAN_KIND_SERVER. Posted to http://localhost:{{ otel_otlp_http_port }}/v1/traces. #}
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": { "stringValue": "telemetron-smoke" }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": { "name": "telemetron-smoke" },
+          "spans": [
+            {
+              "traceId": "{{ smoke_trace_id }}",
+              "spanId": "{{ smoke_span_id }}",
+              "name": "telemetron-smoke-span",
+              "kind": 2,
+              "startTimeUnixNano": "{{ ansible_date_time.epoch }}000000000",
+              "endTimeUnixNano": "{{ (ansible_date_time.epoch | int + 1) }}000000000",
+              "attributes": [
+                { "key": "smoke",  "value": { "stringValue": "true" } },
+                { "key": "run_id", "value": { "stringValue": "{{ smoke_run_id }}" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

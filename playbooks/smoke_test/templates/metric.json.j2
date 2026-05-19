@@ -1,0 +1,42 @@
+{# Telemetron M1 smoke test -- OTLP/HTTP metric payload (gauge).        #}
+{# Spec source: opentelemetry-proto/examples metrics.json (RESEARCH C2).#}
+{# Gauge chosen over sum to avoid aggregationTemporality + isMonotonic  #}
+{# fields. Posted to http://localhost:{{ otel_otlp_http_port }}/v1/metrics. #}
+{# Prometheus + Mimir both ingest as gauge; run_id label per-run unique. #}
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": { "stringValue": "telemetron-smoke" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "telemetron-smoke" },
+          "metrics": [
+            {
+              "name": "telemetron_smoke_metric",
+              "description": "Telemetron M1 smoke test signal",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "asDouble": 1,
+                    "timeUnixNano": "{{ ansible_date_time.epoch }}000000000",
+                    "attributes": [
+                      { "key": "run_id", "value": { "stringValue": "{{ smoke_run_id }}" } }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
