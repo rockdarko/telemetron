@@ -23,14 +23,16 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 
 <!-- Current scope — Milestone 1: "Port to clean-slate, Docker, homelab-first" -->
 
-- [ ] Port 14 Ansible roles — translated (FR→EN), de-INSPQ'd, naming-normalized, each documented in `roles/<name>/README.md` and proven by booting on Rock's homelab Docker host
-- [ ] Roles in scope: `alertmanager`, `fluentbit`, `grafana`, `karma`, `loki`, `mimir`, `minio`, `nfsd`, `node_exporter`, `opentelemetry`, `prometheus`, `promlens`, `tempo` (13 deployed + `hook_router` deferred to v2 -- see REQUIREMENTS.md ALERT-V2-01..05); 12/13 ported after Phase 5 complete (1 remaining: `nfsd`, opt-in for Phase 6)
-- [ ] Loki, Tempo, and Mimir support monolithic mode only for M1 (distributed/microservices mode deferred)
-- [ ] Ship a working `inventory/example-homelab/` covering a single-node Docker target — clone, edit a hostname, run the playbook
-- [ ] Wire `playbooks/deploy_docker.yml` to orchestrate the 14 roles end-to-end
-- [ ] Author `docs/architecture.md` — components, modes, signal flow
-- [ ] Author `docs/quickstart.md` — zero-to-dashboards path against `inventory/example-homelab/`
-- [ ] Author `docs/inventory.md` — inventory layout in depth (beyond the existing stub)
+**0 remaining roles; M1 complete.** Awaiting v2 milestone planning (Garage migration / multi-host inventory / Kubernetes path / hook router).
+
+- [x] Port 13 Ansible roles — translated (FR→EN), de-INSPQ'd, naming-normalized, each documented in `roles/<name>/README.md` and proven by booting on Rock's homelab Docker host (`hook_router` deferred to v2 per ALERT-V2-01..05)
+- [x] Roles in scope: `alertmanager`, `fluentbit`, `grafana`, `karma`, `loki`, `mimir`, `minio`, `nfsd`, `node_exporter`, `opentelemetry`, `prometheus`, `promlens`, `tempo` (13 deployed + `nfsd` as the 14th opt-in slot; `hook_router` deferred to v2 -- see REQUIREMENTS.md ALERT-V2-01..05); 13/13 ported as of Phase 6 (nfsd opt-in landed Plan 06-01)
+- [x] Loki, Tempo, and Mimir support monolithic mode only for M1 (distributed/microservices mode deferred)
+- [x] Ship a working `inventory/example-homelab/` covering a single-node Docker target — clone, edit a hostname, run the playbook
+- [x] Wire `playbooks/deploy_docker.yml` to orchestrate 13 deployed roles + nfsd as the 14th opt-in slot in correct dependency order
+- [x] Author `docs/architecture.md` — components, modes, signal flow (Plan 06-03)
+- [x] Author `docs/quickstart.md` — zero-to-dashboards path against `inventory/example-homelab/` (Plan 06-03)
+- [x] Author `docs/inventory.md` — inventory layout in depth beyond the existing stub (Plan 06-03)
 
 ### Out of Scope
 

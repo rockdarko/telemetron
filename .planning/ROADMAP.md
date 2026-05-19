@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Ingest Plane** - Prometheus scraping + remote_writing to Mimir with baseline alert rules, OTel Collector accepting OTLP on 4317/4318 and fanning out to all three backends, Fluent Bit shipping host logs through OTel to Loki, node_exporter exposing host metrics (completed 2026-05-18; live-host UAT on leviathan closed 16 latent bugs, all 5 SCs pass)
 - [x] **Phase 4: Alert Plane** - Alertmanager (`quay.io/prometheus/alertmanager:v0.32.1`) on :9093 with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, a single `null` default receiver (Karma in Phase 5 is the operator UX), one default inhibit rule (`severity=critical -> severity=warning, equal: [instance]`), persistent `telemetron_alertmanager_data` volume; Prometheus extended with an `alerting: alertmanagers:` block targeting it. Hook router work is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05. (completed 2026-05-19; 04-02 gap closure landed both UAT bugs + Gate 8 doc gate; all 6 UAT tests pass on leviathan)
 - [x] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate (completed 2026-05-19; 8 plans landed: 05-01..05-04 ship + 05-05..05-08 gap closure; live UAT round 2 on leviathan VERIFIED 3/3 with 0 issues; 05-VERIFICATION.md status: verified)
-- [ ] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** - Opt-in `nfsd` role default-off, `playbooks/deploy_docker.yml` orchestrating 13 deployed roles + nfsd as the 14th opt-in slot (hook_router deferred to v2) in dependency order with per-role tags, example inventory hostnames wired so `ansible-playbook` runs end-to-end, three docs authored against a stack that actually booted, M1 acceptance smoke test (synthetic log + metric + trace in Grafana within 60s), top-level README updated
+- [x] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** - Opt-in `nfsd` role default-off, `playbooks/deploy_docker.yml` orchestrating 13 deployed roles + nfsd as the 14th opt-in slot (hook_router deferred to v2) in dependency order with per-role tags, example inventory hostnames wired so `ansible-playbook` runs end-to-end, three docs authored against a stack that actually booted, M1 acceptance smoke test (synthetic log + metric + trace in Grafana within 60s), top-level README updated (completed 2026-05-19; M1 COMPLETE)
 
 ## Phase Details
 
@@ -143,7 +143,7 @@ Plans:
 - [x] 06-01-PLAN.md — nfsd role port (LEGACY-01) + FB tail-input integration; Wave 1
 - [x] 06-02-PLAN.md — playbooks/smoke_test.yml + 3 OTLP/HTTP producers + 4 Grafana-proxy asserters (OPS-07); Wave 2
 - [x] 06-03-PLAN.md — docs/architecture.md + docs/quickstart.md + docs/inventory.md (DOCS-01, DOCS-02, DOCS-03); Wave 3
-- [ ] 06-04-PLAN.md — README.md rewrite (DOCS-04) + INV-01/INV-03 close-out + idempotency revalidation; Wave 4
+- [x] 06-04-PLAN.md — README.md rewrite (DOCS-04) + INV-01/INV-03 close-out + idempotency revalidation; Wave 4
 
 ## Progress
 
@@ -158,7 +158,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
 | 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
 | 4.1. Drop vault prefix (INSERTED) | 1/1 | Complete | 2026-05-19 |
 | 5. UI Plane | 8/8 | Complete (verified) | 2026-05-19 |
-| 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
+| 6. Opt-in, Orchestration, Docs & Smoke Test | 4/4 | Complete (verified) | 2026-05-19 |
 
 ## Backlog
 

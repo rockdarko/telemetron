@@ -64,7 +64,7 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### Inventory and orchestration (INV)
 
-- [ ] **INV-01**: Operator can clone the repo, edit a single hostname/SSH-user pair in `inventory/example-homelab/`, supply their own vault password, and run `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` to bring up the full M1 stack on a target Docker host.
+- [x] **INV-01**: Operator can clone the repo, edit a single hostname/SSH-user pair in `inventory/example-homelab/`, supply their own vault password, and run `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` to bring up the full M1 stack on a target Docker host.
 - [x] **INV-02**: `inventory/example-homelab/` ships a complete `group_vars/all/` layout covering `network.yml` (Docker network name, port assignments), `storage.yml` (named-volume mounts, MinIO bucket names, retention values), `secrets.yml.example` (placeholder secret names using role-namespaced `<role>_<purpose>` keys — the real `secrets.yml` is operator-supplied and never committed), plus per-component `group_vars/` files where the research recommends override knobs.
 - [x] **INV-03**: `playbooks/deploy_docker.yml` orchestrates 13 deployed roles in dependency order with `nfsd` as the 14th opt-in slot: `[pre_tasks: telemetron network]` → `minio` → (`loki`, `tempo`, `mimir`) → (`prometheus`, `opentelemetry`, `fluentbit`, `node_exporter`) → `alertmanager`[^hook-router-deferred] → (`grafana`, `karma`, `promlens`) → `nfsd` (opt-in). Every role has a tag so operators can run `--tags <role>` for targeted re-runs.
 
@@ -85,7 +85,7 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 - [x] **DOCS-01**: `docs/architecture.md` documents components, monolithic-mode tradeoffs, signal flow (apps → OTel → backends → Grafana), and a port-allocation cheat sheet. Distilled from `.planning/research/ARCHITECTURE.md`.
 - [x] **DOCS-02**: `docs/quickstart.md` documents the zero-to-dashboards path: prerequisites (Ansible version, Docker on the target host, SSH access), clone, edit `inventory/example-homelab/<hostname>.hosts`, supply `vault.yml`, run the playbook, open Grafana, click a bundled dashboard. The doc is verified by an operator running it verbatim on a fresh target.
 - [x] **DOCS-03**: `docs/inventory.md` documents the inventory model in depth beyond the existing `inventory/README.md` stub: the expected directory shape, `group_vars/` conventions, how to add an environment, how vault files relate, how to symlink an out-of-tree inventory.
-- [ ] **DOCS-04**: Top-level `README.md` is updated post-M1 to reflect what's actually shipped (replacing the "early" / "skeleton only" language) and points at `docs/quickstart.md`.
+- [x] **DOCS-04**: Top-level `README.md` is updated post-M1 to reflect what's actually shipped (replacing the "early" / "skeleton only" language) and points at `docs/quickstart.md`.
 
 ---
 
