@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 06-01-PLAN.md -- nfsd role ported + FB tail integration. Next: 06-02 smoke_test.yml."
-last_updated: "2026-05-19T21:48:45.466Z"
+stopped_at: "Completed 06-02-PLAN.md -- smoke_test.yml + 3 OTLP templates + README. Leviathan UAT 6/6 PASS. Next: 06-03 docs (architecture/quickstart/inventory)."
+last_updated: "2026-05-19T21:59:51.889Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 26
-  completed_plans: 23
+  completed_plans: 24
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 06 (opt-in-orchestration-docs-smoke-test) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-19
 
@@ -75,6 +75,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05-ui-plane P05 | 6min | 3 tasks tasks | 2 files files |
 | Phase 05-ui-plane P08 | 8min | 5 tasks tasks | 5 files files |
 | Phase 06 P01 | 24min | 4 tasks tasks | 12 files files |
+| Phase 06-opt-in-orchestration-docs-smoke-test P02 | 12min | 4 tasks tasks | 5 files files |
 
 ## Accumulated Context
 
@@ -176,6 +177,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 06]: D-92 single-knob coupling: enable_nfsd gates BOTH nfsd role AND conditional FB [INPUT] tail + [FILTER] lua + container bind-mount (Rule-2 auto-fix on leviathan)
 - [Phase 06]: Lua tag-prefix dispatch (^nfs%.) added to enrich() with early return preserves Docker code path verbatim; parts[4] = hostname from /srv/telemetron-nfs/<host>/
 - [Phase 06]: Plan 06-01 leviathan UAT: 5/5 steps pass; idempotency changed=0 confirmed full-stack with enable_nfsd:true; known pre-existing FB->OTel->Loki label promotion gap documented (affects Docker pipeline equally, out of 06-01 scope)
+- [Phase 06]: Plan 06-02 delivers OPS-07: playbooks/smoke_test.yml + 3 OTLP/HTTP JSON templates + operator README. 3 producers + 4 datasource-proxy asserters with retries:12/delay:5 = 60s budget. Tag-scoped (--tags log/metric/trace). Mimir URL uses /api/v1/query (not /prometheus/api/v1/query) per D-99a.
+- [Phase 06]: Rule-1 auto-fix during smoke UAT: dropped | from_json filter from 3 producer bodies. Ansible's lookup('template') with convert_data:True default returns dict for JSON-shaped templates; piping dict to from_json throws. body_format: json on uri serializes the dict directly.
+- [Phase 06]: Leviathan smoke UAT (Plan 06-02): 6/6 steps pass. Full smoke ok=9 failed=0 in ~14s; --tags log/metric/trace single-signal runs; OTel-down loud-failure test (exit=2, Connection refused, no silent skip); recovery clean. vars_files {{ inventory_dir }}/group_vars/all/secrets.yml is permissive on missing files (Ansible 2.18 -- documented in HUMAN-UAT).
 
 ### Roadmap Evolution
 
@@ -191,6 +195,6 @@ None active. (Prior "Phase 5 blocked on Phase 4.1" concern is resolved -- 04.1 l
 
 ## Session Continuity
 
-Last session: 2026-05-19T21:48:45.461Z
-Stopped at: Completed 06-01-PLAN.md -- nfsd role ported + FB tail integration. Next: 06-02 smoke_test.yml.
+Last session: 2026-05-19T21:59:51.884Z
+Stopped at: Completed 06-02-PLAN.md -- smoke_test.yml + 3 OTLP templates + README. Leviathan UAT 6/6 PASS. Next: 06-03 docs (architecture/quickstart/inventory).
 Resume file: None

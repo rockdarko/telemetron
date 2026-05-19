@@ -78,7 +78,7 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 - [x] **OPS-04**: Running `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` a second time on an already-converged host returns `changed=0`. Templates iterate sorted dict keys (`{% for k in d.keys() | sort %}`) to avoid non-deterministic ordering; container restarts use handlers, not `state: restarted`.
 - [x] **OPS-05**: Every role passes a per-role port-acceptance grep gate: zero matches for the regex `inspq|qc\.ca|montreal|québec|vault_inspq_` (note: `vault_inspq_` here is the INSPQ-leftover historical key-name grep gate — distinct from, and unaffected by, the OPS-02 `vault_` prefix convention that D-90 retired) and zero non-ASCII characters in committed files. This gate is documented in `roles/README.md` as part of the port checklist.
 - [x] **OPS-06**: Every component container has a Docker `HEALTHCHECK` and a `restart: unless-stopped` policy by default. Timezone defaults to `Etc/UTC` everywhere.
-- [ ] **OPS-07**: M1 completion smoke test — push a synthetic log, push a synthetic metric, push a synthetic trace. Within 60 seconds, the log appears in Grafana Loki Explore, the metric is queryable from Prometheus and from Mimir, and the trace appears in Tempo Explore — all queried via the bundled datasource UIDs.
+- [x] **OPS-07**: M1 completion smoke test — push a synthetic log, push a synthetic metric, push a synthetic trace. Within 60 seconds, the log appears in Grafana Loki Explore, the metric is queryable from Prometheus and from Mimir, and the trace appears in Tempo Explore — all queried via the bundled datasource UIDs.
 
 ### Documentation (DOCS)
 
