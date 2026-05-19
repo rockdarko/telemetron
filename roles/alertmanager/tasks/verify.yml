@@ -108,30 +108,27 @@
     - alertmanager-verify
 
 # Step 5: Prometheus -> Alertmanager round-trip (D-64 wiring live).
-# Asserts prometheus' activeAlertmanagers list includes alertmanager:9093.
-- name: Curl-probe Prometheus /api/v1/alertmanagers and assert AM target present
-  community.docker.docker_container:
-    name: "{{ alertmanager_container_name }}-verify-promam"
-    image: "{{ alertmanager_curl_image }}:{{ alertmanager_curl_image_tag }}"
-    state: started
-    detach: false
-    auto_remove: true
-    recreate: true
-    cleanup: true
-    networks:
-      - name: "{{ alertmanager_network }}"
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        i=0 ;
-        while [ $i -lt 30 ] ; do
-          BODY=$(curl -fsS http://prometheus:9090/api/v1/alertmanagers 2>/dev/null || true) ;
-          if echo "$BODY" | grep -q 'http://alertmanager:9093/api/v2/alerts' ; then echo "prom_am_wiring_ok" ; exit 0 ; fi ;
-          i=$((i+1)) ; sleep 2 ;
-        done ;
-        echo "Prometheus did not register alertmanager:9093 within 60s. Last response: $BODY" ;
-        exit 1
+# Race-free: docker_container_exec against the running AM container uses
+# Docker's exec API which returns exit codes synchronously without
+# container-lifecycle reaping. Replaces the auto_remove + while-loop
+# pattern documented as racy in ansible/ansible#45272 and #47673.
+# See .planning/debug/alertmanager-verify-prom-am-probe-auto-remove-race.md.
+# The AM image (quay.io/prometheus/alertmanager:v0.32.1) is busybox-based --
+# /usr/bin/wget is available (the role's own HEALTHCHECK uses it). Polling
+# via Ansible until:/retries:/delay: instead of an in-container while-loop.
+- name: Curl-probe Prometheus /api/v1/alertmanagers and assert AM target present (race-free via exec)
+  community.docker.docker_container_exec:
+    container: "{{ alertmanager_container_name }}"
+    command: >-
+      wget -qO- http://prometheus:9090/api/v1/alertmanagers
+  register: am_promam_probe
   changed_when: false
+  failed_when: false
+  retries: 30
+  delay: 2
+  until: >-
+    am_promam_probe.stdout is defined
+    and 'http://alertmanager:9093/api/v2/alerts' in am_promam_probe.stdout
   tags:
     - alertmanager
     - alertmanager-verify
