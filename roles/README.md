@@ -68,3 +68,23 @@ labels:
 ```
 
 `<component>` matches the role name (e.g. `prometheus`, `loki`, `node_exporter`) so that Fluent Bit's `[FILTER] lua` enrichment (`roles/fluentbit/files/enrich.lua`) picks them up from `/var/lib/docker/containers/<id>/config.v2.json` and ships them as the `service` + `job` Loki labels (INGEST-07 allowlist). Phase 4 (alertmanager) and Phase 5 (grafana, karma, promlens) role ports MUST stamp these labels. (The hook_router role is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.) No Docker socket access is added; the Lua filter only reads the bind-mounted JSON files Fluent Bit already tails.
+
+**8. Parent-directory bind-mount convention (Bug-fix 04-02; moby/moby#6011):**
+
+When bind-mounting rendered config files into a container, mount the PARENT DIRECTORY, not individual files. Ansible `template:` / `copy:` modules atomic-rename new inodes into place; Docker's single-file bind pins to the original inode at container start (kernel-fd; see moby/moby#6011, WONTFIX since 2014). Result: host sees new content, container reads old until restart re-binds. Parent-directory mounts resolve the directory entry on every open(), so post-rename inodes are picked up immediately.
+
+Anti-pattern (do NOT use):
+
+```yaml
+volumes:
+  - "{{ role_config_dir }}/config.yaml:/etc/role/config.yaml:ro"   # bug
+```
+
+Convention (use):
+
+```yaml
+volumes:
+  - "{{ role_config_dir }}:/etc/role:ro"   # parent-directory mount
+```
+
+Established in Phase 4 plan 04-02 (see `.planning/debug/prometheus-template-rename-bind-mount-stale-inode.md` for the diagnosis). The 7 afflicted roles (alertmanager, fluentbit, loki, mimir, opentelemetry, prometheus, tempo) were converted in that plan; future role ports inherit this convention.
