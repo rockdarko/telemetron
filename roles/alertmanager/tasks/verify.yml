@@ -147,14 +147,23 @@
     - alertmanager-verify
 
 # Step 7: amtool alert query -- assert TestAlert listed.
+# Bug-fix 04-02 (auto-fix Rule 1 during UAT): `alert add` in step 6 posts to the
+# AM API and returns synchronously, but AM's internal dispatch / group-by
+# pipeline processes the alert asynchronously -- the alert shows up in the
+# query API a few seconds later. Polling via Ansible until:/retries:/delay:
+# instead of a single-shot read avoids the race that fires when verify runs
+# back-to-back with no settle window.
 - name: amtool alert query and assert TestAlert active
   community.docker.docker_container_exec:
     container: "{{ alertmanager_container_name }}"
     command: >-
       /bin/amtool --alertmanager.url=http://localhost:9093 alert query alertname=TestAlert
   register: am_alert_query
-  failed_when: "'TestAlert' not in am_alert_query.stdout"
   changed_when: false
+  failed_when: false
+  retries: 30
+  delay: 2
+  until: am_alert_query.stdout is defined and 'TestAlert' in am_alert_query.stdout
   tags:
     - alertmanager
     - alertmanager-verify
@@ -173,14 +182,20 @@
     - alertmanager
     - alertmanager-verify
 
+# Bug-fix 04-02 (auto-fix Rule 1 during UAT): same race class as step 7 --
+# silence query may need a brief settle window after silence add before the
+# silence appears in the listing. Poll with until: to be safe.
 - name: amtool silence query and assert one active silence on TestAlert
   community.docker.docker_container_exec:
     container: "{{ alertmanager_container_name }}"
     command: >-
       /bin/amtool --alertmanager.url=http://localhost:9093 silence query alertname=TestAlert
   register: am_silence_query
-  failed_when: "'TestAlert' not in am_silence_query.stdout"
   changed_when: false
+  failed_when: false
+  retries: 30
+  delay: 2
+  until: am_silence_query.stdout is defined and 'TestAlert' in am_silence_query.stdout
   tags:
     - alertmanager
     - alertmanager-verify
