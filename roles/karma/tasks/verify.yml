@@ -83,14 +83,15 @@
     networks:
       - name: "{{ karma_network }}"
     entrypoint: ["/bin/sh", "-c"]
+    # 05-08 Rule-1 auto-fix: previous form used a YAML folded scalar with
+    # more-indented continuation lines, which preserves newlines and broke
+    # sh parsing ("unexpected ||"). Reflowed to a single-line script via
+    # plain (non-folded) scalar so the shell receives one continuous
+    # command. Also switched /alerts.json from GET to POST -- karma's
+    # /alerts.json endpoint is POST-only (RESEARCH sec.2.2 -- returns 405
+    # on GET, which silently masked the assertion in pre-05-08 runs).
     command:
-      - >-
-        BODY=$(curl -fsS http://{{ karma_container_name }}:{{ karma_container_port }}/alerts.json 2>/dev/null
-               || curl -fsS http://{{ karma_container_name }}:{{ karma_container_port }}/api/v1/alerts 2>/dev/null
-               || echo "") ;
-        echo "$BODY" | grep -qi '{{ karma_alertmanager_name }}'
-        || { echo "alertmanager source {{ karma_alertmanager_name }} not registered in karma response: $BODY" ; exit 1 ; } ;
-        echo "karma_am_connection_ok"
+      - "BODY=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' http://{{ karma_container_name }}:{{ karma_container_port }}/alerts.json 2>/dev/null || echo '') ; echo \"$BODY\" | grep -qi '{{ karma_alertmanager_name }}' || { echo \"alertmanager source {{ karma_alertmanager_name }} not registered in karma response: $BODY\" ; exit 1 ; } ; echo karma_am_connection_ok"
   register: karma_amconn_probe
   retries: 15
   delay: 4
