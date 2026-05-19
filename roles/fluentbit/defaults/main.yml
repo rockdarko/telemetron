@@ -69,6 +69,7 @@ fluentbit_flush_interval: 5
 #
 # NO /var/run/docker.sock mount. NO Docker daemon API access. The Lua filter
 # only reads the on-disk JSON files that FB already has RO access to.
+fluentbit_config_container_dir: "/fluent-bit/etc"   # parent-dir bind mount destination (Gate 8)
 fluentbit_enrich_lua_path: "/fluent-bit/etc/enrich.lua"
 fluentbit_enrich_docker_root: "/var/lib/docker/containers"
 fluentbit_enrich_cache_ttl_seconds: 300

@@ -96,11 +96,18 @@
     - fluentbit
     - fluentbit-verify
 
-# Step 4: Plan 03-05 INGEST-07 -- assert enrich.lua is bind-mounted.
+# Step 4: Plan 03-05 INGEST-07 -- assert enrich.lua directory is bind-mounted.
 # Original used `docker exec ... test -r <path>` but FB image is distroless
 # (no `test` binary -- exec exits 127). Switched to host-side docker
 # inspect of Mounts. Caught Phase 3 UAT 2026-05-18 (03-UAT.md gap
 # fluentbit-verify-exec-test-not-in-distroless).
+#
+# Phase 4.1 auto-fix (Rule 1 -- Bug): Phase 04-02 converted single-file bind
+# mounts to parent-directory mounts (Gate 8 / moby/moby#6011). The container
+# now mounts the DIRECTORY `/fluent-bit/etc` (which contains enrich.lua),
+# not the individual file. The check is updated to match the parent-directory
+# mount destination (fluentbit_config_container_dir, default /fluent-bit/etc)
+# instead of the individual-file path (fluentbit_enrich_lua_path).
 - name: Verify enrich.lua is bind-mounted inside Fluent Bit container (INGEST-07)
   community.docker.docker_container_info:
     name: "{{ fluentbit_container_name }}"
@@ -108,7 +115,7 @@
   failed_when: >-
     fluentbit_inspect.container is not defined
     or fluentbit_inspect.container.Mounts
-       | selectattr('Destination', 'equalto', fluentbit_enrich_lua_path)
+       | selectattr('Destination', 'equalto', fluentbit_config_container_dir)
        | list
        | length
        == 0
