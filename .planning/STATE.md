@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 04-02-PLAN.md (Phase 4 gap closure: Bug 1 auto_remove race + Bug 2 stale-inode bind-mount + amtool query auto-fix; all 6 UAT pass on leviathan)"
-last_updated: "2026-05-19T00:48:42.622Z"
+stopped_at: "Phase 5 context gathered (D-70..D-89 + cross-phase D-90: drop vault_ prefix via phase 4.1 insertion)"
+last_updated: "2026-05-19T01:34:34.941Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 10
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 
 ## Current Position
 
-Phase: 04 (alert-plane) — EXECUTING
-Plan: 2 of 2
+Phase: 999.1
+Plan: Not started
 Status: Ready to execute
 Last activity: 2026-05-19
 
@@ -141,16 +141,20 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 04-alert-plane]: TIER 3 deferred: 9 latent docker_container+auto_remove sites in loki/tempo/mimir/prometheus/opentelemetry/fluentbit/node_exporter verify files captured in debug doc; convert when a Phase 5 cross-role probe makes any of them firing rather than latent
 - [Phase 04-alert-plane]: All 6 Phase 4 UAT tests pass on leviathan post-04-02 (HEALTHCHECK + receivers + status + Prom->AM + amtool + idempotency); manual atomic-rename inode test proves parent-directory mount semantics work definitively (524589 -> 2097216 visible immediately inside container)
 
+### Roadmap Evolution
+
+- Phase 04.1 inserted after Phase 4: Drop vault prefix (URGENT) -- 2026-05-19. Spec: `.planning/phases/05-ui-plane/05-CONTEXT.md` D-90. Drops the `vault_*` prefix from sensitive variables project-wide; renames 4 roles + 8 vault.yml.example keys + doc cascade. Hard precondition for Phase 5 plan 05-01.
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- **Phase 5 blocked on Phase 4.1**: per CONTEXT.md D-90, plan 05-01 must NOT begin until 04.1 lands. Phase 5 inherits the new convention (e.g. `grafana_admin_password`, no `vault_` prefix) — running 05 before 04.1 would create a half-converted codebase.
 
 ## Session Continuity
 
-Last session: 2026-05-19T00:48:25.142Z
-Stopped at: Completed 04-02-PLAN.md (Phase 4 gap closure: Bug 1 auto_remove race + Bug 2 stale-inode bind-mount + amtool query auto-fix; all 6 UAT pass on leviathan)
-Resume file: None
+Last session: 2026-05-19T01:34:34.937Z
+Stopped at: Phase 5 context gathered (D-70..D-89 + cross-phase D-90: drop vault_ prefix via phase 4.1 insertion)
+Resume file: .planning/phases/05-ui-plane/05-CONTEXT.md

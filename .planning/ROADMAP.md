@@ -86,6 +86,26 @@ Plans:
 - [x] 04-01-PLAN.md -- Alertmanager role port (ALERT-01) + Prometheus alerting wiring (D-64) + doc-rework cascade (D-58, defers ALERT-02..06 to v2 as ALERT-V2-01..05); Wave 1
 - [x] 04-02-PLAN.md -- UAT gap closure: Bug 1 (auto_remove race in alertmanager verify step 5) + Bug 2 (Docker single-file bind-mount stale-inode across 7 roles) + flush_handlers belt + roles/README.md doc gate; Wave 1 (depends on 04-01)
 
+### Phase 04.1: Drop vault prefix (INSERTED)
+
+**Goal**: Rename every `vault_*`-prefixed sensitive variable in the codebase to its role-namespaced unprefixed form (`vault_minio_root_user` -> `minio_root_user`, `vault_loki_s3_*` -> `loki_s3_*`, `vault_tempo_s3_*` -> `tempo_s3_*`, `vault_mimir_s3_*` -> `mimir_s3_*`) across the 4 affected roles (`minio`, `loki`, `tempo`, `mimir`). Rename `inventory/example-homelab/group_vars/all/vault.yml.example` -> `secrets.yml.example` with all 8 keys renamed inside. Cascade the convention change through PROJECT.md OPS-02 wording, REQUIREMENTS.md OPS-02 acceptance text, roles/README.md Gate 3 description (`Vault-discipline gate` -> `Secrets-discipline gate`), and Phase 1+2 CONTEXT.md historical references (annotated inline `(superseded by D-90)` rather than rewritten). Re-run the six per-role gates on all four affected roles and validate the stack still boots via a leviathan smoke test (push a synthetic log + metric, confirm Loki and Mimir still receive). Phase 5 plan 05-01 must NOT begin until this lands.
+
+**Source of truth:** `.planning/phases/05-ui-plane/05-CONTEXT.md` D-90. Convention rationale: the `vault_*` prefix added no value (role-namespace + suffix carry the same meaning), steered operators toward Ansible vault specifically when vaulting is one option among many (sops, env vars, external secret managers), and implied tooling enforcement Ansible doesn't actually provide. Per user memory `feedback_no_decorative_convention_prefixes.md`: decoration prefixes that imply enforcement are rejected project-wide.
+
+**Depends on:** Phase 4
+**Requirements**: None (project-level convention change; no new functional requirement).
+**Success Criteria** (what must be TRUE):
+  1. `grep -rE 'vault_(minio|loki|tempo|mimir)' roles/ inventory/` returns zero matches across all 4 affected roles and the example inventory.
+  2. `inventory/example-homelab/group_vars/all/secrets.yml.example` exists with 8 unprefixed keys (`minio_root_user`, `minio_root_password`, `loki_s3_access_key`, `loki_s3_secret_key`, `tempo_s3_access_key`, `tempo_s3_secret_key`, `mimir_s3_access_key`, `mimir_s3_secret_key`); the old `vault.yml.example` no longer exists in git.
+  3. PROJECT.md OPS-02 line + REQUIREMENTS.md OPS-02 acceptance text + roles/README.md Gate 3 wording all reflect "role-namespaced sensitive variables" rather than the old `vault_<role>_<purpose>` convention.
+  4. All four affected roles pass Gates 1-8 (grep-clean, image-pin, secrets-discipline using new naming, idempotency, healthcheck+restart, README schema, label-stamp, parent-dir bind-mount) on a re-run.
+  5. Leviathan smoke test: after Phase 4.1 lands, `ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml` runs to convergence and a synthetic log push to Loki + synthetic metric push to Mimir both succeed (validating that the rename did not break credential plumbing).
+
+**Plans:** 1 plan (planned)
+
+Plans:
+- [ ] 04.1-01-PLAN.md -- Vault-prefix rename across 4 roles + secrets.yml.example + doc cascade + gate re-run + leviathan smoke test
+
 ### Phase 5: UI Plane
 **Goal**: Operator can run the playbook and have Grafana running with datasources explicitly provisioned at stable UIDs (`prometheus`, `loki`, `tempo`, `mimir`), 5-10 curated starter dashboards rendering real data on a fresh deploy, trace-to-logs correlation wired through Tempo's `tracesToLogsV2` + a derived `trace_id` field on Loki — plus Karma running against Alertmanager and PromLens pinned to `v0.3.0` and marked deprecation-candidate in its role README. Grafana's datasource provisioning is the de-facto smoke test for everything that came before.
 **Depends on**: Phase 4
@@ -114,7 +134,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -122,6 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Telemetry Backends | 3/3 | Complete   | 2026-05-17 |
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
 | 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
+| 4.1. Drop vault prefix (INSERTED) | 0/1 | Not started | - |
 | 5. UI Plane | 0/TBD | Not started | - |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 
