@@ -88,28 +88,60 @@ None. Karma is stateless (in-memory alert cache). Container restart loses cache;
 
 ## Healthcheck
 
-The `ghcr.io/prymitive/karma:v0.130` image ships **no default HEALTHCHECK** (confirmed via `docker inspect` -- RESEARCH §2.2). This role provides an explicit one:
+By default this role ships with the container-level Docker HEALTHCHECK
+**DISABLED** (`karma_healthcheck_enabled: false`).
 
-```yaml
-healthcheck:
-  test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/health || exit 1"]
-  interval: 15s
-  timeout: 5s
-  retries: 5
-  start_period: 30s
-```
+**Why disabled by default**: `ghcr.io/prymitive/karma:v0.130` is built
+`FROM scratch` -- it ships ONLY the `/karma` binary and `/etc/ssl`. No
+`/bin/sh`, no `wget`, no `curl`. Any `CMD-SHELL` HEALTHCHECK form fails
+immediately at exec (`exec: /bin/sh: stat /bin/sh: no such file or
+directory`), and docker marks the container unhealthy after the configured
+number of failed retries (default 5). The pre-05-08 default of
+`karma_healthcheck_enabled: true` made every deploy report unhealthy on
+`docker inspect` even though karma itself was functionally serving traffic
+on `:8080/health` correctly. Karma's binary has no `--check-config` or
+similar self-probe subcommand safe for tight-loop healthcheck use.
 
-Verify with:
+**The canonical health gate**: `roles/karma/tasks/verify.yml` runs an
+in-network curl-probe against `/health` via a `curlimages/curl` one-shot
+container on the telemetron Docker bridge at deploy time. It asserts the
+endpoint returns 200 and that Karma's `/alerts.json` shows the configured
+alertmanager source (`telemetron`) is registered. This satisfies the M1
+acceptance heuristic without needing a perpetual container-level probe.
+
+Verify in-network readiness from another container on the `telemetron`
+bridge:
 
 ```bash
-docker inspect telemetron-karma --format '{{.State.Health.Status}}'   # expects: healthy
+curl -fsS http://karma:8080/health   # expects: HTTP 200, body "Pong"
 ```
 
-In-network readiness probe (from another container on the `telemetron` bridge):
+Verify no Docker-level health block (default posture):
 
 ```bash
-curl -fsS http://karma:8080/health   # expects: HTTP 200
+docker inspect telemetron-karma --format '{{.State.Health}}'
+# expects: <no value> (no HEALTHCHECK configured)
 ```
+
+**To re-enable** (operators wanting Docker-level autohealing): set
+`karma_healthcheck_enabled: true` in your inventory AND override
+`karma_healthcheck_test` with a probe that works against a scratch image.
+Options:
+
+- Run a sidecar container with shell + wget that probes karma over the
+  Docker network and surfaces karma's health from the sidecar (complex;
+  out of M1 scope).
+- Rebuild the karma image with `/bin/sh` + `wget` overlaid (e.g. via a
+  custom Dockerfile that does `FROM ghcr.io/prymitive/karma:v0.130 AS karma;
+  FROM busybox:latest; COPY --from=karma /karma /karma; ...`). Also out
+  of M1 scope.
+- Wait for upstream to ship a healthcheck-friendly variant.
+
+The default `karma_healthcheck_test` value is left as the CMD-SHELL+wget
+form even when `karma_healthcheck_enabled: false` -- intentional: if a
+future operator flips the enable knob without reading this section, the
+explicit shell-not-found error surfaces the scratch-image constraint
+loudly rather than silently defaulting to a no-op probe.
 
 ## Network -- Host publishing
 
