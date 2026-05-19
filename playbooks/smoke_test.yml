@@ -1,0 +1,229 @@
+---
+# playbooks/smoke_test.yml
+# Telemetron M1 acceptance smoke test (OPS-07).
+#
+# Pushes a synthetic OTLP log + metric + trace to the OTel Collector and
+# asserts visibility in Grafana via datasource-proxy queries within a
+# strict 60-second budget per assertion (retries: 12 / delay: 5).
+#
+# Usage:
+#   ansible-playbook -i inventory/example-homelab playbooks/smoke_test.yml \
+#                    --ask-vault-pass
+#
+# Targeted single-signal smoke:
+#   ansible-playbook ... --tags log
+#   ansible-playbook ... --tags metric
+#   ansible-playbook ... --tags trace
+#
+# Prerequisites:
+#   - playbooks/deploy_docker.yml has run to convergence on the target host.
+#   - OTel Collector :4318 is reachable on localhost (host-published per
+#     opentelemetry_publish_otlp default true).
+#   - Grafana container (telemetron-grafana) is healthy with all four
+#     datasource UIDs provisioned (loki, prometheus, mimir, tempo).
+#
+# Independent of deploy: this playbook reads secrets.yml directly via
+# vars_files so it does not depend on a prior playbook setting variables.
+
+- name: Telemetron -- M1 acceptance smoke test
+  hosts: telemetron
+  gather_facts: true
+  become: false
+
+  collections:
+    - community.docker
+
+  vars_files:
+    # Pitfall 5: use inventory_dir-relative path so the playbook works
+    # regardless of the operator's current working directory.
+    - "{{ inventory_dir }}/group_vars/all/secrets.yml"
+
+  vars:
+    # Per-run hex IDs. lookup('password', '/dev/null') generates fresh
+    # values on every invocation without writing to disk (RESEARCH C4).
+    smoke_trace_id: "{{ lookup('ansible.builtin.password', '/dev/null length=32 chars=hexdigits') | lower }}"
+    smoke_span_id:  "{{ lookup('ansible.builtin.password', '/dev/null length=16 chars=hexdigits') | lower }}"
+    # Run id = Unix epoch -- per-run unique without an extra lookup. The
+    # log query in the asserter filters by the literal marker, not by
+    # run_id, so back-to-back runs in the same second still distinguish
+    # by trace_id and metric label value.
+    smoke_run_id:   "{{ ansible_date_time.epoch }}"
+
+    # OTel Collector endpoint (default port 4318 OTLP/HTTP).
+    otel_host: localhost
+    otel_otlp_http_port: 4318
+
+    # Grafana endpoint (reuse Phase 5 defaults inline to avoid pulling
+    # the role's vars into a non-role context).
+    grafana_container_name: telemetron-grafana
+    grafana_admin_user: admin
+    grafana_http_port: 3000
+
+    # Retry budget = 12 * 5s = 60 seconds (D-99 / OPS-07 ROADMAP SC3).
+    smoke_assert_retries: 12
+    smoke_assert_delay: 5
+
+  tasks:
+
+    # =====================================================================
+    # PRODUCERS (3)
+    # =====================================================================
+
+    - name: "Smoke producer -- push synthetic log via OTLP/HTTP"
+      ansible.builtin.uri:
+        url: "http://{{ otel_host }}:{{ otel_otlp_http_port }}/v1/logs"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+        body: "{{ lookup('template', 'smoke_test/templates/log.json.j2') | from_json }}"
+        status_code: 200
+      register: smoke_push_log
+      tags:
+        - log
+
+    - name: "Smoke producer -- push synthetic metric via OTLP/HTTP"
+      ansible.builtin.uri:
+        url: "http://{{ otel_host }}:{{ otel_otlp_http_port }}/v1/metrics"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+        body: "{{ lookup('template', 'smoke_test/templates/metric.json.j2') | from_json }}"
+        status_code: 200
+      register: smoke_push_metric
+      tags:
+        - metric
+
+    - name: "Smoke producer -- push synthetic trace via OTLP/HTTP"
+      ansible.builtin.uri:
+        url: "http://{{ otel_host }}:{{ otel_otlp_http_port }}/v1/traces"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+        body: "{{ lookup('template', 'smoke_test/templates/trace.json.j2') | from_json }}"
+        status_code: 200
+      register: smoke_push_trace
+      tags:
+        - trace
+
+    # =====================================================================
+    # ASSERTERS (4) -- Loki, Prometheus, Mimir, Tempo via Grafana proxy.
+    # =====================================================================
+    # Pattern mirrors roles/grafana/tasks/verify.yml exactly (proven on
+    # leviathan 2026-05-19): docker_container_exec inside telemetron-grafana
+    # + curl -fsS to localhost:3000 + retries:N / delay:N / until: succeeded.
+    # 60-second budget = 12 * 5s.
+
+    - name: "Smoke assert -- Loki received smoke log"
+      community.docker.docker_container_exec:
+        container: "{{ grafana_container_name }}"
+        argv:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }} \
+              'http://localhost:{{ grafana_http_port }}/api/datasources/proxy/uid/loki/loki/api/v1/query?query=%7Bservice_name%3D%22telemetron-smoke%22%7D+%7C%3D+%22telemetron-smoke-test%22')
+            echo "$BODY" | grep -q '"status":"success"' || { echo "loki status not success: $BODY"; exit 1; }
+            echo "$BODY" | grep -q '"result":\[{' || { echo "loki result empty: $BODY"; exit 1; }
+            echo "loki_smoke_ok"
+      register: smoke_assert_loki
+      retries: "{{ smoke_assert_retries }}"
+      delay: "{{ smoke_assert_delay }}"
+      until: smoke_assert_loki is succeeded
+      changed_when: false
+      failed_when: smoke_assert_loki is failed and smoke_assert_loki.attempts | default(0) >= smoke_assert_retries
+      tags:
+        - log
+
+    - name: "Smoke assert -- Prometheus received smoke metric"
+      community.docker.docker_container_exec:
+        container: "{{ grafana_container_name }}"
+        argv:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }} \
+              'http://localhost:{{ grafana_http_port }}/api/datasources/proxy/uid/prometheus/api/v1/query?query=telemetron_smoke_metric%7Brun_id%3D%22{{ smoke_run_id }}%22%7D')
+            echo "$BODY" | grep -q '"status":"success"' || { echo "prom status not success: $BODY"; exit 1; }
+            echo "$BODY" | grep -q '"result":\[' || { echo "prom result missing: $BODY"; exit 1; }
+            echo "$BODY" | grep -q '"metric"' || { echo "prom result empty: $BODY"; exit 1; }
+            echo "prom_smoke_ok"
+      register: smoke_assert_prometheus
+      retries: "{{ smoke_assert_retries }}"
+      delay: "{{ smoke_assert_delay }}"
+      until: smoke_assert_prometheus is succeeded
+      changed_when: false
+      failed_when: smoke_assert_prometheus is failed and smoke_assert_prometheus.attempts | default(0) >= smoke_assert_retries
+      tags:
+        - metric
+
+    - name: "Smoke assert -- Mimir received smoke metric (remote_write validation)"
+      community.docker.docker_container_exec:
+        container: "{{ grafana_container_name }}"
+        argv:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            # Mimir datasource URL in roles/grafana/templates/datasources.yml.j2
+            # already prepends /prometheus; Grafana proxy adds the rest.
+            # Path proven in roles/grafana/tasks/verify.yml Step 7.
+            BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }} \
+              'http://localhost:{{ grafana_http_port }}/api/datasources/proxy/uid/mimir/api/v1/query?query=telemetron_smoke_metric%7Brun_id%3D%22{{ smoke_run_id }}%22%7D')
+            echo "$BODY" | grep -q '"status":"success"' || { echo "mimir status not success: $BODY"; exit 1; }
+            echo "$BODY" | grep -q '"result":\[' || { echo "mimir result missing: $BODY"; exit 1; }
+            echo "$BODY" | grep -q '"metric"' || { echo "mimir result empty: $BODY"; exit 1; }
+            echo "mimir_smoke_ok"
+      register: smoke_assert_mimir
+      retries: "{{ smoke_assert_retries }}"
+      delay: "{{ smoke_assert_delay }}"
+      until: smoke_assert_mimir is succeeded
+      changed_when: false
+      failed_when: smoke_assert_mimir is failed and smoke_assert_mimir.attempts | default(0) >= smoke_assert_retries
+      tags:
+        - metric
+
+    - name: "Smoke assert -- Tempo received smoke trace"
+      community.docker.docker_container_exec:
+        container: "{{ grafana_container_name }}"
+        argv:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            # Tempo returns HTTP 404 with body "trace not found" until the
+            # trace flushes from WAL to queryable state (typically <30s for
+            # single-host monolithic). curl -fsS exits non-zero on 404
+            # which triggers the retry loop -- this is the intended behavior.
+            BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }} \
+              'http://localhost:{{ grafana_http_port }}/api/datasources/proxy/uid/tempo/api/traces/{{ smoke_trace_id }}')
+            echo "$BODY" | grep -q '"batches":\[' || { echo "tempo no batches: $BODY"; exit 1; }
+            echo "tempo_smoke_ok"
+      register: smoke_assert_tempo
+      retries: "{{ smoke_assert_retries }}"
+      delay: "{{ smoke_assert_delay }}"
+      until: smoke_assert_tempo is succeeded
+      changed_when: false
+      failed_when: smoke_assert_tempo is failed and smoke_assert_tempo.attempts | default(0) >= smoke_assert_retries
+      tags:
+        - trace
+
+    - name: "Smoke summary -- all signals verified"
+      ansible.builtin.debug:
+        msg:
+          - "Telemetron M1 smoke test PASSED"
+          - "trace_id: {{ smoke_trace_id }}"
+          - "run_id:   {{ smoke_run_id }}"
+          - "loki:     ok"
+          - "prom:     ok"
+          - "mimir:    ok"
+          - "tempo:    ok"
+      tags:
+        - log
+        - metric
+        - trace
+        - always
