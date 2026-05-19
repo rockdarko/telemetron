@@ -63,9 +63,13 @@
     - role: grafana
       tags:
         - grafana
-  # Subsequent phase plans extend this list in dependency order
-  # (D-05 dependency tree). Phase 5 is IN PROGRESS:
-  # node_exporter + opentelemetry + prometheus + fluentbit + alertmanager
-  # + grafana are all wired. Remaining:
-  #   Phase 5: karma (plan 05-02), promlens (plan 05-03)
+    - role: karma
+      tags:
+        - karma
+    - role: promlens
+      tags:
+        - promlens
+  # Phase 5 is FEATURE-COMPLETE: node_exporter + opentelemetry + prometheus
+  # + fluentbit + alertmanager + grafana + karma + promlens are all wired.
+  # Remaining:
   #   Phase 6: nfsd (opt-in via enable_nfsd flag)

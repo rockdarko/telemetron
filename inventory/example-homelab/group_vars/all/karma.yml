@@ -1,0 +1,31 @@
+---
+# inventory/example-homelab/group_vars/all/karma.yml
+# Operator-tunable knobs for roles/karma (Phase 5; UI-05).
+
+# --- Host publishing (D-82 inverts D-30 for UI plane) ---
+karma_publish_host: true
+karma_bind_address: "0.0.0.0"
+karma_http_port: 8082           # D-84 host-side port matrix
+karma_container_port: 8080      # Karma internal listen port
+
+# --- Alertmanager connection (RESEARCH §6.2 D-25 fix: bridge DNS, not localhost) ---
+karma_alertmanager_name: telemetron       # clearer than upstream `alertmanager`
+karma_alertmanager_host: alertmanager     # Docker bridge DNS
+karma_alertmanager_port: 9093
+
+# --- Alert acknowledgement ---
+karma_ack_enabled: true
+karma_ack_duration: "1h"
+karma_ack_author: "karma"
+
+# --- UI ---
+karma_ui_refresh: "30s"
+karma_ui_theme: auto                      # auto / light / dark
+karma_ui_collapse_groups: collapsedOnMobile
+
+# --- Filters / label visibility (sorted-keys per D-20) ---
+karma_default_filters: []                  # default LogQL-style filter strings
+karma_labels_keep: []                      # label names to show in grid view
+
+# --- Additional Alertmanager servers (v2; for multi-AM ops) ---
+karma_extra_alertmanager_servers: []

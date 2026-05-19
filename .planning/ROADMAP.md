@@ -119,7 +119,7 @@ Plans:
 **Plans**: 3 plans
 Plans:
 - [x] 05-01-PLAN.md -- Grafana role port (UI-01, UI-02, UI-03, UI-04) + Gate 9 D-73 + doc cascade; Wave 1
-- [ ] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
+- [x] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
 - [ ] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
 **UI hint**: yes
 
@@ -147,7 +147,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
 | 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
 | 4.1. Drop vault prefix (INSERTED) | 1/1 | Complete | 2026-05-19 |
-| 5. UI Plane | 1/3 | In Progress|  |
+| 5. UI Plane | 2/3 | In Progress|  |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 
 ## Backlog

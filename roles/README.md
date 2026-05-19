@@ -10,7 +10,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `fluentbit`              | log shipping                                      | ☑ |
 | `grafana`                | dashboards, datasources, provisioning             | ☑ |
 | `hook_router`            | Alertmanager -> generic CI/automation webhook bridge (deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05) | — |
-| `karma`                  | alert triage UI                                   | ☐ |
+| `karma`                  | alert triage UI                                   | ☑ |
 | `loki`                   | log backend (monolithic mode)                     | ☑ |
 | `mimir`                  | long-term metrics (monolithic mode)               | ☑ |
 | `minio`                  | S3-compatible object storage                      | ☑ |
