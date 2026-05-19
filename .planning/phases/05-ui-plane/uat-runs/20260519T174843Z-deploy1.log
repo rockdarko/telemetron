@@ -1,0 +1,140 @@
+/usr/lib/python3/dist-packages/paramiko/pkey.py:82: CryptographyDeprecationWarning: TripleDES has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.TripleDES and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+  "cipher": algorithms.TripleDES,
+/usr/lib/python3/dist-packages/paramiko/transport.py:261: CryptographyDeprecationWarning: TripleDES has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.TripleDES and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+  "class": algorithms.TripleDES,
+
+PLAY [Telemetron -- deploy to Docker host] *************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [leviathan]
+
+TASK [Ensure the telemetron Docker bridge network exists] **********************
+ok: [leviathan]
+
+TASK [grafana : Ensure grafana config dirs exist] ******************************
+ok: [leviathan] => (item=/opt/telemetron/grafana)
+ok: [leviathan] => (item=/opt/telemetron/grafana/provisioning)
+ok: [leviathan] => (item=/opt/telemetron/grafana/provisioning/datasources)
+ok: [leviathan] => (item=/opt/telemetron/grafana/provisioning/dashboards)
+ok: [leviathan] => (item=/opt/telemetron/grafana/provisioning/dashboards/telemetron)
+
+TASK [grafana : Render grafana.ini] ********************************************
+ok: [leviathan]
+
+TASK [grafana : Render datasources.yaml (UI-02 + UI-04; D-77/D-79/D-80)] *******
+ok: [leviathan]
+
+TASK [grafana : Render dashboards.yaml provisioning manifest (D-76)] ***********
+ok: [leviathan]
+
+TASK [grafana : Copy role-shipped dashboard JSONs (D-75 -- exactly 7)] *********
+ok: [leviathan] => (item=host-health.json)
+ok: [leviathan] => (item=loki-explore-landing.json)
+ok: [leviathan] => (item=tempo-explore-landing.json)
+ok: [leviathan] => (item=otel-collector-self-metrics.json)
+ok: [leviathan] => (item=loki-self-metrics.json)
+ok: [leviathan] => (item=tempo-self-metrics.json)
+ok: [leviathan] => (item=mimir-self-metrics.json)
+
+TASK [grafana : Ensure telemetron_grafana_data named volume exists (D-16; UI-01)] ***
+ok: [leviathan]
+
+TASK [grafana : Pull grafana image] ********************************************
+ok: [leviathan]
+
+TASK [grafana : Assemble grafana mounts list (conditional operator drop-in; D-76)] ***
+ok: [leviathan]
+
+TASK [grafana : Run grafana container (explicit HEALTHCHECK, env-injected admin, parent-dir bind mount)] ***
+ok: [leviathan]
+
+TASK [grafana : Flush handlers before verify (so verify sees post-restart state)] ***
+
+TASK [grafana : Verify grafana end-to-end (HEALTHCHECK + datasource UIDs + Gate 9 D-73 datasources-resolve-real-data)] ***
+included: /home/darko/git/rockdarko/telemetron/roles/grafana/tasks/verify.yml for leviathan
+
+TASK [grafana : Wait for grafana container HEALTHCHECK to report healthy] ******
+ok: [leviathan]
+
+TASK [grafana : Curl-probe /api/health in-network] *****************************
+ok: [leviathan]
+
+TASK [grafana : Gate 9 -- datasource /health check ({{ item }})] ***************
+ok: [leviathan] => (item=prometheus)
+ok: [leviathan] => (item=loki)
+ok: [leviathan] => (item=tempo)
+ok: [leviathan] => (item=mimir)
+
+TASK [grafana : Gate 9 -- canonical query (prometheus: up)] ********************
+ok: [leviathan]
+
+TASK [grafana : Gate 9 -- canonical query (loki: {job=~".+"})] *****************
+ok: [leviathan]
+
+TASK [grafana : Gate 9 -- canonical query (tempo: /api/search?limit=1)] ********
+ok: [leviathan]
+
+TASK [grafana : Gate 9 -- canonical query (mimir: up via /prometheus/api/v1/query)] ***
+ok: [leviathan]
+
+TASK [grafana : UI-04 -- assert Tempo datasource tracesToLogsV2 customQuery is wired] ***
+ok: [leviathan]
+
+TASK [grafana : UI-04 -- assert Loki datasource derivedFields trace_id is wired] ***
+ok: [leviathan]
+
+TASK [grafana : Gate 9.5 -- assert no provisioned dashboard has unresolved $datasource panel refs] ***
+ok: [leviathan]
+
+TASK [karma : Ensure karma config directory exists (D-18 flat layout)] *********
+ok: [leviathan]
+
+TASK [karma : Render karma.yaml from template] *********************************
+ok: [leviathan]
+
+TASK [karma : Pull karma image (GHCR official, NOT Docker Hub fork)] ***********
+ok: [leviathan]
+
+TASK [karma : Run karma container (stateless, explicit HEALTHCHECK, CONFIG_FILE env, parent-dir bind)] ***
+ok: [leviathan]
+
+TASK [karma : Flush handlers before verify (so verify sees post-restart state)] ***
+
+TASK [karma : Verify karma end-to-end (HEALTHCHECK + /health + Alertmanager connection)] ***
+included: /home/darko/git/rockdarko/telemetron/roles/karma/tasks/verify.yml for leviathan
+
+TASK [karma : Wait for karma container HEALTHCHECK to report healthy] **********
+skipping: [leviathan]
+
+TASK [karma : Curl-probe /health in-network (Karma source-confirmed endpoint per RESEARCH sec.2.2)] ***
+ok: [leviathan]
+
+TASK [karma : Curl-probe root path (Karma UI HTML smoke)] **********************
+ok: [leviathan]
+
+TASK [karma : Karma -> Alertmanager connection assertion (poll until source registered)] ***
+ok: [leviathan]
+
+TASK [promlens : Pull promlens image] ******************************************
+ok: [leviathan]
+
+TASK [promlens : Run promlens container (stateless, CLI-flag config, explicit HEALTHCHECK)] ***
+ok: [leviathan]
+
+TASK [promlens : Flush handlers before verify (OPS-03 schema consistency; no-op in M1 since no template change triggers a handler here)] ***
+
+TASK [promlens : Verify promlens end-to-end (HEALTHCHECK + root path + Prometheus reachability)] ***
+included: /home/darko/git/rockdarko/telemetron/roles/promlens/tasks/verify.yml for leviathan
+
+TASK [promlens : Wait for promlens container HEALTHCHECK to report healthy] ****
+ok: [leviathan]
+
+TASK [promlens : Curl-probe root path in-network (PromLens UI HTML; no /health endpoint in 0.3.0)] ***
+ok: [leviathan]
+
+TASK [promlens : Curl-probe upstream Prometheus reachability (sanity that PromLens's configured backend is alive)] ***
+ok: [leviathan]
+
+PLAY RECAP *********************************************************************
+leviathan                  : ok=36   changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   
+
