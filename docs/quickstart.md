@@ -165,8 +165,11 @@ ssh <your-host> docker ps --filter name=telemetron- --format \
 (If you deployed to the control host via `ansible_connection: local`,
 drop the `ssh <your-host>` prefix.)
 
-Expected: 12 lines, all containing `Up ... (healthy)`. Telemetron
-declares explicit HEALTHCHECKs on every container.
+Expected: 12 lines. Eleven containers report `Up ... (healthy)`;
+`telemetron-karma` reports `Up ...` without a health suffix because
+the Karma image is built `FROM scratch` and ships no shell for a
+healthcheck probe (the in-network curl probe in the role's verify
+task is the canonical health gate for Karma).
 
 If `nfsd` was enabled via `enable_nfsd: true` in inventory, you also
 see `systemctl is-active nfs-server.service` returning `active` on the
