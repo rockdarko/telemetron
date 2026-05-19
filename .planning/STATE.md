@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 04-01-PLAN.md (alertmanager role + Prometheus alerting wiring + doc cascade)
-last_updated: "2026-05-18T22:58:33.519Z"
-last_activity: 2026-05-18
+status: executing
+stopped_at: "Completed 04-02-PLAN.md (Phase 4 gap closure: Bug 1 auto_remove race + Bug 2 stale-inode bind-mount + amtool query auto-fix; all 6 UAT pass on leviathan)"
+last_updated: "2026-05-19T00:48:42.622Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 10
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 13
+  completed_plans: 13
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 04 (alert-plane) — EXECUTING
-Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-05-18
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-ingest-plane P04-fluentbit | 8 min | 10 tasks | 9 files |
 | Phase 03 P05 | 9 min | 10 tasks | 16 files |
 | Phase 04-alert-plane P1 | 13min | 7 tasks tasks | 16 files files |
+| Phase 04-alert-plane P02 | 13min | 7 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,13 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 04-alert-plane]: D-65 severity-label retrofit was a no-op (Research Q11): all four baseline rules already carry severity labels from Phase 3 ship; inline comment in rules-baseline.yml.j2 documents the verification so future regressions are caught
 - [Phase 04-alert-plane]: D-66 zero vault keys added in Phase 4: null receiver = no outbound destination; single-host telemetron bridge trust boundary; planning-stub hook-router keys cleaned from vault.yml.example with deferral note pointing at ALERT-V2-01..05
 - [Phase 04-alert-plane]: Hook router (Flask + role + bundles + auth) deferred to a future milestone: ALERT-02..06 moved to v2 Requirements as ALERT-V2-01..05; M1 trades 'turnkey runbook automation' pitch for 'single-host LGTM observability plane with alerts visible in Karma (Phase 5)'; design preserved in 04-DISCUSSION-LOG.md
+- [Phase 04-alert-plane]: Bug 1 TIER 1 fix: alertmanager verify step 5 rewritten with community.docker.docker_container_exec + Ansible until:/retries:/delay: polling against the running AM container; eliminates the auto_remove+detach:false+while-loop race (ansible/ansible#45272 + #47673)
+- [Phase 04-alert-plane]: Bug 1 TIER 2 + Bug 2 belt-and-suspenders shared fix: meta:flush_handlers inserted immediately before include_tasks:verify.yml in prometheus + alertmanager tasks/main.yml; guarantees restart handlers fire before downstream verify probes
+- [Phase 04-alert-plane]: Bug 2 FIX A: 12 single-file rendered-config bind-mount surfaces across 7 roles collapsed to 7 parent-directory bind mounts; eliminates moby/moby#6011 stale-inode class; tempo special case moves container path from /etc/tempo.yaml to /etc/tempo/tempo.yaml (only container-side path change)
+- [Phase 04-alert-plane]: Gate 8 added to roles/README.md banning single-file rendered-config bind mounts; cites moby/moby#6011 and the diagnosis debug doc; future role ports inherit the convention
+- [Phase 04-alert-plane]: Auto-fix during UAT (Rule 1): alertmanager verify steps 7 + 9 (amtool alert/silence query) converted from single-shot read to until:/retries:/delay: polling -- amtool alert add returns synchronously but AM dispatch processes async; same race class as Bug 1, same fix shape, same file
+- [Phase 04-alert-plane]: TIER 3 deferred: 9 latent docker_container+auto_remove sites in loki/tempo/mimir/prometheus/opentelemetry/fluentbit/node_exporter verify files captured in debug doc; convert when a Phase 5 cross-role probe makes any of them firing rather than latent
+- [Phase 04-alert-plane]: All 6 Phase 4 UAT tests pass on leviathan post-04-02 (HEALTHCHECK + receivers + status + Prom->AM + amtool + idempotency); manual atomic-rename inode test proves parent-directory mount semantics work definitively (524589 -> 2097216 visible immediately inside container)
 
 ### Pending Todos
 
@@ -143,6 +151,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T22:58:33.514Z
-Stopped at: Completed 04-01-PLAN.md (alertmanager role + Prometheus alerting wiring + doc cascade)
+Last session: 2026-05-19T00:48:25.142Z
+Stopped at: Completed 04-02-PLAN.md (Phase 4 gap closure: Bug 1 auto_remove race + Bug 2 stale-inode bind-mount + amtool query auto-fix; all 6 UAT pass on leviathan)
 Resume file: None

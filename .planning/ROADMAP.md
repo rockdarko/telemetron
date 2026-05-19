@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Storage** - MinIO with bucket bootstrap gate (5 required buckets), `telemetron` Docker bridge network created in playbook pre_tasks, inventory `group_vars/all/` skeleton, vault discipline, grep + idempotency gates established (completed 2026-05-17)
 - [x] **Phase 2: Telemetry Backends** - Loki, Tempo, and Mimir running in monolithic mode against MinIO with correct retention defaults and Tempo's OTLP ports moved off the standard 4317/4318 (completed 2026-05-17)
 - [x] **Phase 3: Ingest Plane** - Prometheus scraping + remote_writing to Mimir with baseline alert rules, OTel Collector accepting OTLP on 4317/4318 and fanning out to all three backends, Fluent Bit shipping host logs through OTel to Loki, node_exporter exposing host metrics (completed 2026-05-18; live-host UAT on leviathan closed 16 latent bugs, all 5 SCs pass)
-- [ ] **Phase 4: Alert Plane** - Alertmanager (`quay.io/prometheus/alertmanager:v0.32.1`) on :9093 with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, a single `null` default receiver (Karma in Phase 5 is the operator UX), one default inhibit rule (`severity=critical -> severity=warning, equal: [instance]`), persistent `telemetron_alertmanager_data` volume; Prometheus extended with an `alerting: alertmanagers:` block targeting it. Hook router work is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.
+- [x] **Phase 4: Alert Plane** - Alertmanager (`quay.io/prometheus/alertmanager:v0.32.1`) on :9093 with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, a single `null` default receiver (Karma in Phase 5 is the operator UX), one default inhibit rule (`severity=critical -> severity=warning, equal: [instance]`), persistent `telemetron_alertmanager_data` volume; Prometheus extended with an `alerting: alertmanagers:` block targeting it. Hook router work is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05. (completed 2026-05-19; 04-02 gap closure landed both UAT bugs + Gate 8 doc gate; all 6 UAT tests pass on leviathan)
 - [ ] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate
 - [ ] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** - Opt-in `nfsd` role default-off, `playbooks/deploy_docker.yml` orchestrating all 14 roles in dependency order with per-role tags, example inventory hostnames wired so `ansible-playbook` runs end-to-end, three docs authored against a stack that actually booted, M1 acceptance smoke test (synthetic log + metric + trace in Grafana within 60s), top-level README updated
 
@@ -81,9 +81,10 @@ Plans:
   3. `curl -fsS http://alertmanager:9093/api/v2/status | jq -r '.config.original'` contains `group_by:` listing `alertname/cluster/service`, `group_interval: 5m`, `repeat_interval: 4h`, `group_wait: 30s` (D-61).
   4. `curl -fsS http://prometheus:9090/api/v1/alertmanagers | jq -e '.data.activeAlertmanagers[0].url == "http://alertmanager:9093/api/v2/alerts"'` exits 0 (Prom->AM wiring live).
   5. `docker exec telemetron-alertmanager /bin/amtool --alertmanager.url=http://localhost:9093 alert add alertname=TestAlert severity=warning instance=verify-host` exits 0; the subsequent `amtool alert query alertname=TestAlert` lists the alert as active; `amtool silence add` followed by `amtool silence query` confirms silence persistence.
-**Plans**: 1
+**Plans**: 2 plans
 Plans:
 - [x] 04-01-PLAN.md -- Alertmanager role port (ALERT-01) + Prometheus alerting wiring (D-64) + doc-rework cascade (D-58, defers ALERT-02..06 to v2 as ALERT-V2-01..05); Wave 1
+- [x] 04-02-PLAN.md -- UAT gap closure: Bug 1 (auto_remove race in alertmanager verify step 5) + Bug 2 (Docker single-file bind-mount stale-inode across 7 roles) + flush_handlers belt + roles/README.md doc gate; Wave 1 (depends on 04-01)
 
 ### Phase 5: UI Plane
 **Goal**: Operator can run the playbook and have Grafana running with datasources explicitly provisioned at stable UIDs (`prometheus`, `loki`, `tempo`, `mimir`), 5-10 curated starter dashboards rendering real data on a fresh deploy, trace-to-logs correlation wired through Tempo's `tracesToLogsV2` + a derived `trace_id` field on Loki — plus Karma running against Alertmanager and PromLens pinned to `v0.3.0` and marked deprecation-candidate in its role README. Grafana's datasource provisioning is the de-facto smoke test for everything that came before.
@@ -120,7 +121,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Storage | 3/3 | Complete   | 2026-05-17 |
 | 2. Telemetry Backends | 3/3 | Complete   | 2026-05-17 |
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
-| 4. Alert Plane | 0/1 | Not started | - |
+| 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
 | 5. UI Plane | 0/TBD | Not started | - |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 
