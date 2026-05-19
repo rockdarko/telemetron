@@ -1,0 +1,235 @@
+---
+# roles/grafana/tasks/verify.yml
+# Pre-poll Grafana readiness then exercise the UI-02 + UI-03 + UI-04 surface
+# in-network. Implements Gate 9 (D-73): datasources-resolve-real-data.
+#
+# Step pattern: curlimages/curl one-shot per assertion. Auth via Basic Auth
+# with admin + {{ grafana_admin_password }} -- the password stored in
+# Grafana's SQLite matches whatever was set on first boot
+# (RESEARCH §2.1 Risk 2 -- FIRST-BOOT-ONLY behavior).
+#
+# Mirrors roles/alertmanager/tasks/verify.yml conditional readiness shape
+# (D-10a + W7 + D-32 + D-54 + D-69).
+
+# Step 1: poll HEALTHCHECK status (D-10a; per W7 changed_when:false).
+- name: Wait for grafana container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ grafana_container_name }}"
+  register: grafana_health_check
+  until: >-
+    grafana_health_check.container is defined
+    and grafana_health_check.container.State is defined
+    and grafana_health_check.container.State.Health is defined
+    and grafana_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ grafana_health_retries }}"
+  delay: "{{ grafana_health_delay }}"
+  changed_when: false
+  when: grafana_healthcheck_enabled | bool
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 2: /api/health structural probe (in-network curl one-shot).
+- name: Curl-probe /api/health in-network
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-health"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        curl -fsS http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/health
+        | grep -q '"database":"ok"'
+        || { echo "/api/health did not report database:ok" ; exit 1 ; } ;
+        echo "api_health_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 3: Gate 9 D-73 -- datasource /health check for each of the four UIDs.
+- name: "Gate 9 -- datasource /health check ({{ item }})"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-ds-health-{{ item }}"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/uid/{{ item }}/health) ;
+        echo "$BODY" | grep -q '"status":"OK"'
+        || { echo "datasource {{ item }} health FAIL: $BODY" ; exit 1 ; } ;
+        echo "datasource_{{ item }}_health_ok"
+  changed_when: false
+  loop:
+    - prometheus
+    - loki
+    - tempo
+    - mimir
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 4: Gate 9 D-73 -- canonical query against prometheus UID.
+# Asserts non-empty result on `up` query (proxy reaches Prometheus + scrape targets exist).
+- name: "Gate 9 -- canonical query (prometheus: up)"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-query-prom"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        'http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/proxy/uid/prometheus/api/v1/query?query=up') ;
+        echo "$BODY" | grep -q '"result":\[' || { echo "prometheus query no result: $BODY" ; exit 1 ; } ;
+        echo "$BODY" | grep -q '"metric"' || { echo "prometheus query empty result: $BODY" ; exit 1 ; } ;
+        echo "canonical_query_prometheus_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 5: Gate 9 D-73 -- canonical query against loki UID.
+# Asserts JSON parses to status:success (D-73 accepts empty streams as stable state).
+- name: "Gate 9 -- canonical query (loki: {job=~\".+\"})"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-query-loki"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        'http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/proxy/uid/loki/loki/api/v1/query?query=%7Bjob%3D~%22.%2B%22%7D') ;
+        echo "$BODY" | grep -q '"status":"success"' || { echo "loki query non-success: $BODY" ; exit 1 ; } ;
+        echo "canonical_query_loki_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 6: Gate 9 D-73 -- canonical query against tempo UID.
+# D-73 explicit: "expect at least one trace OR explicit 'no traces yet' stable state."
+- name: "Gate 9 -- canonical query (tempo: /api/search?limit=1)"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-query-tempo"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        'http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/proxy/uid/tempo/api/search?limit=1') ;
+        echo "$BODY" | grep -qE '"traces":|"results":' || { echo "tempo query no array key: $BODY" ; exit 1 ; } ;
+        echo "canonical_query_tempo_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 7: Gate 9 D-73 -- canonical query against mimir UID.
+# Mimir exposes Prometheus-compatible API at /prometheus subpath.
+- name: "Gate 9 -- canonical query (mimir: up via /prometheus/api/v1/query)"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-query-mimir"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        'http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/proxy/uid/mimir/api/v1/query?query=up') ;
+        echo "$BODY" | grep -q '"status":"success"' || { echo "mimir query non-success: $BODY" ; exit 1 ; } ;
+        echo "canonical_query_mimir_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 8: tracesToLogsV2 shape assertion on Tempo datasource (UI-04 wiring proof).
+- name: "UI-04 -- assert Tempo datasource tracesToLogsV2 customQuery is wired"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-t2l"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/uid/tempo) ;
+        echo "$BODY" | grep -q 'tracesToLogsV2' || { echo "tempo datasource missing tracesToLogsV2 block" ; exit 1 ; } ;
+        echo "$BODY" | grep -q 'trace_id' || { echo "tempo datasource tracesToLogsV2 missing trace_id query" ; exit 1 ; } ;
+        echo "tracesToLogsV2_wired_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify
+
+# Step 9: derivedFields shape assertion on Loki datasource (UI-04 wiring proof).
+- name: "UI-04 -- assert Loki datasource derivedFields trace_id is wired"
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}-verify-df"
+    image: "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+    state: started
+    detach: false
+    auto_remove: true
+    recreate: true
+    cleanup: true
+    networks:
+      - name: "{{ grafana_network }}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        BODY=$(curl -fsS -u {{ grafana_admin_user }}:{{ grafana_admin_password }}
+        http://{{ grafana_container_name }}:{{ grafana_http_port }}/api/datasources/uid/loki) ;
+        echo "$BODY" | grep -q 'derivedFields' || { echo "loki datasource missing derivedFields" ; exit 1 ; } ;
+        echo "$BODY" | grep -q '"datasourceUid":"tempo"' || { echo "loki derivedFields not linked to tempo UID" ; exit 1 ; } ;
+        echo "derivedFields_wired_ok"
+  changed_when: false
+  tags:
+    - grafana
+    - grafana-verify

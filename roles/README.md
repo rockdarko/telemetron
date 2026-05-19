@@ -8,7 +8,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 |--------------------------|---------------------------------------------------|:------:|
 | `alertmanager`           | alert routing                                     | ☑ |
 | `fluentbit`              | log shipping                                      | ☑ |
-| `grafana`                | dashboards, datasources, provisioning             | ☐ |
+| `grafana`                | dashboards, datasources, provisioning             | ☑ |
 | `hook_router`            | Alertmanager -> generic CI/automation webhook bridge (deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05) | — |
 | `karma`                  | alert triage UI                                   | ☐ |
 | `loki`                   | log backend (monolithic mode)                     | ☑ |
@@ -88,3 +88,18 @@ volumes:
 ```
 
 Established in Phase 4 plan 04-02 (see `.planning/debug/prometheus-template-rename-bind-mount-stale-inode.md` for the diagnosis). The 7 afflicted roles (alertmanager, fluentbit, loki, mimir, opentelemetry, prometheus, tempo) were converted in that plan; future role ports inherit this convention.
+
+**9. Datasources-resolve-real-data gate (Plan 05-01; D-73; UI-02 / UI-03 / Gate 9):**
+
+Applies to the `roles/grafana/` role specifically (the only role with cross-component datasource provisioning). The role's verify step MUST:
+
+1. Issue `curl http://grafana:3000/api/datasources/uid/<uid>/health` for each of the four UIDs (`prometheus`, `loki`, `tempo`, `mimir`) and assert HTTP 200 + body containing `"status":"OK"`.
+2. Issue one canonical query against each datasource:
+   - `prometheus`: `/api/v1/query?query=up` -- expect non-empty `result[]`.
+   - `loki`: `/loki/api/v1/query?query={job=~".+"}` -- expect `"status":"success"`.
+   - `tempo`: `/api/search?limit=1` -- expect 200 with `"traces":[` or `"results":[` (empty array acceptable as stable state).
+   - `mimir`: `/api/v1/query?query=up` (proxied through the mimir datasource which prepends `/prometheus`) -- expect `"status":"success"`.
+3. Assert that `/api/datasources/uid/tempo` returns a JSON body containing `tracesToLogsV2` and `trace_id` (UI-04 wiring).
+4. Assert that `/api/datasources/uid/loki` returns a JSON body containing `derivedFields` and `"datasourceUid":"tempo"` (UI-04 wiring).
+
+Auth: Basic Auth with admin + `grafana_admin_password`. In-network via `curlimages/curl:8.10.1` one-shot containers on the `telemetron` bridge (D-54 / D-69 pattern). This is THE M1 acceptance heuristic for "everything wired correctly" -- if Grafana boots and Gate 9 passes, the whole pre-Phase-5 stack is validated end-to-end.

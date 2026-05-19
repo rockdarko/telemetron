@@ -23,7 +23,7 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 <!-- Current scope — Milestone 1: "Port to clean-slate, Docker, homelab-first" -->
 
 - [ ] Port 14 Ansible roles — translated (FR→EN), de-INSPQ'd, naming-normalized, each documented in `roles/<name>/README.md` and proven by booting on Rock's homelab Docker host
-- [ ] Roles in scope: `alertmanager`, `fluentbit`, `grafana`, `karma`, `loki`, `mimir`, `minio`, `nfsd`, `node_exporter`, `opentelemetry`, `prometheus`, `promlens`, `tempo` (13 deployed + `hook_router` deferred to v2 -- see REQUIREMENTS.md ALERT-V2-01..05); 9/13 ported after Phase 4 (4 remaining: grafana, karma, promlens, nfsd)
+- [ ] Roles in scope: `alertmanager`, `fluentbit`, `grafana`, `karma`, `loki`, `mimir`, `minio`, `nfsd`, `node_exporter`, `opentelemetry`, `prometheus`, `promlens`, `tempo` (13 deployed + `hook_router` deferred to v2 -- see REQUIREMENTS.md ALERT-V2-01..05); 10/13 ported after Phase 5 plan 05-01 (3 remaining: karma, promlens, nfsd)
 - [ ] Loki, Tempo, and Mimir support monolithic mode only for M1 (distributed/microservices mode deferred)
 - [ ] Ship a working `inventory/example-homelab/` covering a single-node Docker target — clone, edit a hostname, run the playbook
 - [ ] Wire `playbooks/deploy_docker.yml` to orchestrate the 14 roles end-to-end

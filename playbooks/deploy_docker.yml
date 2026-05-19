@@ -60,9 +60,12 @@
     - role: alertmanager
       tags:
         - alertmanager
+    - role: grafana
+      tags:
+        - grafana
   # Subsequent phase plans extend this list in dependency order
-  # (D-05 dependency tree). Phase 3 is now FEATURE-COMPLETE:
-  # node_exporter + opentelemetry + prometheus + fluentbit are all wired.
-  #   Phase 4: alertmanager (hook_router deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05)
-  #   Phase 5: grafana, karma, promlens
+  # (D-05 dependency tree). Phase 5 is IN PROGRESS:
+  # node_exporter + opentelemetry + prometheus + fluentbit + alertmanager
+  # + grafana are all wired. Remaining:
+  #   Phase 5: karma (plan 05-02), promlens (plan 05-03)
   #   Phase 6: nfsd (opt-in via enable_nfsd flag)

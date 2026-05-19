@@ -1,0 +1,46 @@
+---
+# inventory/example-homelab/group_vars/all/grafana.yml
+# Operator-tunable knobs for roles/grafana (Phase 5; UI-01..UI-04).
+# Defaults below match roles/grafana/defaults/main.yml -- override as needed.
+
+# --- Host publishing (D-82 inverts D-30 for UI plane) ---
+# Grafana MUST be browser-reachable for the homelab quickstart.
+# Flip to false + run a reverse proxy on the telemetron bridge for
+# production hardening (see roles/grafana/README.md Reverse proxy).
+# Acceptable values: true / false / "127.0.0.1"
+grafana_publish_host: true
+grafana_bind_address: "0.0.0.0"   # D-83
+grafana_http_port: 3000           # D-84
+
+# --- Access model (D-86, D-87, D-88, D-89) ---
+grafana_admin_user: admin
+grafana_admin_email: "admin@telemetron.local"
+# grafana_admin_password -- defined in secrets.yml (D-86).
+# RESEARCH §2.1 Risk 2: GF_SECURITY_ADMIN_PASSWORD is FIRST-BOOT-ONLY.
+# To rotate post-deploy: docker exec telemetron-grafana grafana-cli admin reset-admin-password '<new>'
+
+grafana_anonymous_enabled: false   # D-87 default off; true for wall-display TV mode
+grafana_default_theme: dark
+
+# --- Datasource backend hostnames (telemetron bridge DNS; overrides per-role split-stack) ---
+# Defaults align with the Telemetron stack; only override if you split
+# backends across hosts and need different DNS names.
+# grafana_prometheus_url: "http://prometheus:9090"
+# grafana_loki_url: "http://loki:3100"
+# grafana_tempo_url: "http://tempo:3200"
+# grafana_mimir_url: "http://mimir:9009/prometheus"
+
+# --- Operator dashboard drop-in dir (D-76) ---
+# Set to a host path containing your own *.json dashboards to have them
+# auto-loaded into the "Operator" folder in Grafana. Empty (default) =
+# no operator drop-in mount.
+grafana_dashboard_extra_dir: ""
+
+# --- Extra datasources (sorted-keys per D-20) ---
+# List of additional datasources to merge into the provisioned manifest.
+# Each entry follows Grafana's datasource YAML schema.
+grafana_extra_datasources: []
+
+# --- Extra env (escape hatch) ---
+# Additional GF_* env vars to inject. Use sparingly; prefer the typed knobs above.
+grafana_extra_env: {}

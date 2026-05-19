@@ -18,3 +18,13 @@ telemetron_publish_default: false
 # Pitfall 6: Fluent Bit timestamp drift). Operators MAY override per-role
 # but the homelab default is UTC everywhere.
 telemetron_tz: Etc/UTC
+
+# --- UI plane port allocation (Phase 5; D-82 / D-84) ---
+# Grafana    :3000  (host-published default; grafana_publish_host: true)
+# Karma      :8082  (host-published default; karma_publish_host: true; Phase 5 plan 05-02)
+# PromLens   :8081  (host-published default; promlens_publish_host: true; Phase 5 plan 05-03)
+#
+# Reverse-proxy / TLS termination is operator-supplied (D-85). See
+# roles/grafana/README.md Reverse proxy section for the Caddy/Traefik/nginx
+# pattern. Operators flip <role>_publish_host: false and proxy from the
+# host network to the telemetron bridge.

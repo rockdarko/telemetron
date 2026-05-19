@@ -116,7 +116,11 @@ Plans:
   3. Operator clicks a trace span in Grafana Explore and the "Logs for this span" link navigates to Loki Explore with a `trace_id` filter pre-applied; the corresponding log lines render — confirming `tracesToLogsV2` + Loki derived-field plumbing is wired correctly.
   4. Operator opens `http://<host>:8082` (Karma) and sees the M1 Alertmanager's current alerts in Karma's grid view; opens `http://<host>:8081` (PromLens) and gets a working PromQL editor pointed at Prometheus.
   5. `roles/promlens/README.md` explicitly marks PromLens as a deprecation candidate and notes Prometheus 3's UI absorbs the tree-view feature; Karma container image is `ghcr.io/prymitive/karma:v0.130` (the GHCR official, not `lmierzwa/karma` Docker Hub fork).
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [x] 05-01-PLAN.md -- Grafana role port (UI-01, UI-02, UI-03, UI-04) + Gate 9 D-73 + doc cascade; Wave 1
+- [ ] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
+- [ ] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
 **UI hint**: yes
 
 ### Phase 6: Opt-in, Orchestration, Docs & Smoke Test
@@ -142,8 +146,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
 | 2. Telemetry Backends | 3/3 | Complete   | 2026-05-17 |
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
 | 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
-| 4.1. Drop vault prefix (INSERTED) | 0/1 | Not started | - |
-| 5. UI Plane | 0/TBD | Not started | - |
+| 4.1. Drop vault prefix (INSERTED) | 1/1 | Complete | 2026-05-19 |
+| 5. UI Plane | 1/3 | In progress | - |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 
 ## Backlog
