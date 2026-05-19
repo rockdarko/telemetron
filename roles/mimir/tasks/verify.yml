@@ -90,7 +90,7 @@
 
 # Step 2: bucket-trinity assertion (BACK-04 + Pitfall G).
 # Confirms all three required buckets exist and are reachable via the
-# Mimir vault credentials (which alias to MinIO root creds per D-27).
+# Mimir secret credentials (which alias to MinIO root creds per D-27, superseded by D-90).
 # Per W8: mc ls --json is the documented stable interface; we don't
 # need objects in the buckets at Phase 2 time, just bucket existence
 # and credential validity. set -e short-circuits the rest on first
@@ -113,7 +113,7 @@
     networks:
       - name: "{{ mimir_network }}"
     env:
-      MC_HOST_local: "http://{{ vault_mimir_s3_access_key }}:{{ vault_mimir_s3_secret_key }}@minio:9000"
+      MC_HOST_local: "http://{{ mimir_s3_access_key }}:{{ mimir_s3_secret_key }}@minio:9000"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-

@@ -137,7 +137,7 @@ mimir_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
 
 # --- mc image pins for the bucket-trinity verify one-shot ---
 # Used by tasks/verify.yml to assert all three mimir-* buckets are
-# reachable via the D-27-aliased mimir vault credentials.
+# reachable via the D-27-aliased mimir secret credentials (D-27 superseded by D-90).
 mimir_mc_image: minio/mc
 mimir_mc_image_tag: "RELEASE.2025-04-16T18-13-26Z"
 

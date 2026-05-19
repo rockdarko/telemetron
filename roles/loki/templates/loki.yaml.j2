@@ -50,8 +50,8 @@ storage_config:
   aws:
     endpoint: {{ loki_s3_endpoint }}   # Loki format: http:// prefix included
     bucketnames: {{ loki_s3_bucket }}
-    access_key_id: "{{ vault_loki_s3_access_key }}"
-    secret_access_key: "{{ vault_loki_s3_secret_key }}"
+    access_key_id: "{{ loki_s3_access_key }}"
+    secret_access_key: "{{ loki_s3_secret_key }}"
     region: {{ loki_s3_region }}
     s3forcepathstyle: {{ loki_s3_force_path_style | string | lower }}
     insecure: {{ loki_s3_insecure | string | lower }}

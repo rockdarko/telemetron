@@ -25,8 +25,8 @@ common:
     backend: s3
     s3:
       endpoint: {{ mimir_s3_endpoint }}   # Mimir S3 endpoint format: NO http:// prefix
-      access_key_id: "{{ vault_mimir_s3_access_key }}"
-      secret_access_key: "{{ vault_mimir_s3_secret_key }}"
+      access_key_id: "{{ mimir_s3_access_key }}"
+      secret_access_key: "{{ mimir_s3_secret_key }}"
       insecure: {{ mimir_s3_insecure | string | lower }}
       region: {{ mimir_s3_region }}
 

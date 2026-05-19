@@ -39,7 +39,7 @@
 # per D-20 we sort for deterministic output.
 #
 # SECURITY (I12): MC_HOST_<alias>=http://user:pw@host:port is the
-# required mc credential format. The URL embeds vault credentials and
+# required mc credential format. The URL embeds secret credentials and
 # IS visible via `docker inspect` for the lifetime of this container.
 # `auto_remove: true` destroys the container on exit (typically <5s),
 # bounding the docker-inspect exposure window to the bootstrap run
@@ -65,7 +65,7 @@
     networks:
       - name: "{{ minio_network }}"
     env:
-      MC_HOST_local: "http://{{ vault_minio_root_user }}:{{ vault_minio_root_password }}@{{ minio_container_name }}:{{ minio_api_port }}"
+      MC_HOST_local: "http://{{ minio_root_user }}:{{ minio_root_password }}@{{ minio_container_name }}:{{ minio_api_port }}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -98,7 +98,7 @@
     networks:
       - name: "{{ minio_network }}"
     env:
-      MC_HOST_local: "http://{{ vault_minio_root_user }}:{{ vault_minio_root_password }}@{{ minio_container_name }}:{{ minio_api_port }}"
+      MC_HOST_local: "http://{{ minio_root_user }}:{{ minio_root_password }}@{{ minio_container_name }}:{{ minio_api_port }}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-

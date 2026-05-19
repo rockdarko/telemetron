@@ -77,7 +77,7 @@
     networks:
       - name: "{{ loki_network }}"
     env:
-      MC_HOST_local: "http://{{ vault_loki_s3_access_key }}:{{ vault_loki_s3_secret_key }}@minio:9000"
+      MC_HOST_local: "http://{{ loki_s3_access_key }}:{{ loki_s3_secret_key }}@minio:9000"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
