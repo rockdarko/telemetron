@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 05 ui-plane VERIFIED end-to-end on leviathan (re-verification round 2, 3/3 passed, 0 issues; commit 1fd9685). Phase 05 complete. Phase 06 (opt-in/orchestration/docs/smoke-test) is next."
-last_updated: "2026-05-19T18:05:00Z"
+stopped_at: "Completed 06-01-PLAN.md -- nfsd role ported + FB tail integration. Next: 06-02 smoke_test.yml."
+last_updated: "2026-05-19T21:48:45.466Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 22
-  completed_plans: 22
+  total_plans: 26
+  completed_plans: 23
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17)
 
 **Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 06 — opt-in, orchestration, docs & smoke test
+**Current focus:** Phase 06 — opt-in-orchestration-docs-smoke-test
 
 ## Current Position
 
-Phase: 06
-Plan: Not started (planning needed)
-Status: Phase 05 verified end-to-end on leviathan; Phase 06 is next
+Phase: 06 (opt-in-orchestration-docs-smoke-test) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05 P07 | 4 min | 4 tasks tasks | 3 files files |
 | Phase 05-ui-plane P05 | 6min | 3 tasks tasks | 2 files files |
 | Phase 05-ui-plane P08 | 8min | 5 tasks tasks | 5 files files |
+| Phase 06 P01 | 24min | 4 tasks tasks | 12 files files |
 
 ## Accumulated Context
 
@@ -171,6 +172,10 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 05-ui-plane]: [05-08] auto_remove:false + cleanup:true + detach:false is the documented community.docker escape hatch from the auto_remove race when docker_container_exec isn't viable (target container has no shell). Applied to karma's 3 verify probe tasks and promlens's 2 verify probe tasks pre-emptively (same defect class as 04-02 alertmanager + 05-05 grafana).
 - [Phase 05-ui-plane]: [05-08 Rule-1 auto-fix] YAML folded-scalar more-indented continuation lines preserve newlines (do NOT collapse to spaces). Multi-line shell commands with || / | chains across more-indented lines will produce sh syntax errors. Use plain scalar (single-line) for shell commands -- fixed karma->AM probe that was silently failing on every pre-05-08 deploy. Also: karma /alerts.json endpoint is POST-only (returns 405 on GET); /api/v1/alerts does not exist on karma v0.130.
 - [Phase 05-ui-plane]: Phase 05 UI plane VERIFIED end-to-end on leviathan after gap-closure round (Plans 05-05/06/07/08). Live UAT round 2 (2026-05-19, commit 1fd9685): Test 1 deploy+idempotency (ok=36 changed=0 failed=0 x2), Test 2 trace-to-logs (synthesized OTLP path proved structured_metadata derivedField path AND regex body fallback path), Test 3 tempo-self-metrics (122 ds refs all -> uid=prometheus; live Grafana proxy resolves; control bogus UID -> 404). 05-VERIFICATION.md elevated human_needed -> verified.
+- [Phase 06]: D-91 nfsd host-package role (only host-package in M1) ported with FR->EN names + idempotent /etc/exports blockinfile + EL8+/Debian-22.04+ distro branching
+- [Phase 06]: D-92 single-knob coupling: enable_nfsd gates BOTH nfsd role AND conditional FB [INPUT] tail + [FILTER] lua + container bind-mount (Rule-2 auto-fix on leviathan)
+- [Phase 06]: Lua tag-prefix dispatch (^nfs%.) added to enrich() with early return preserves Docker code path verbatim; parts[4] = hostname from /srv/telemetron-nfs/<host>/
+- [Phase 06]: Plan 06-01 leviathan UAT: 5/5 steps pass; idempotency changed=0 confirmed full-stack with enable_nfsd:true; known pre-existing FB->OTel->Loki label promotion gap documented (affects Docker pipeline equally, out of 06-01 scope)
 
 ### Roadmap Evolution
 
@@ -186,6 +191,6 @@ None active. (Prior "Phase 5 blocked on Phase 4.1" concern is resolved -- 04.1 l
 
 ## Session Continuity
 
-Last session: 2026-05-19T18:05:00Z
-Stopped at: Phase 05 ui-plane VERIFIED end-to-end on leviathan (live UAT round 2, 3/3 passed, 0 issues, commit 1fd9685). Phase 06 is next.
+Last session: 2026-05-19T21:48:45.461Z
+Stopped at: Completed 06-01-PLAN.md -- nfsd role ported + FB tail integration. Next: 06-02 smoke_test.yml.
 Resume file: None

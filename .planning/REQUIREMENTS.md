@@ -60,13 +60,15 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### Legacy / optional (LEGACY)
 
-- [ ] **LEGACY-01**: The `nfsd` role exists for operators with a legacy NFS-based log ingestion path. Default `enable_nfsd: false` in the example inventory — it does not deploy unless an operator opts in. `roles/nfsd/README.md` documents what it does and why most operators should ignore it.
+- [x] **LEGACY-01**: The `nfsd` role exists for operators with a legacy NFS-based log ingestion path. Default `enable_nfsd: false` in the example inventory — it does not deploy unless an operator opts in. `roles/nfsd/README.md` documents what it does and why most operators should ignore it.
 
 ### Inventory and orchestration (INV)
 
 - [ ] **INV-01**: Operator can clone the repo, edit a single hostname/SSH-user pair in `inventory/example-homelab/`, supply their own vault password, and run `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` to bring up the full M1 stack on a target Docker host.
 - [x] **INV-02**: `inventory/example-homelab/` ships a complete `group_vars/all/` layout covering `network.yml` (Docker network name, port assignments), `storage.yml` (named-volume mounts, MinIO bucket names, retention values), `secrets.yml.example` (placeholder secret names using role-namespaced `<role>_<purpose>` keys — the real `secrets.yml` is operator-supplied and never committed), plus per-component `group_vars/` files where the research recommends override knobs.
-- [ ] **INV-03**: `playbooks/deploy_docker.yml` orchestrates the 14 roles in dependency order: `[pre_tasks: telemetron network]` → `minio` → (`loki`, `tempo`, `mimir`) → (`prometheus`, `opentelemetry`, `fluentbit`, `node_exporter`) → (`alertmanager`, `hook_router`) → (`grafana`, `karma`, `promlens`) → `nfsd` (opt-in). Every role has a tag so operators can run `--tags <role>` for targeted re-runs.
+- [x] **INV-03**: `playbooks/deploy_docker.yml` orchestrates 13 deployed roles in dependency order with `nfsd` as the 14th opt-in slot: `[pre_tasks: telemetron network]` → `minio` → (`loki`, `tempo`, `mimir`) → (`prometheus`, `opentelemetry`, `fluentbit`, `node_exporter`) → `alertmanager`[^hook-router-deferred] → (`grafana`, `karma`, `promlens`) → `nfsd` (opt-in). Every role has a tag so operators can run `--tags <role>` for targeted re-runs.
+
+[^hook-router-deferred]: `hook_router` was originally paired with `alertmanager` here; deferred to v2 per ALERT-V2-01..05 during the Phase 4 scope reshape. M1 ships Alertmanager with a `null` default receiver.
 
 ### Cross-cutting operational (OPS)
 
