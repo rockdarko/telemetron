@@ -147,7 +147,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
 | 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
 | 4.1. Drop vault prefix (INSERTED) | 1/1 | Complete | 2026-05-19 |
-| 5. UI Plane | 1/3 | In progress | - |
+| 5. UI Plane | 1/3 | In Progress|  |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 
 ## Backlog
@@ -160,7 +160,7 @@ SC1-SC5 acceptance. Promote with `/gsd:review-backlog` when triaging.
 
 **Goal:** [Captured for future planning]
 **Requirements:** TBD
-**Plans:** 0 plans
+**Plans:** 1/3 plans executed
 
 Context:
 - Phase 2 UAT removed `compactor.blocks_retention_period` from `mimir.yaml.j2` because Mimir 3.0 moved it out of `compactor.Config`. Mimir crashed at parse with "field blocks_retention_period not found in type compactor.Config".

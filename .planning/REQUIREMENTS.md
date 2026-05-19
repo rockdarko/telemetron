@@ -51,10 +51,10 @@ REQ-IDs use the format `[CATEGORY]-[NUMBER]`. Categories:
 
 ### UI plane (UI)
 
-- [ ] **UI-01**: Operator can run the playbook and have Grafana running (`grafana/grafana-oss:13.0.1` — the OSS variant, not the Enterprise variant) on `:3000`, using embedded SQLite on a persistent named volume (`telemetron_grafana_data`) as its backing store, with admin password supplied from Ansible vault.
-- [ ] **UI-02**: Grafana datasources are provisioned at boot with **explicit UIDs**: `uid: prometheus`, `uid: loki`, `uid: tempo`, `uid: mimir`. Bundled dashboards reference these UIDs; UIDs do not change between deploys.
-- [ ] **UI-03**: Grafana ships 5–10 curated starter dashboards out of the box: host health (node_exporter), Loki Explore landing dashboard, Tempo Explore landing dashboard, OTel Collector self-metrics, and backend self-metrics (Loki/Tempo/Mimir health). Dashboards open and render real data on a fresh deploy.
-- [ ] **UI-04**: Tempo datasource provisioning wires `tracesToLogsV2` (with `customQuery` referencing Loki's `uid: loki` and a labelled `trace_id` derived field), enabling trace ↔ log correlation in Grafana Explore.
+- [x] **UI-01**: Operator can run the playbook and have Grafana running (`grafana/grafana-oss:13.0.1` — the OSS variant, not the Enterprise variant) on `:3000`, using embedded SQLite on a persistent named volume (`telemetron_grafana_data`) as its backing store, with admin password supplied from Ansible vault.
+- [x] **UI-02**: Grafana datasources are provisioned at boot with **explicit UIDs**: `uid: prometheus`, `uid: loki`, `uid: tempo`, `uid: mimir`. Bundled dashboards reference these UIDs; UIDs do not change between deploys.
+- [x] **UI-03**: Grafana ships 5–10 curated starter dashboards out of the box: host health (node_exporter), Loki Explore landing dashboard, Tempo Explore landing dashboard, OTel Collector self-metrics, and backend self-metrics (Loki/Tempo/Mimir health). Dashboards open and render real data on a fresh deploy.
+- [x] **UI-04**: Tempo datasource provisioning wires `tracesToLogsV2` (with `customQuery` referencing Loki's `uid: loki` and a labelled `trace_id` derived field), enabling trace ↔ log correlation in Grafana Explore.
 - [ ] **UI-05**: Operator can run the playbook and have Karma running (`ghcr.io/prymitive/karma:v0.130` — **GHCR official**, not the `lmierzwa/karma` Docker Hub fork), configured to pull alerts from the M1 Alertmanager.
 - [ ] **UI-06**: Operator can run the playbook and have PromLens running (`prom/promlens:v0.3.0`). The `roles/promlens/README.md` explicitly marks it as a deprecation-candidate, noting that Prometheus 3's UI absorbs its tree-view feature.
 

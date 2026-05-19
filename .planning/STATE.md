@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 04.1-drop-vault-prefix-01-PLAN.md
-last_updated: "2026-05-19T02:51:20.426Z"
+status: executing
+stopped_at: Completed 05-01-grafana-PLAN.md
+last_updated: "2026-05-19T11:32:13.296Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 17
+  completed_plans: 15
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17)
 
 **Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 04.1 — drop-vault-prefix
+**Current focus:** Phase 05 — ui-plane
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 05 (ui-plane) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
@@ -66,6 +66,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-alert-plane P1 | 13min | 7 tasks tasks | 16 files files |
 | Phase 04-alert-plane P02 | 13min | 7 tasks | 10 files |
 | Phase 04.1-drop-vault-prefix P01 | 105 | 7 tasks | 20 files |
+| Phase 05 P01 | 14 min | 3 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 04-alert-plane]: All 6 Phase 4 UAT tests pass on leviathan post-04-02 (HEALTHCHECK + receivers + status + Prom->AM + amtool + idempotency); manual atomic-rename inode test proves parent-directory mount semantics work definitively (524589 -> 2097216 visible immediately inside container)
 - [Phase 04.1-drop-vault-prefix]: D-90: Drop vault_ prefix -- role-namespace+suffix is self-documenting; prefix implied Ansible Vault tooling enforcement that was never present
 - [Phase 04.1-drop-vault-prefix]: vault.yml.example renamed to secrets.yml.example via git mv to preserve rename history; **/secrets.yml added to .gitignore
+- [Phase 05]: D-77: Hardcoded datasource UIDs (prometheus, loki, tempo, mimir); pre-rewritten dashboard JSONs committed
+- [Phase 05]: D-79/D-80: tracesToLogsV2 on Tempo datasource with service.name->service_name tag; derivedFields on Loki with matcherType:label
+- [Phase 05]: D-82: UI plane exempt from telemetron_publish_default:false; grafana_publish_host:true default for browser access
 
 ### Roadmap Evolution
 
@@ -158,6 +162,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T02:46:38.087Z
-Stopped at: Completed 04.1-drop-vault-prefix-01-PLAN.md
+Last session: 2026-05-19T11:32:13.292Z
+Stopped at: Completed 05-01-grafana-PLAN.md
 Resume file: None
