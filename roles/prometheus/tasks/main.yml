@@ -123,9 +123,13 @@
         target: "{{ prometheus_data_path }}"
         type: volume
     volumes:
-      - "{{ prometheus_config_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
-      - "{{ prometheus_config_dir }}/rules/baseline.yml:/etc/prometheus/rules/baseline.yml:ro"
-      - "{{ prometheus_config_dir }}/rules/extra.yml:/etc/prometheus/rules/extra.yml:ro"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount eliminates
+      # the moby/moby#6011 stale-inode class. Container still sees
+      # /etc/prometheus/prometheus.yml + /etc/prometheus/rules/{baseline,extra}.yml
+      # at exactly the same paths -- only the host-side bind source changes.
+      # The rules/ subdirectory comes along inside the directory automatically.
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - "{{ prometheus_config_dir }}:/etc/prometheus:ro"
     # Distroless image; CMD form (not CMD-SHELL). The actual command form
     # is set in defaults/main.yml per image probe. When
     # prometheus_healthcheck_enabled is false, the healthcheck key is
