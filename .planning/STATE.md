@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 06-02-PLAN.md -- smoke_test.yml + 3 OTLP templates + README. Leviathan UAT 6/6 PASS. Next: 06-03 docs (architecture/quickstart/inventory)."
-last_updated: "2026-05-19T21:59:51.889Z"
+stopped_at: "Completed 06-03-PLAN.md -- 3 M1 docs (architecture/quickstart/inventory) authored + Gate-1-scrubbed + leviathan UAT verbatim PASS. Next: 06-04 README rewrite + idempotency revalidation."
+last_updated: "2026-05-19T22:15:22.928Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 26
-  completed_plans: 24
+  completed_plans: 25
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 06 (opt-in-orchestration-docs-smoke-test) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-05-19
 
@@ -76,6 +76,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05-ui-plane P08 | 8min | 5 tasks tasks | 5 files files |
 | Phase 06 P01 | 24min | 4 tasks tasks | 12 files files |
 | Phase 06-opt-in-orchestration-docs-smoke-test P02 | 12min | 4 tasks tasks | 5 files files |
+| Phase 06-opt-in-orchestration-docs-smoke-test P03 | 10min | 4 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -180,6 +181,9 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 06]: Plan 06-02 delivers OPS-07: playbooks/smoke_test.yml + 3 OTLP/HTTP JSON templates + operator README. 3 producers + 4 datasource-proxy asserters with retries:12/delay:5 = 60s budget. Tag-scoped (--tags log/metric/trace). Mimir URL uses /api/v1/query (not /prometheus/api/v1/query) per D-99a.
 - [Phase 06]: Rule-1 auto-fix during smoke UAT: dropped | from_json filter from 3 producer bodies. Ansible's lookup('template') with convert_data:True default returns dict for JSON-shaped templates; piping dict to from_json throws. body_format: json on uri serializes the dict directly.
 - [Phase 06]: Leviathan smoke UAT (Plan 06-02): 6/6 steps pass. Full smoke ok=9 failed=0 in ~14s; --tags log/metric/trace single-signal runs; OTel-down loud-failure test (exit=2, Connection refused, no silent skip); recovery clean. vars_files {{ inventory_dir }}/group_vars/all/secrets.yml is permissive on missing files (Ansible 2.18 -- documented in HUMAN-UAT).
+- [Phase 06-opt-in-orchestration-docs-smoke-test]: Plan 06-03 delivers DOCS-01/02/03: 3 M1 docs (architecture.md terse 3-4pg, quickstart.md teaching 6-8pg, inventory.md deep-dive 2-3pg). Gate 1 scrub PASS on all (zero D-XX, zero .planning paths, zero vault_ prefix, zero INSPQ heritage, zero non-ASCII).
+- [Phase 06-opt-in-orchestration-docs-smoke-test]: Quickstart DOCS-02 acceptance proven verbatim on leviathan: full-stack idempotency (ok=132 changed=0), 12 containers up, smoke 4/4 signals PASS, 7 dashboards visible, Loki smoke-test query returns data, 4 datasources health OK, Karma+Grafana URLs 200.
+- [Phase 06-opt-in-orchestration-docs-smoke-test]: [Rule 1 auto-fix during 06-03 UAT] Quickstart Step 6 healthy-container expectation corrected (11/12 healthy, Karma scratch image has no shell for probe). Fact-check authoring also caught plan-skeleton drift on inventory filename (hosts.yml not example-homelab.hosts).
 
 ### Roadmap Evolution
 
@@ -195,6 +199,6 @@ None active. (Prior "Phase 5 blocked on Phase 4.1" concern is resolved -- 04.1 l
 
 ## Session Continuity
 
-Last session: 2026-05-19T21:59:51.884Z
-Stopped at: Completed 06-02-PLAN.md -- smoke_test.yml + 3 OTLP templates + README. Leviathan UAT 6/6 PASS. Next: 06-03 docs (architecture/quickstart/inventory).
+Last session: 2026-05-19T22:15:10.814Z
+Stopped at: Completed 06-03-PLAN.md -- 3 M1 docs (architecture/quickstart/inventory) authored + Gate-1-scrubbed + leviathan UAT verbatim PASS. Next: 06-04 README rewrite + idempotency revalidation.
 Resume file: None

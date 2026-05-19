@@ -142,7 +142,7 @@ Plans:
 Plans:
 - [x] 06-01-PLAN.md — nfsd role port (LEGACY-01) + FB tail-input integration; Wave 1
 - [x] 06-02-PLAN.md — playbooks/smoke_test.yml + 3 OTLP/HTTP producers + 4 Grafana-proxy asserters (OPS-07); Wave 2
-- [ ] 06-03-PLAN.md — docs/architecture.md + docs/quickstart.md + docs/inventory.md (DOCS-01, DOCS-02, DOCS-03); Wave 3
+- [x] 06-03-PLAN.md — docs/architecture.md + docs/quickstart.md + docs/inventory.md (DOCS-01, DOCS-02, DOCS-03); Wave 3
 - [ ] 06-04-PLAN.md — README.md rewrite (DOCS-04) + INV-01/INV-03 close-out + idempotency revalidation; Wave 4
 
 ## Progress
