@@ -105,6 +105,18 @@
     - alertmanager
     - alertmanager-container
 
+# Bug-fix 04-02 (Bug 1 TIER 2 + Bug 2 belt-and-suspenders):
+# Flush queued `restart alertmanager` handler before verify runs. Same
+# rationale as the prometheus role -- prevents verify.yml from probing
+# stale-inode config after an alertmanager.yml template change.
+# See .planning/debug/alertmanager-verify-prom-am-probe-auto-remove-race.md
+# and .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+- name: Flush handlers before verify (so verify sees post-restart state)
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - alertmanager
+    - alertmanager-verify
+
 # Verify MUST be the final task (D-32). Mirrors roles/{node_exporter,prometheus,fluentbit}/tasks/main.yml pattern.
 - name: Verify alertmanager end-to-end (readiness + Prom->AM round-trip + amtool synthetic alert + silence)
   ansible.builtin.include_tasks: verify.yml

@@ -146,6 +146,19 @@
     - prometheus
     - prometheus-container
 
+# Bug-fix 04-02 (Bug 1 TIER 2 + Bug 2 belt-and-suspenders):
+# Flush queued `restart prometheus` handler before verify runs. Without
+# this, a prometheus.yml template change leaves the container reading the
+# stale-inode config until end-of-play; verify.yml's /api/v1/alertmanagers
+# probe and any cross-role probe (Phase 4 alertmanager verify) sees stale
+# state. See .planning/debug/alertmanager-verify-prom-am-probe-auto-remove-race.md
+# and .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+- name: Flush handlers before verify (so verify sees post-restart state)
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - prometheus
+    - prometheus-verify
+
 # Verify MUST be the final task (D-32). Mirrors roles/{mimir,opentelemetry}/
 # tasks/main.yml -- verify included from main, not a separate playbook.
 - name: Verify Prometheus end-to-end (readiness + targets + rules assertions)
