@@ -9,7 +9,7 @@ galaxy_info:
     tree-view feature; PromLens upstream has been functionally frozen
     since 2022-12. Ships UI-06 for upstream parity; likely dropped in
     a future Telemetron milestone. Stateless (no volume, no config
-    file -- pure CLI flags per RESEARCH §2.3).
+    file -- pure CLI flags per RESEARCH sec.2.3).
   license: MIT
   min_ansible_version: "2.15"
   platforms:

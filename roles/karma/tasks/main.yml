@@ -2,9 +2,9 @@
 # roles/karma/tasks/main.yml
 # Karma v0.130 deploy + in-network verify.
 # Mirrors roles/alertmanager/tasks/main.yml shape modulo Karma specifics:
-# stateless (no volume), CONFIG_FILE env var (RESEARCH §2.2 -- required so
+# stateless (no volume), CONFIG_FILE env var (RESEARCH sec.2.2 -- required so
 # Karma's binary finds the config from a non-CWD path), explicit HEALTHCHECK
-# (image has none -- RESEARCH §2.2), parent-dir bind mount (Gate 8).
+# (image has none -- RESEARCH sec.2.2), parent-dir bind mount (Gate 8).
 
 - name: Ensure karma config directory exists (D-18 flat layout)
   ansible.builtin.file:
@@ -70,7 +70,7 @@
         read_only: true
     healthcheck: "{{ karma_container_healthcheck if (karma_healthcheck_enabled | bool) else omit }}"
     env:
-      # RESEARCH §2.2: Karma searches for karma.yaml in CWD by default; CWD
+      # RESEARCH sec.2.2: Karma searches for karma.yaml in CWD by default; CWD
       # in the distroless-like image is `/`. CONFIG_FILE env var points it
       # at the parent-dir-mounted config. Without this, Karma starts with
       # empty defaults and no Alertmanager configured.

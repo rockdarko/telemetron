@@ -5,9 +5,9 @@
 #
 # UI plane role -- D-82 exempts from telemetron_publish_default:false.
 # Karma reads alerts from Alertmanager on the telemetron Docker bridge
-# (http://alertmanager:9093 -- NOT localhost; D-25 audit per RESEARCH §6.2).
+# (http://alertmanager:9093 -- NOT localhost; D-25 audit per RESEARCH sec.6.2).
 # Stateless: no volume, in-memory cache.
-# HEALTHCHECK is explicit -- image ships none (RESEARCH §2.2).
+# HEALTHCHECK is explicit -- image ships none (RESEARCH sec.2.2).
 
 # --- Image pin (OPS-01; UI-05) ---
 # GHCR official -- NOT the Docker Hub community fork (see roles/karma/README.md).
@@ -22,7 +22,7 @@ karma_publish_host: true
 karma_bind_address: 0.0.0.0   # D-83
 
 # --- Port matrix (D-84) ---
-# Karma's internal listen port is 8080 (RESEARCH §2.2). Host-publish at 8082.
+# Karma's internal listen port is 8080 (RESEARCH sec.2.2). Host-publish at 8082.
 karma_http_port: 8082          # host-side
 karma_container_port: 8080     # container-side; matches karma's listen.port default
 
@@ -31,19 +31,19 @@ karma_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/kar
 karma_config_container_path: /etc/karma
 karma_config_file_container_path: /etc/karma/karma.yaml
 
-# --- Alertmanager connection (D-25 audit fix per RESEARCH §6.2) ---
+# --- Alertmanager connection (D-25 audit fix per RESEARCH sec.6.2) ---
 # Telemetron uses Docker bridge DNS: http://alertmanager:9093 (NOT localhost).
-karma_alertmanager_name: telemetron     # clearer than upstream `alertmanager`; RESEARCH §6.2
+karma_alertmanager_name: telemetron     # clearer than upstream `alertmanager`; RESEARCH sec.6.2
 karma_alertmanager_host: alertmanager
 karma_alertmanager_port: 9093
 karma_alertmanager_proxy: true          # Karma proxies silence-add/del back to AM
 
-# --- Alert acknowledgement (RESEARCH §2.2 -- useful homelab feature) ---
+# --- Alert acknowledgement (RESEARCH sec.2.2 -- useful homelab feature) ---
 karma_ack_enabled: true
 karma_ack_duration: "1h"
 karma_ack_author: "karma"
 
-# --- UI (RESEARCH §2.2 -- recommended knobs surfaced as inventory) ---
+# --- UI (RESEARCH sec.2.2 -- recommended knobs surfaced as inventory) ---
 karma_ui_refresh: "30s"
 karma_ui_theme: auto                    # auto / light / dark
 karma_ui_minimal_group_width: 420
@@ -54,7 +54,7 @@ karma_default_filters: []               # list of default LogQL-style filter str
 karma_labels_keep: []                   # list of label names to display in grid view
 karma_extra_alertmanager_servers: []    # additional AM endpoints (for multi-AM ops; v2)
 
-# --- Healthcheck (RESEARCH §2.2 -- image has NO built-in HEALTHCHECK; explicit required) ---
+# --- Healthcheck (RESEARCH sec.2.2 -- image has NO built-in HEALTHCHECK; explicit required) ---
 karma_healthcheck_enabled: true
 karma_healthcheck_test: ["CMD-SHELL", "wget --spider -q http://localhost:{{ karma_container_port }}/health || exit 1"]
 karma_healthcheck_interval: 15s

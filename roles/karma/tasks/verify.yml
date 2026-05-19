@@ -24,7 +24,7 @@
     - karma
     - karma-verify
 
-- name: Curl-probe /health in-network (Karma source-confirmed endpoint per RESEARCH §2.2)
+- name: Curl-probe /health in-network (Karma source-confirmed endpoint per RESEARCH sec.2.2)
   community.docker.docker_container:
     name: "{{ karma_container_name }}-verify-health"
     image: "{{ karma_curl_image }}:{{ karma_curl_image_tag }}"

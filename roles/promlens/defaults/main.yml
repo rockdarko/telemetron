@@ -9,7 +9,7 @@
 # Prometheus 3.x's built-in UI absorbs PromLens's tree-view feature.
 
 # --- Image pin (OPS-01; UI-06) ---
-# PromLens v0.3.0 -- last tagged 2022-12-05. RESEARCH §2.3 notes the image
+# PromLens v0.3.0 -- last tagged 2022-12-05. RESEARCH sec.2.3 notes the image
 # is still pullable as of 2026-05 but may be archived in a future
 # milestone. README documents the SHA-pin air-gap recommendation.
 promlens_image: prom/promlens
@@ -23,21 +23,21 @@ promlens_publish_host: true
 promlens_bind_address: "0.0.0.0"   # D-83
 
 # --- Port matrix (D-84) ---
-# PromLens internal listen port is 8080 (Dockerfile EXPOSE 8080 -- RESEARCH §2.3).
+# PromLens internal listen port is 8080 (Dockerfile EXPOSE 8080 -- RESEARCH sec.2.3).
 # Host-publish at 8081.
 promlens_http_port: 8081          # host-side
 promlens_container_port: 8080     # container-side; matches --web.listen-address default
 
-# --- Prometheus connection (RESEARCH §2.3 -- CLI flag, NOT env var) ---
+# --- Prometheus connection (RESEARCH sec.2.3 -- CLI flag, NOT env var) ---
 # CRITICAL: PromLens v0.3.0 uses CLI flags only (kingpin). There is NO
 # env-var equivalent for setting the default Prometheus URL. The correct
 # flag is --web.default-prometheus-url=<url>. CONTEXT.md line 152
 # (Claude's Discretion) suggested env-var configuration -- RESEARCH
-# §2.3 corrected this. We use CLI flag exclusively.
+# sec.2.3 corrected this. We use CLI flag exclusively.
 promlens_prometheus_url: "http://prometheus:9090"
 
-# --- Healthcheck (RESEARCH §2.3 -- image has NO built-in HEALTHCHECK; explicit required) ---
-# RESEARCH §2.3: PromLens 0.3.0 has NO dedicated /health endpoint.
+# --- Healthcheck (RESEARCH sec.2.3 -- image has NO built-in HEALTHCHECK; explicit required) ---
+# RESEARCH sec.2.3: PromLens 0.3.0 has NO dedicated /health endpoint.
 # Use root path `/` as the readiness signal (returns HTTP 200 + PromLens UI HTML).
 promlens_healthcheck_enabled: true
 promlens_healthcheck_test: ["CMD-SHELL", "wget --spider -q http://localhost:{{ promlens_container_port }} || exit 1"]

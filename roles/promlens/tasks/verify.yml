@@ -2,7 +2,7 @@
 # roles/promlens/tasks/verify.yml
 # Pre-poll PromLens readiness then exercise the public surface:
 # - D-10a HEALTHCHECK poll
-# - Root path probe (PromLens 0.3.0 has NO /health endpoint per RESEARCH §2.3
+# - Root path probe (PromLens 0.3.0 has NO /health endpoint per RESEARCH sec.2.3
 #   -- the UI HTML page on / is the readiness signal)
 # - Prometheus reachability cross-check (probe http://prometheus:9090/-/healthy
 #   from the same network to confirm PromLens's upstream Prometheus is alive)
