@@ -160,7 +160,7 @@ SC1-SC5 acceptance. Promote with `/gsd:review-backlog` when triaging.
 
 **Goal:** [Captured for future planning]
 **Requirements:** TBD
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Context:
 - Phase 2 UAT removed `compactor.blocks_retention_period` from `mimir.yaml.j2` because Mimir 3.0 moved it out of `compactor.Config`. Mimir crashed at parse with "field blocks_retention_period not found in type compactor.Config".

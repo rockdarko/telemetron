@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.32.1
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-01-grafana-PLAN.md
-last_updated: "2026-05-19T11:32:13.296Z"
+status: verifying
+stopped_at: Completed 05-03-promlens-PLAN.md
+last_updated: "2026-05-19T11:45:29.877Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 17
-  completed_plans: 15
+  completed_plans: 17
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 ## Current Position
 
 Phase: 05 (ui-plane) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
+Plan: 3 of 3
+Status: Phase complete — ready for verification
 Last activity: 2026-05-19
 
 Progress: [░░░░░░░░░░] 0%
@@ -67,6 +67,8 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-alert-plane P02 | 13min | 7 tasks | 10 files |
 | Phase 04.1-drop-vault-prefix P01 | 105 | 7 tasks | 20 files |
 | Phase 05 P01 | 14 min | 3 tasks | 24 files |
+| Phase 05 P02 | 7 | 2 tasks | 11 files |
+| Phase 05 P03 | 8 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -147,6 +149,12 @@ Recent decisions affecting current work (Phase 1):
 - [Phase 05]: D-77: Hardcoded datasource UIDs (prometheus, loki, tempo, mimir); pre-rewritten dashboard JSONs committed
 - [Phase 05]: D-79/D-80: tracesToLogsV2 on Tempo datasource with service.name->service_name tag; derivedFields on Loki with matcherType:label
 - [Phase 05]: D-82: UI plane exempt from telemetron_publish_default:false; grafana_publish_host:true default for browser access
+- [Phase 05]: CONFIG_FILE env var is mandatory for Karma -- binary searches CWD (/) by default without it
+- [Phase 05]: Karma alertmanager URL is http://alertmanager:9093 (Docker bridge DNS); D-25 audit fix from upstream localhost:9093
+- [Phase 05]: Karma alertmanager source name is telemetron (not alertmanager) -- less self-referential in UI (D-25 rename)
+- [Phase 05]: PromLens uses CLI flags only (kingpin) -- no PROMLENS_DEFAULT_BACKEND_URL env var (RESEARCH §2.3 correction over CONTEXT.md Claude's Discretion line 152)
+- [Phase 05]: D-25 audit: Grafana SA integration dropped from PromLens (no --grafana.url / --grafana.api-token); shared-links SQLite dropped; pure-CLI stateless role
+- [Phase 05]: Phase 5 UI Plane complete: 3/3 plans (grafana+karma+promlens); UI-01..UI-06 all delivered; PromLens explicit HEALTHCHECK on root / (no /health endpoint in v0.3.0)
 
 ### Roadmap Evolution
 
@@ -162,6 +170,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T11:32:13.292Z
-Stopped at: Completed 05-01-grafana-PLAN.md
+Last session: 2026-05-19T11:45:29.872Z
+Stopped at: Completed 05-03-promlens-PLAN.md
 Resume file: None
