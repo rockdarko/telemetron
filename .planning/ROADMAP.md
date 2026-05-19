@@ -116,12 +116,14 @@ Plans:
   3. Operator clicks a trace span in Grafana Explore and the "Logs for this span" link navigates to Loki Explore with a `trace_id` filter pre-applied; the corresponding log lines render — confirming `tracesToLogsV2` + Loki derived-field plumbing is wired correctly.
   4. Operator opens `http://<host>:8082` (Karma) and sees the M1 Alertmanager's current alerts in Karma's grid view; opens `http://<host>:8081` (PromLens) and gets a working PromQL editor pointed at Prometheus.
   5. `roles/promlens/README.md` explicitly marks PromLens as a deprecation candidate and notes Prometheus 3's UI absorbs the tree-view feature; Karma container image is `ghcr.io/prymitive/karma:v0.130` (the GHCR official, not `lmierzwa/karma` Docker Hub fork).
-**Plans**: 3 plans + 1 gap-closure plan
+**Plans**: 3 plans + N gap-closure plans
 Plans:
 - [x] 05-01-PLAN.md -- Grafana role port (UI-01, UI-02, UI-03, UI-04) + Gate 9 D-73 + doc cascade; Wave 1
 - [x] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
 - [x] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
 - [x] 05-04-PLAN.md -- gap closure (non-ASCII regression + dashboard uid rewrite bug + Gate 9.5); Wave 1
+- [x] 05-06-PLAN.md -- gap closure (tempo-self-metrics 51 upstream-org UIDs normalized); Wave 1
+- [x] 05-07-PLAN.md -- gap closure (Loki derivedField matcherType structured_metadata + regex fallback); Wave 1
 **UI hint**: yes
 
 ### Phase 6: Opt-in, Orchestration, Docs & Smoke Test

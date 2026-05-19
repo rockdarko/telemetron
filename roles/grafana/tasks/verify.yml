@@ -249,16 +249,16 @@
 # explicitly; fail on anything else.
 - name: "Gate 9.5 -- assert no provisioned dashboard has unresolved $datasource panel refs"
   ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail ;
-      HITS=$(grep -rE '"uid"[[:space:]]*:[[:space:]]*"\$[^"]+"'
-        {{ grafana_config_dir }}/provisioning/dashboards/telemetron/
-        | grep -vF '${ds_prometheus}' || true) ;
+    cmd: |
+      set -o pipefail
+      HITS=$(grep -rE '"uid"[[:space:]]*:[[:space:]]*"\$[^"]+"' \
+        {{ grafana_config_dir }}/provisioning/dashboards/telemetron/ \
+        | grep -vF '${ds_prometheus}' || true)
       if [ -n "$HITS" ]; then
-        echo "Gate 9.5 FAIL -- unresolved $VAR panel uid refs found:" ;
-        echo "$HITS" ;
-        exit 1 ;
-      fi ;
+        echo "Gate 9.5 FAIL -- unresolved \$VAR panel uid refs found:"
+        echo "$HITS"
+        exit 1
+      fi
       echo "gate_9_5_ok"
     executable: /bin/bash
   changed_when: false
