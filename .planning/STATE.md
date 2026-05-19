@@ -4,7 +4,7 @@ milestone: v0.32.1
 milestone_name: milestone
 status: verifying
 stopped_at: "Completed 06-04-PLAN.md -- M1 SHIPPED on leviathan 2026-05-19. README rewritten per D-106; docs/README.md ticks 3/7 M1/v2 split; PROJECT/ROADMAP/REQUIREMENTS declare M1 complete; full-surface idempotency (enable_nfsd:true) ok=138 changed=0; INV-01 fresh-clone PASS; INV-03 13-role tag audit PASS. Next: v2 milestone scoping."
-last_updated: "2026-05-19T22:48:16.015Z"
+last_updated: "2026-05-19T23:02:22.747Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 11
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-05-17)
 
 ## Current Position
 
-Phase: 06 (opt-in-orchestration-docs-smoke-test) — EXECUTING
-Plan: 4 of 4
+Phase: 999.1
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-05-19
 
