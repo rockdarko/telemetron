@@ -198,11 +198,33 @@ The `files/_rewrite_uids.py` helper documents the per-dashboard UID substitution
 
 ## Trace-to-logs correlation
 
-Trace-to-logs correlation works for apps instrumented with an OTel SDK that push OTLP-native logs to the OTel Collector (`:4318`). Loki 3.7.2 stores `trace_id` as structured metadata on those records. FB-tailed Docker stdout/stderr logs do NOT carry `trace_id` unless the app embeds it in the log body.
+Telemetron wires bidirectional trace-to-logs correlation in Grafana.
 
-Clicking **View in Tempo** on a Loki log line with `trace_id` structured metadata navigates to the corresponding trace in Tempo Explore (D-79 derivedFields). Clicking **Logs for this span** on a Tempo trace navigates to Loki Explore with `{service_name='<svc>'} | trace_id='<id>'` pre-applied (D-79 + D-80 customQuery).
+### Tempo -> Loki (`tracesToLogsV2` on the Tempo datasource)
 
-See ROADMAP.md sec.999.4 backlog for the future option of reconciling the label naming convention (D-81).
+- Custom query: `{${__tags}} | trace_id="${__span.traceId}"`
+- Tag forwarded: `service.name` -> `service_name` (D-80; minimal one-tag default).
+- Effect: clicking a span in Tempo Explore opens Loki Explore with logs filtered to the same service AND the same `trace_id`.
+
+### Loki -> Tempo (`derivedFields` on the Loki datasource)
+
+Two matchers fire independently per log line. Whichever produces a hit shows a clickable **View in Tempo** button in the log detail panel. The pre-05-07 single-matcher form (`matcherType: label`) was incorrect because telemetron's live Loki labels are `{env, host, job, service_name}` -- no `trace_id` label exists. Plan 05-07 (gap closure) replaced it with the two-matcher form below.
+
+1. **`structured_metadata` matcher (canonical, OTel-native)** -- matches log lines pushed via OTLP where the OTel SDK has attached `trace_id` as a structured-metadata field. This is the D-78 design contract: instrumented apps get reliable trace correlation. Loki 3.x stores OTel `trace_id` as structured metadata by default (not as a label, avoiding cardinality explosion).
+2. **`regex` matcher (fallback, body-embedded)** -- matches when the log line body contains text like `trace_id=abc123def` or `traceID:abc123def`. Pattern: `(?:trace_id|traceID)[=:]"?([a-f0-9]+)`. Useful for legacy apps or hand-rolled instrumentation that embeds the id in the log body rather than as a structured field. Surfaces as the separate `trace_id_body` derived field so Grafana renders both links rather than deduplicating them.
+
+### Label mapping note (D-81 / 999.4 backlog)
+
+Live Loki labels in telemetron are `{env, host, job, service_name}` -- the OTel resource attribute `service.name` surfaces as `service_name` (OTel convention) rather than `service` (Phase 3 D-47 spec). Phase 5 accepts this per D-81 -- a future milestone may relabel via OTel exporter (option (c) in ROADMAP.md sec.999.4 backlog) to reconcile. Until then, all Grafana queries use `service_name` as the canonical service identifier.
+
+### What this does NOT cover (M1 scope honesty)
+
+E2E verification of the click-through requires:
+
+- Either an OTel-instrumented app pushing traces+logs to telemetron's OTel Collector on `:4318` (OTLP HTTP) or `:4317` (OTLP gRPC), with both carrying the same `trace_id`;
+- Or an uninstrumented app whose log lines contain `trace_id=<hex>` strings AND whose traces are independently pushed to Tempo (typical of homegrown Go services using a logging convention without full OTel SDK adoption).
+
+Telemetron M1 ships no instrumented sample app. Operators verify the click-through by deploying their own instrumented service against the stack. The static wiring (derivedFields config -> Tempo datasourceUid linkage) is verified at deploy time by Gate 9 D-73 Step 9 (UI-04 -- assert Loki datasource derivedFields trace_id is wired).
 
 ---
 
