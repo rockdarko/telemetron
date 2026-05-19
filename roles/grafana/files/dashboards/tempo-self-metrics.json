@@ -1106,7 +1106,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.99, sum(rate(tempodb_blocklist_poll_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}[$__rate_interval])) by (le)) < ($latency_metrics * +Inf)",
@@ -1118,7 +1118,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.9, sum(rate(tempodb_blocklist_poll_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}[$__rate_interval])) by (le)) < ($latency_metrics * +Inf)",
@@ -1129,7 +1129,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.5, sum(rate(tempodb_blocklist_poll_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}[$__rate_interval])) by (le)) < ($latency_metrics * +Inf)",
@@ -1141,7 +1141,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.99, sum(rate(tempodb_blocklist_poll_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}[$__rate_interval])) by (le)) < ($latency_metrics * -Inf)",
@@ -1154,7 +1154,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.9, sum(rate(tempodb_blocklist_poll_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}[$__rate_interval])) by (le)) < ($latency_metrics * -Inf)",
@@ -1166,7 +1166,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.5, sum(rate(tempodb_blocklist_poll_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}[$__rate_interval])) by (le)) < ($latency_metrics * -Inf)",
@@ -1361,7 +1361,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.99, sum(rate(tempodb_retention_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/compactor\"}[$__rate_interval])) by (le)) < ($latency_metrics * +Inf)",
@@ -1373,7 +1373,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.9, sum(rate(tempodb_retention_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/compactor\"}[$__rate_interval])) by (le)) < ($latency_metrics * +Inf)",
@@ -1385,7 +1385,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.5, sum(rate(tempodb_retention_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/compactor\"}[$__rate_interval])) by (le)) < ($latency_metrics * +Inf)",
@@ -1397,7 +1397,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.99, sum(rate(tempodb_retention_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/compactor\"}[$__rate_interval]))) < ($latency_metrics * -Inf)",
@@ -1410,7 +1410,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.9, sum(rate(tempodb_retention_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/compactor\"}[$__rate_interval]))) < ($latency_metrics * -Inf)",
@@ -1423,7 +1423,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "mimir-ops-03"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(.5, sum(rate(tempodb_retention_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/compactor\"}[$__rate_interval])) ) < ($latency_metrics * -Inf)",
@@ -3708,7 +3708,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(rate(tempo_request_duration_seconds_count{route=~\".*api_metrics_summary\", cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\"}[$__rate_interval])) by (status_code)",
@@ -3806,7 +3806,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\".*api_metrics_summary\"}[$__rate_interval])) by (le))",
@@ -3818,7 +3818,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\".*api_metrics_summary\"}[$__rate_interval])) by (le))",
@@ -3830,7 +3830,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\".*api_metrics_summary\"}[$__rate_interval])) by (le))",
@@ -3927,7 +3927,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": true,
@@ -4027,7 +4027,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": true,
@@ -4041,7 +4041,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": true,
@@ -4055,7 +4055,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "exemplar": true,
@@ -4154,7 +4154,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(rate(tempo_request_duration_seconds_count{route=~\"querier_.*api_metrics.*\", cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[$__rate_interval])) by (status_code)",
@@ -4252,7 +4252,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", route=~\"querier_.*api_metrics.*\"}[$__rate_interval])) by (le))",
@@ -4264,7 +4264,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", route=~\"querier_.*api_metrics.*\"}[$__rate_interval])) by (le))",
@@ -4276,7 +4276,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", route=~\"querier_.*api_metrics.*\"}[$__rate_interval])) by (le))",
@@ -4373,7 +4373,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(rate(tempo_request_duration_seconds_count{route=\"/tempopb.MetricsGenerator/GetMetrics\", cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\"}[$__rate_interval])) by (status_code)",
@@ -4471,7 +4471,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\", route=\"/tempopb.MetricsGenerator/GetMetrics\"}[$__rate_interval])) by (le))",
@@ -4483,7 +4483,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\", route=\"/tempopb.MetricsGenerator/GetMetrics\"}[$__rate_interval])) by (le))",
@@ -4495,7 +4495,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\", route=\"/tempopb.MetricsGenerator/GetMetrics\"}[$__rate_interval])) by (le))",
@@ -4606,7 +4606,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "P666011C0B63BDCA4"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum by(cluster) (rate(tempo_distributor_spans_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval]))",
@@ -4703,7 +4703,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "P1809F7CD0C75ACF3"
+                "uid": "prometheus"
               },
               "editorMode": "builder",
               "expr": "sum by(cluster) (rate(tempo_ingester_traces_created_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval]))",
@@ -5178,7 +5178,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(tempo_distributor_queue_length{cluster=~\"$cluster\", namespace=~\"$namespace\", job=~\".*/distributor\"}) by (name)",
@@ -5275,7 +5275,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(rate(tempo_distributor_metrics_generator_pushes_failures_total{namespace=~\"$namespace\", cluster=~\"$cluster\"}[1m])) by (namespace, cluster)",
@@ -5560,7 +5560,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\"(opentelemetry_proto_collector_trace_v1_traceservice_export|otlp_v1_traces)\"}[$__rate_interval])) by (le)) > ($latency_metrics * -Inf)",
@@ -5572,7 +5572,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\"(opentelemetry_proto_collector_trace_v1_traceservice_export|otlp_v1_traces)\"}[$__rate_interval])) by (le)) > ($latency_metrics * -Inf)",
@@ -5584,7 +5584,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\"(opentelemetry_proto_collector_trace_v1_traceservice_export|otlp_v1_traces)\"}[$__rate_interval])) by (le)) > ($latency_metrics * -Inf)",
@@ -5596,7 +5596,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\"(opentelemetry_proto_collector_trace_v1_traceservice_export|otlp_v1_traces)\"}[$__rate_interval]))) < ($latency_metrics * -Inf)",
@@ -5609,7 +5609,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\"(opentelemetry_proto_collector_trace_v1_traceservice_export|otlp_v1_traces)\"}[$__rate_interval]))) < ($latency_metrics * -Inf)",
@@ -5622,7 +5622,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/cortex-gw(-internal)?\", route=~\"(opentelemetry_proto_collector_trace_v1_traceservice_export|otlp_v1_traces)\"}[$__rate_interval]))) < ($latency_metrics * -Inf)",
@@ -5720,7 +5720,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/tempopb.Pusher/Push.*\"}[$__rate_interval])) by (le))",
@@ -5732,7 +5732,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/tempopb.Pusher/Push.*\"}[$__rate_interval])) by (le))",
@@ -5744,7 +5744,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "mimir-ops-03"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/tempopb.Pusher/Push.*\"}[$__rate_interval])) by (le))",
@@ -5842,7 +5842,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(rate(tempo_metrics_generator_spans_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval]))",
@@ -5854,7 +5854,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "sum(rate(tempo_metrics_generator_spans_discarded_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (reason)",
@@ -5951,7 +5951,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.99, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\", route=~\"/tempopb.MetricsGenerator/PushSpans\"}[$__rate_interval])) by (le))",
@@ -5963,7 +5963,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.9, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\", route=~\"/tempopb.MetricsGenerator/PushSpans\"}[$__rate_interval])) by (le))",
@@ -5975,7 +5975,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "cortex-ops-01"
+                "uid": "prometheus"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(.5, sum(rate(tempo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/metrics-generator\", route=~\"/tempopb.MetricsGenerator/PushSpans\"}[$__rate_interval])) by (le))",
@@ -6479,7 +6479,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "P666011C0B63BDCA4"
+                "uid": "prometheus"
               },
               "expr": "gauge_memberlist_health_score{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"}",
               "interval": "",
@@ -6750,7 +6750,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "P666011C0B63BDCA4"
+                "uid": "prometheus"
               },
               "expr": "min(tempo_memberlist_client_kv_store_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"})",
               "interval": "",
@@ -6760,7 +6760,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "P666011C0B63BDCA4"
+                "uid": "prometheus"
               },
               "expr": "max(tempo_memberlist_client_kv_store_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/$component.*\"})",
               "interval": "",
@@ -7228,7 +7228,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "P666011C0B63BDCA4"
+            "uid": "prometheus"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
@@ -7327,7 +7327,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "P666011C0B63BDCA4"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "sum(increase(tempodb_compaction_blocks_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (level)",
