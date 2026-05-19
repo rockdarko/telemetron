@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Telemetry Backends** - Loki, Tempo, and Mimir running in monolithic mode against MinIO with correct retention defaults and Tempo's OTLP ports moved off the standard 4317/4318 (completed 2026-05-17)
 - [x] **Phase 3: Ingest Plane** - Prometheus scraping + remote_writing to Mimir with baseline alert rules, OTel Collector accepting OTLP on 4317/4318 and fanning out to all three backends, Fluent Bit shipping host logs through OTel to Loki, node_exporter exposing host metrics (completed 2026-05-18; live-host UAT on leviathan closed 16 latent bugs, all 5 SCs pass)
 - [x] **Phase 4: Alert Plane** - Alertmanager (`quay.io/prometheus/alertmanager:v0.32.1`) on :9093 with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, a single `null` default receiver (Karma in Phase 5 is the operator UX), one default inhibit rule (`severity=critical -> severity=warning, equal: [instance]`), persistent `telemetron_alertmanager_data` volume; Prometheus extended with an `alerting: alertmanagers:` block targeting it. Hook router work is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05. (completed 2026-05-19; 04-02 gap closure landed both UAT bugs + Gate 8 doc gate; all 6 UAT tests pass on leviathan)
-- [ ] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate
+- [x] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate
 - [ ] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** - Opt-in `nfsd` role default-off, `playbooks/deploy_docker.yml` orchestrating all 14 roles in dependency order with per-role tags, example inventory hostnames wired so `ansible-playbook` runs end-to-end, three docs authored against a stack that actually booted, M1 acceptance smoke test (synthetic log + metric + trace in Grafana within 60s), top-level README updated
 
 ## Phase Details
@@ -120,7 +120,7 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md -- Grafana role port (UI-01, UI-02, UI-03, UI-04) + Gate 9 D-73 + doc cascade; Wave 1
 - [x] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
-- [ ] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
+- [x] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
 **UI hint**: yes
 
 ### Phase 6: Opt-in, Orchestration, Docs & Smoke Test
@@ -147,7 +147,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
 | 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
 | 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
 | 4.1. Drop vault prefix (INSERTED) | 1/1 | Complete | 2026-05-19 |
-| 5. UI Plane | 2/3 | In Progress|  |
+| 5. UI Plane | 3/3 | Complete   | 2026-05-19 |
 | 6. Opt-in, Orchestration, Docs & Smoke Test | 0/TBD | Not started | - |
 
 ## Backlog
