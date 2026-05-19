@@ -1,0 +1,32 @@
+---
+galaxy_info:
+  role_name: grafana
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Grafana OSS 13.0.1 on the telemetron Docker bridge network
+    with embedded SQLite backing store on a persistent named volume,
+    four datasources provisioned at hardcoded UIDs (prometheus, loki,
+    tempo, mimir), seven curated starter dashboards (host health, Loki
+    Explore landing, Tempo Explore landing, OTel Collector self-metrics,
+    Loki/Tempo/Mimir self-metrics), and trace-to-logs correlation wired
+    via tracesToLogsV2 + a structured-metadata trace_id derived field.
+    Ships UI-01, UI-02, UI-03, UI-04.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - dashboards
+    - grafana
+    - observability
+    - telemetron
+    - ui
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin

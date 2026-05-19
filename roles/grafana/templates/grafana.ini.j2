@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+# Grafana OSS 13.0.1 -- Telemetron M1 default config.
+# Security/admin settings driven by GF_ env vars (RESEARCH §2.1 -- env > ini
+# precedence avoids the ini-vs-env-var precedence-confusion surface).
+# This file covers structural config: paths, server bind, sqlite store,
+# default UI theme, anonymous-viewer toggle (D-87).
+
+[paths]
+data = /var/lib/grafana
+logs = /var/log/grafana
+plugins = /var/lib/grafana/plugins
+provisioning = /etc/grafana/provisioning
+
+[server]
+http_port = {{ grafana_http_port }}
+http_addr = 0.0.0.0
+
+[database]
+# UI-01: embedded SQLite on telemetron_grafana_data volume.
+type = sqlite3
+path = grafana.db
+
+[users]
+default_theme = {{ grafana_default_theme }}
+
+[auth.anonymous]
+# D-87: default off. Operator flips grafana_anonymous_enabled: true for
+# wall-display / TV-mode kiosks. GF_AUTH_ANONYMOUS_* env vars also set
+# (env > ini precedence) -- this ini section ensures the value survives
+# the env-var first-boot-only edge case for anonymous toggling.
+enabled = {{ grafana_anonymous_enabled | string | lower }}
+org_role = Viewer
+org_name = Main Org.

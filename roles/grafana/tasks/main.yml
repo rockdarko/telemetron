@@ -1,0 +1,193 @@
+---
+# roles/grafana/tasks/main.yml
+# Grafana OSS 13.0.1 deploy + in-network verify.
+# Mirrors roles/alertmanager/tasks/main.yml shape modulo Grafana
+# specifics: three nested config subdirs under /opt/telemetron/grafana
+# (provisioning/datasources, provisioning/dashboards, provisioning/dashboards/telemetron),
+# rendered grafana.ini + two YAML manifests + seven JSON dashboards,
+# parent-dir bind mount of /opt/telemetron/grafana -> /etc/grafana
+# (Gate 8), env-injected GF_SECURITY_ADMIN_* (RESEARCH §2.1 first-boot-only),
+# explicit HEALTHCHECK (image has none -- RESEARCH Risk 3).
+
+- name: Ensure grafana config dirs exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ grafana_config_dir }}"
+    - "{{ grafana_config_dir }}/provisioning"
+    - "{{ grafana_config_dir }}/provisioning/datasources"
+    - "{{ grafana_config_dir }}/provisioning/dashboards"
+    - "{{ grafana_config_dir }}/provisioning/dashboards/telemetron"
+  tags:
+    - grafana
+    - grafana-config
+
+- name: Render grafana.ini
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: "{{ grafana_config_dir }}/grafana.ini"
+    mode: "0644"
+  notify: restart grafana
+  tags:
+    - grafana
+    - grafana-config
+
+- name: Render datasources.yaml (UI-02 + UI-04; D-77/D-79/D-80)
+  ansible.builtin.template:
+    src: datasources/datasources.yaml.j2
+    dest: "{{ grafana_config_dir }}/provisioning/datasources/datasources.yaml"
+    mode: "0644"
+  # No notify -- Grafana hot-reloads provisioning files (RESEARCH §2.1).
+  tags:
+    - grafana
+    - grafana-config
+
+- name: Render dashboards.yaml provisioning manifest (D-76)
+  ansible.builtin.template:
+    src: dashboards/dashboards.yaml.j2
+    dest: "{{ grafana_config_dir }}/provisioning/dashboards/dashboards.yaml"
+    mode: "0644"
+  # No notify -- Grafana hot-reloads provisioning files.
+  tags:
+    - grafana
+    - grafana-config
+
+- name: Copy role-shipped dashboard JSONs (D-75 -- exactly 7)
+  ansible.builtin.copy:
+    src: "dashboards/{{ item }}"
+    dest: "{{ grafana_config_dir }}/provisioning/dashboards/telemetron/{{ item }}"
+    mode: "0644"
+  loop:
+    - host-health.json
+    - loki-explore-landing.json
+    - tempo-explore-landing.json
+    - otel-collector-self-metrics.json
+    - loki-self-metrics.json
+    - tempo-self-metrics.json
+    - mimir-self-metrics.json
+  tags:
+    - grafana
+    - grafana-config
+
+- name: Ensure telemetron_grafana_data named volume exists (D-16; UI-01)
+  community.docker.docker_volume:
+    name: "{{ grafana_data_volume }}"
+    state: present
+  tags:
+    - grafana
+
+- name: Pull grafana image
+  community.docker.docker_image:
+    name: "{{ grafana_image }}:{{ grafana_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - grafana
+
+- name: Assemble grafana mounts list (conditional operator drop-in; D-76)
+  ansible.builtin.set_fact:
+    grafana_mounts: >-
+      {{
+        [
+          {
+            'source': grafana_data_volume,
+            'target': grafana_data_path,
+            'type': 'volume'
+          },
+          {
+            'source': grafana_config_dir,
+            'target': grafana_config_container_path,
+            'type': 'bind',
+            'read_only': true
+          }
+        ]
+        + (
+          [
+            {
+              'source': grafana_dashboard_extra_dir,
+              'target': '/etc/grafana/provisioning/dashboards/operator',
+              'type': 'bind',
+              'read_only': true
+            }
+          ]
+          if grafana_dashboard_extra_dir | length > 0
+          else []
+        )
+      }}
+  tags:
+    - grafana
+    - grafana-container
+
+- name: Run grafana container (explicit HEALTHCHECK, env-injected admin, parent-dir bind mount)
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}"
+    image: "{{ grafana_image }}:{{ grafana_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ grafana_restart_policy }}"
+    memory: "{{ grafana_memory_limit }}"
+    networks:
+      - name: "{{ grafana_network }}"
+        aliases:
+          - "{{ grafana_container_name }}"
+          - grafana
+    # Gate 7: telemetron label stamp (INGEST-07 / Plan 03-05).
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: grafana
+    # D-82 + D-83 + D-84: UI plane is browser-reachable by default.
+    # Bind-address knob lets security-conscious operators clamp to loopback.
+    published_ports: >-
+      {{
+        (
+          [ grafana_bind_address + ':' + grafana_http_port | string + ':' + grafana_http_port | string ]
+          if grafana_publish_host is sameas true else
+          [ '127.0.0.1:' + grafana_http_port | string + ':' + grafana_http_port | string ]
+          if grafana_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    # Gate 8 parent-directory bind: container path /etc/grafana receives
+    # grafana.ini AND provisioning/ tree. Single mount, single inode
+    # surface -- no moby/moby#6011 stale-inode class.
+    # Conditional operator drop-in assembled in grafana_mounts set_fact above.
+    mounts: "{{ grafana_mounts }}"
+    # Healthcheck conditional-omit (mirrors alertmanager pattern; RESEARCH Risk 3).
+    healthcheck: "{{ grafana_container_healthcheck if (grafana_healthcheck_enabled | bool) else omit }}"
+    env:
+      # RESEARCH §2.1 Risk 2: GF_SECURITY_ADMIN_PASSWORD is FIRST-BOOT-ONLY.
+      # Documented in README "Secrets" subsection.
+      GF_SECURITY_ADMIN_USER: "{{ grafana_admin_user }}"
+      GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+      GF_SECURITY_ADMIN_EMAIL: "{{ grafana_admin_email }}"
+      GF_AUTH_ANONYMOUS_ENABLED: "{{ grafana_anonymous_enabled | string | lower }}"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_AUTH_ANONYMOUS_ORG_NAME: "Main Org."
+      GF_USERS_DEFAULT_THEME: "{{ grafana_default_theme }}"
+      TZ: "{{ grafana_tz }}"
+  vars:
+    grafana_container_healthcheck:
+      test: "{{ grafana_healthcheck_test }}"
+      interval: "{{ grafana_healthcheck_interval }}"
+      timeout: "{{ grafana_healthcheck_timeout }}"
+      retries: "{{ grafana_healthcheck_retries }}"
+      start_period: "{{ grafana_healthcheck_start_period }}"
+  tags:
+    - grafana
+    - grafana-container
+
+# Flush handlers before verify (Bug 1 TIER 2 + Bug 2 belt pattern from Phase 4).
+- name: Flush handlers before verify (so verify sees post-restart state)
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - grafana
+    - grafana-verify
+
+# Verify MUST be the final task (D-32). Mirrors roles/alertmanager/tasks/main.yml.
+- name: Verify grafana end-to-end (HEALTHCHECK + datasource UIDs + Gate 9 D-73 datasources-resolve-real-data)
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - grafana
+    - grafana-verify

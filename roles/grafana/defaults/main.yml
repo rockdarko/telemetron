@@ -1,0 +1,95 @@
+---
+# roles/grafana/defaults/main.yml
+# Grafana OSS 13.0.1 role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/grafana.yml.
+#
+# UI plane role -- D-82 exempts from telemetron_publish_default:false
+# (UI must be reachable from the browser without inventory edits).
+# Container runs as GF_UID=472 (image default); DO NOT override `user:`.
+# Embedded SQLite at /var/lib/grafana/grafana.db on telemetron_grafana_data
+# volume (D-04 / UI-01). HEALTHCHECK is explicit -- image ships none
+# (RESEARCH §2.1).
+
+# --- Image pin (OPS-01; UI-01) ---
+# OSS variant explicitly -- avoids Enterprise feature gates.
+grafana_image: grafana/grafana-oss
+grafana_image_tag: "13.0.1"
+
+# --- Container identity ---
+grafana_container_name: telemetron-grafana
+
+# --- Host port publishing (D-82 inverts D-30 for UI plane) ---
+# UI must be browser-reachable. Operator flips to false + runs reverse
+# proxy on the telemetron bridge for production. true/false/127.0.0.1
+# trinary same as alertmanager_publish_host.
+grafana_publish_host: true
+grafana_bind_address: 0.0.0.0   # D-83
+
+# --- Port matrix (D-84) ---
+grafana_http_port: 3000
+
+# --- Storage layout (D-16, D-17, D-18) ---
+grafana_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_grafana_data"
+grafana_data_path: /var/lib/grafana                     # image VOLUME, container UID 472 owns
+grafana_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/grafana"
+grafana_config_container_path: /etc/grafana
+grafana_provisioning_container_path: /etc/grafana/provisioning
+
+# --- Admin user / access model (D-86, D-87, D-88, D-89) ---
+grafana_admin_user: admin
+grafana_admin_email: "admin@telemetron.local"
+# grafana_admin_password -- defined by operator inventory (D-86); no default here.
+# RESEARCH Risk 2: env var is FIRST-BOOT-ONLY. Document in README.
+
+grafana_anonymous_enabled: false                        # D-87 default off
+grafana_default_theme: dark
+
+# --- Datasource backend hostnames (telemetron bridge DNS) ---
+# Sourced from the corresponding role's container_name. Overridable here
+# only if a downstream operator runs split-stack and exposes a different DNS.
+grafana_prometheus_url: "http://prometheus:9090"
+grafana_loki_url: "http://loki:3100"
+grafana_tempo_url: "http://tempo:3200"
+grafana_mimir_url: "http://mimir:9009/prometheus"       # Mimir Prometheus-compatible subpath; D-26 multitenancy off
+
+# --- Dashboard provisioning (D-76) ---
+# Role-shipped JSONs live under roles/grafana/files/dashboards/ and are
+# copied to {{ grafana_config_dir }}/provisioning/dashboards/telemetron/.
+# Operator drop-in dir is a host path conditionally mounted into the
+# container at /etc/grafana/provisioning/dashboards/operator (D-76).
+grafana_dashboard_extra_dir: ""                         # empty = no operator drop-in mount
+
+# --- Operator extension knobs (sorted-keys per D-20) ---
+grafana_extra_datasources: []                           # operator-supplied datasources to merge
+grafana_extra_env: {}                                   # extra container env vars (operator escape hatch)
+
+# --- Healthcheck (RESEARCH §2.1 Risk 3: image has NO built-in HEALTHCHECK; explicit required) ---
+# busybox base means wget is available (no distroless concern).
+grafana_healthcheck_enabled: true
+grafana_healthcheck_test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/health || exit 1"]
+grafana_healthcheck_interval: 15s
+grafana_healthcheck_timeout: 5s
+grafana_healthcheck_retries: 5
+grafana_healthcheck_start_period: 60s                   # generous -- first-boot SQLite init
+
+# --- Verify pre-poll (D-10a) ---
+# 90s total budget = 45 retries x 2s. First-boot Grafana initializes
+# SQLite + runs provisioning before HTTP server opens.
+grafana_health_retries: 45
+grafana_health_delay: 2
+
+# --- Restart policy (OPS-06) ---
+grafana_restart_policy: unless-stopped
+
+# --- Resource limits ---
+grafana_memory_limit: 512m
+
+# --- Network ---
+grafana_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (OPS-06; Pitfall 6) ---
+grafana_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
+
+# --- Curl image pin for verify (OPS-01) ---
+grafana_curl_image: curlimages/curl
+grafana_curl_image_tag: "8.10.1"
