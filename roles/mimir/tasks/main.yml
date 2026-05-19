@@ -85,7 +85,10 @@
         target: "{{ mimir_data_path }}"
         type: volume
     volumes:
-      - "{{ mimir_config_dir }}/mimir.yaml:/etc/mimir/mimir.yaml:ro"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
+      # Container still reads /etc/mimir/mimir.yaml via -config.file CLI flag.
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - "{{ mimir_config_dir }}:/etc/mimir:ro"
     # Distroless image; CMD form (not CMD-SHELL).
     # See RESEARCH.md Finding 6 + PITFALLS Pitfall B. The actual command
     # form is set in defaults/main.yml per image probe (Outcome B

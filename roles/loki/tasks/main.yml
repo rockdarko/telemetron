@@ -81,7 +81,10 @@
         target: "{{ loki_data_path }}"
         type: volume
     volumes:
-      - "{{ loki_config_dir }}/loki.yaml:/etc/loki/loki.yaml:ro"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
+      # Container still reads /etc/loki/loki.yaml via -config.file CLI flag.
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - "{{ loki_config_dir }}:/etc/loki:ro"
     # CMD form -- the image is distroless (no shell). Loki 3.7.2 ships
     # /usr/bin/loki -health (binary-native). See RESEARCH.md Finding 6
     # and PITFALLS Pitfall A.

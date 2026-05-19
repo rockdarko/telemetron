@@ -59,7 +59,11 @@
     memory: "{{ tempo_memory_limit }}"
     user: "{{ tempo_container_user }}"
     command:
-      - "-config.file=/etc/tempo.yaml"
+      # Bug-fix 04-02 (Bug 2 FIX A, tempo special case): config moved into
+      # /etc/tempo/ subdirectory so we can parent-directory-bind-mount.
+      # tempo.yaml's old mount point /etc/tempo.yaml was a top-level file;
+      # binding the host parent dir to /etc would have clobbered everything.
+      - "-config.file=/etc/tempo/tempo.yaml"
       - "-target=all"
     networks:
       - name: "{{ tempo_network }}"
@@ -88,7 +92,10 @@
         target: "{{ tempo_data_path }}"
         type: volume
     volumes:
-      - "{{ tempo_config_dir }}/tempo.yaml:/etc/tempo.yaml:ro"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
+      # Container reads /etc/tempo/tempo.yaml (CLI flag updated above).
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - "{{ tempo_config_dir }}:/etc/tempo:ro"
     # Distroless image; CMD form (not CMD-SHELL).
     # See RESEARCH.md Finding 6 + PITFALLS Pitfall B. The actual command
     # form is set by the executor in defaults/main.yml per image probe.

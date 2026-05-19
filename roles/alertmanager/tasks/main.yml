@@ -85,8 +85,14 @@
       - source: "{{ alertmanager_data_volume }}"
         target: "{{ alertmanager_data_path }}"
         type: volume
-      - source: "{{ alertmanager_config_dir }}/alertmanager.yml"
-        target: "{{ alertmanager_config_container_path }}"
+      # Bug-fix 04-02 (Bug 2 FIX A): parent-directory bind mount.
+      # Container still sees /etc/alertmanager/alertmanager.yml (the
+      # alertmanager_config_container_path var resolves to that exact
+      # path, and the CLI flag --config.file uses it). Only the host-side
+      # bind source changes from a single file to its parent directory.
+      # See .planning/debug/prometheus-template-rename-bind-mount-stale-inode.md.
+      - source: "{{ alertmanager_config_dir }}"
+        target: /etc/alertmanager
         type: bind
         read_only: true
     # Research Q1 -- image ships no HEALTHCHECK. Explicit probe via
