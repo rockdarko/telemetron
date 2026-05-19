@@ -76,7 +76,7 @@
         body_format: json
         headers:
           Content-Type: "application/json"
-        body: "{{ lookup('template', 'smoke_test/templates/log.json.j2') | from_json }}"
+        body: "{{ lookup('template', 'smoke_test/templates/log.json.j2') }}"
         status_code: 200
       register: smoke_push_log
       tags:
@@ -89,7 +89,7 @@
         body_format: json
         headers:
           Content-Type: "application/json"
-        body: "{{ lookup('template', 'smoke_test/templates/metric.json.j2') | from_json }}"
+        body: "{{ lookup('template', 'smoke_test/templates/metric.json.j2') }}"
         status_code: 200
       register: smoke_push_metric
       tags:
@@ -102,7 +102,7 @@
         body_format: json
         headers:
           Content-Type: "application/json"
-        body: "{{ lookup('template', 'smoke_test/templates/trace.json.j2') | from_json }}"
+        body: "{{ lookup('template', 'smoke_test/templates/trace.json.j2') }}"
         status_code: 200
       register: smoke_push_trace
       tags:
