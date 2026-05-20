@@ -70,19 +70,19 @@ All three are deliberate operator-facing notes explaining the removal. No deploy
 
 ## Leviathan revalidation
 
-**Deferred to the next leviathan deploy** per the M1 quality bar in CLAUDE.md ("boots on Rock's homelab Docker host"). Full validation:
+**Completed 2026-05-20.** Operator redeployed against leviathan; `docker ps` confirmed 11 telemetron-* containers running (10 healthy + Karma which is no-healthcheck-by-design per Plan 05-08 scratch-image constraint). PromLens v0.3.0 container + image cleaned up:
 
 ```bash
-# On the next leviathan deploy:
-ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml
-# Expect:
-#  - ok=N changed=0 (idempotency holds; N drops vs v1.0.0 because PromLens is one fewer role)
-#  - docker ps --filter name=telemetron- shows no telemetron-promlens
-# Cleanup (one-shot, only needed if leviathan still has the v1.0.0 PromLens container):
-docker rm -f telemetron-promlens 2>/dev/null
+$ ssh leviathan "docker rm -f telemetron-promlens && docker rmi prom/promlens:v0.3.0"
+telemetron-promlens
+Untagged: prom/promlens:v0.3.0
+Untagged: prom/promlens@sha256:b443ae2b43626a2f37d73bb9d8aa4528982be49ae03e562a7c5f49e359cd3f23
+# + 7 layer SHAs deleted
 ```
 
-A syntax-check (run during this quick task) is the most that can be validated without leviathan SSH access.
+No orphan disk artifacts: `/opt/telemetron/` shows no `promlens/` directory; no `*promlens*` Docker volumes existed (PromLens was stateless — no SQLite/BoltDB, no rendered-config bind mount). Cleanup was container + image only.
+
+**M1 quality bar met on v1.0.1.**
 
 ## Next step
 
