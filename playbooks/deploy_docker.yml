@@ -2,7 +2,7 @@
 # Telemetron -- M1 deploy orchestrator (Docker target)
 #
 # Brings up the Telemetron observability plane on a single Docker host.
-# Orchestrates 13 deployed roles plus `nfsd` as a 14th opt-in slot
+# Orchestrates 12 deployed roles plus `nfsd` as a 13th opt-in slot
 # (default-off via `enable_nfsd: false`). The `telemetron` Docker bridge
 # network is created in pre_tasks below.
 #
@@ -66,14 +66,11 @@
     - role: karma
       tags:
         - karma
-    - role: promlens
-      tags:
-        - promlens
     - role: nfsd
       tags:
         - nfsd
       when: enable_nfsd | default(false) | bool
-  # M1 deploy order is FEATURE-COMPLETE:
+  # M1 deploy order (v1.0.1 -- PromLens removed):
   # minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry
   # -> prometheus -> fluentbit -> alertmanager -> grafana -> karma
-  # -> promlens -> nfsd (opt-in via enable_nfsd).
+  # -> nfsd (opt-in via enable_nfsd).
