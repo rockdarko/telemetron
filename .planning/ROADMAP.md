@@ -1,176 +1,55 @@
 # Roadmap: Telemetron
 
-## Overview
+## Milestones
 
-Telemetron M1 — "Port to clean-slate, Docker, homelab-first" — ports 14 Ansible roles from an internal INSPQ stack into a clean-slate, English-only, MIT-licensed observability plane (Loki + Tempo + Mimir + Prometheus + OTel + Grafana + Alertmanager + Karma + PromLens + Fluent Bit + node_exporter + hook router) deployable against a single Docker host via one `ansible-playbook` command. The roadmap follows a validation-driven build order: foundation and storage land first (MinIO bucket bootstrap is the hard prerequisite gate that downstream backends depend on); the three monolithic telemetry backends ship in parallel once their object store is alive; the ingest plane (Prometheus, OTel Collector, Fluent Bit, node_exporter) wires the producers; the alert plane (Alertmanager + hook router) lands as a single unit because neither half validates alone; the UI plane (Grafana with explicit datasource UIDs, plus Karma and PromLens) closes out the deployment because Grafana's datasource provisioning is the de-facto end-to-end smoke test; and the final phase delivers the opt-in `nfsd` role, the full playbook orchestrator, the example inventory hostnames, three docs, and the M1 acceptance smoke test (synthetic log + metric + trace visible in Grafana within 60s).
+- ✅ **v1.0.0 — M1 — LGTM observability plane on Docker** — Phases 1-6 (shipped 2026-05-19 on leviathan)
+- 📋 **v2 (TBD)** — scoping awaits `/gsd:new-milestone`. Candidates: Garage migration, hook router, distributed/Kube path, arm64, multi-host inventory.
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>✅ v1.0.0 — M1 (Phases 1-6) — SHIPPED 2026-05-19</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+- [x] **Phase 1: Foundation & Storage** — MinIO bucket bootstrap (5 buckets), `telemetron` Docker bridge network, `inventory/example-homelab/group_vars/all/` skeleton, 8 cross-cutting port-acceptance gates established in `roles/README.md` (3/3 plans)
+- [x] **Phase 2: Telemetry Backends** — Loki 3.7.2 + Tempo 2.10.5 + Mimir 3.0.6 as monolithic-mode roles against MinIO; Tempo OTLP receivers moved to alt ports `:14317`/`:14318` so OTel Collector can claim the standard pair (3/3 plans)
+- [x] **Phase 3: Ingest Plane** — Prometheus 3.11.3 + OTel Collector Contrib 0.152.0 + Fluent Bit 4.2.3 + node_exporter 1.11.1; Pitfall 5 OOM-resistance pack, 4 baseline alert rules + extras knob, FB Lua-enrichment promoting `org.telemetron.{service,job}` Docker labels to Loki labels (no Docker socket needed) (5/5 plans)
+- [x] **Phase 4: Alert Plane** — Alertmanager v0.32.1 single-instance with null receiver, D-61 routing intervals, D-63 inhibit rule, persistent `telemetron_alertmanager_data` volume; Prometheus alerting block wired to it; Gate 8 added (parent-dir bind mounts) + auto_remove race fix in alertmanager verify (2/2 plans)
+- [x] **Phase 04.1 (INSERTED): Drop vault_ prefix** — rename all `vault_*`-prefixed sensitive vars across 4 roles + `vault.yml.example` → `secrets.yml.example` + doc cascade. Reason: prefix added no value and implied tooling enforcement Ansible doesn't provide (D-90) (1/1 plan)
+- [x] **Phase 5: UI Plane** — Grafana OSS 13.0.1 with 4-datasource provisioning at hardcoded UIDs + 7 curated dashboards + tracesToLogsV2/derivedFields trace-to-logs (UI-04), Karma v0.130 against Alertmanager via Docker bridge DNS (UI-05), PromLens v0.3.0 marked deprecation candidate (UI-06) (8/8 plans)
+- [x] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** — nfsd opt-in role (default-off, 14th slot), `playbooks/smoke_test.yml` M1 acceptance probe (synthetic OTLP log+metric+trace in Grafana within 60s), three operator docs (`docs/architecture.md`, `docs/quickstart.md`, `docs/inventory.md`), README rewrite + idempotency revalidation (`changed=0` on second deploy of both default and 14-role shapes) (4/4 plans)
 
-- [x] **Phase 1: Foundation & Storage** - MinIO with bucket bootstrap gate (5 required buckets), `telemetron` Docker bridge network created in playbook pre_tasks, inventory `group_vars/all/` skeleton, vault discipline, grep + idempotency gates established (completed 2026-05-17)
-- [x] **Phase 2: Telemetry Backends** - Loki, Tempo, and Mimir running in monolithic mode against MinIO with correct retention defaults and Tempo's OTLP ports moved off the standard 4317/4318 (completed 2026-05-17)
-- [x] **Phase 3: Ingest Plane** - Prometheus scraping + remote_writing to Mimir with baseline alert rules, OTel Collector accepting OTLP on 4317/4318 and fanning out to all three backends, Fluent Bit shipping host logs through OTel to Loki, node_exporter exposing host metrics (completed 2026-05-18; live-host UAT on leviathan closed 16 latent bugs, all 5 SCs pass)
-- [x] **Phase 4: Alert Plane** - Alertmanager (`quay.io/prometheus/alertmanager:v0.32.1`) on :9093 with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, a single `null` default receiver (Karma in Phase 5 is the operator UX), one default inhibit rule (`severity=critical -> severity=warning, equal: [instance]`), persistent `telemetron_alertmanager_data` volume; Prometheus extended with an `alerting: alertmanagers:` block targeting it. Hook router work is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05. (completed 2026-05-19; 04-02 gap closure landed both UAT bugs + Gate 8 doc gate; all 6 UAT tests pass on leviathan)
-- [x] **Phase 5: UI Plane** - Grafana provisioned with explicit datasource UIDs and a curated 5-10 dashboard set with trace-to-logs correlation, Karma over Alertmanager, PromLens marked as deprecation candidate (completed 2026-05-19; 8 plans landed: 05-01..05-04 ship + 05-05..05-08 gap closure; live UAT round 2 on leviathan VERIFIED 3/3 with 0 issues; 05-VERIFICATION.md status: verified)
-- [x] **Phase 6: Opt-in, Orchestration, Docs & Smoke Test** - Opt-in `nfsd` role default-off, `playbooks/deploy_docker.yml` orchestrating 13 deployed roles + nfsd as the 14th opt-in slot (hook_router deferred to v2) in dependency order with per-role tags, example inventory hostnames wired so `ansible-playbook` runs end-to-end, three docs authored against a stack that actually booted, M1 acceptance smoke test (synthetic log + metric + trace in Grafana within 60s), top-level README updated (completed 2026-05-19; M1 COMPLETE)
+Full phase details: `.planning/milestones/v1.0.0-ROADMAP.md`
+Phase artifacts (plans/summaries/UAT/verification): `.planning/milestones/v1.0.0-phases/`
+Requirements outcomes (37/37 v1 reqs): `.planning/milestones/v1.0.0-REQUIREMENTS.md`
+Tag: `v1.0.0`
 
-## Phase Details
+</details>
 
-### Phase 1: Foundation & Storage
-**Goal**: Operator can run the foundation playbook against a fresh Docker host and have MinIO up with all five required buckets pre-created (`loki-chunks`, `tempo-traces`, `mimir-blocks`, `mimir-ruler`, `mimir-alerts`), the `telemetron` Docker bridge network created, the `inventory/example-homelab/group_vars/all/` skeleton in place, and the cross-cutting gates (vault, idempotency, image-pin, healthcheck + `restart: unless-stopped`, INSPQ grep gate) established as port-acceptance criteria that every Phase 2-6 role port inherits.
-**Depends on**: Nothing (first phase)
-**Requirements**: FOUND-01, FOUND-02, INV-02, OPS-01, OPS-02, OPS-03, OPS-04, OPS-05, OPS-06
-**Success Criteria** (what must be TRUE):
-  1. Operator runs `ansible-playbook playbooks/deploy_docker.yml --tags minio` against a fresh Docker host and `docker network ls` shows a `telemetron` user-defined bridge network with the MinIO container attached (`docker network inspect telemetron | jq -r '.[0].Containers | length'` returns at least 1).
-  2. Operator runs `docker run --rm --network telemetron minio/mc:RELEASE.2025-04-22T16-23-26Z mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc ls local/` and sees all five required buckets exist: `loki-chunks`, `tempo-traces`, `mimir-blocks`, `mimir-ruler`, `mimir-alerts` — and bucket bootstrap completed successfully before the `minio` role exited (verifiable in the playbook output).
-  3. Operator copies `inventory/example-homelab/group_vars/all/vault.yml.example` to `vault.yml`, fills in `vault_minio_root_user` and `vault_minio_root_password`, runs `ansible-vault encrypt inventory/example-homelab/group_vars/all/vault.yml`, and the playbook runs successfully reading the encrypted vault — no defaults, no placeholders consumed at runtime.
-  4. Running the same playbook a second time on the converged host reports `changed=0` in the PLAY RECAP (idempotency gate); `grep -riE 'inspq|qc\.ca|montreal|québec|francais|french|/srv/nfs/inspq|vault_inspq' roles/minio/` returns zero matches and `grep -rPn '[^\x00-\x7F]' roles/minio/` returns zero matches (grep gate).
-  5. `docker inspect telemetron-minio --format '{{.State.Health.Status}}'` returns `healthy`; `docker inspect telemetron-minio --format '{{.HostConfig.RestartPolicy.Name}}'` returns `unless-stopped`; image reference in `roles/minio/defaults/main.yml` is the explicit pinned tag `minio/minio:RELEASE.2025-04-22T22-12-26Z` with no `:latest` anywhere in `roles/minio/`.
-**Plans**: 3 plans
-Plans:
-- [ ] 01-01-PLAN.md — Scope corrections and doc updates (PROJECT/REQUIREMENTS/ROADMAP/roles README) per D-01..D-05, D-21; removes FOUND-03
-- [x] 01-02-PLAN.md — Inventory skeleton (`inventory/example-homelab/`) and `playbooks/deploy_docker.yml` with `telemetron` Docker network pre_task
-- [ ] 01-03-PLAN.md — MinIO role port (`roles/minio/`) with bucket bootstrap (5 buckets) and wire into playbook
+### 📋 v2 (planning)
 
-### Phase 2: Telemetry Backends
-**Goal**: Operator can run the playbook and have Loki, Tempo, and Mimir running in monolithic mode against the MinIO buckets from Phase 1, each with the correct retention semantics for its storage model and Tempo's OTLP receivers moved off the standard ports to avoid clashing with the OTel Collector that lands in Phase 3.
-**Depends on**: Phase 1
-**Requirements**: BACK-01, BACK-02, BACK-03, BACK-04, BACK-05
-**Success Criteria** (what must be TRUE):
-  1. Operator runs `ansible-playbook --tags loki,tempo,mimir` and `curl http://<host>:3100/ready`, `curl http://<host>:3200/ready`, `curl http://<host>:9009/ready` all return `ready` within 60s of role completion.
-  2. Operator pushes a synthetic log to `:3100/loki/api/v1/push`, a synthetic trace to Tempo's internal-only `:14318` (via OTel later in Phase 3 — for Phase 2 the verification is direct OTLP HTTP to the alt port), and a synthetic metric series via `remote_write` to Mimir's `:9009/api/v1/push`, and `mc ls minio/loki-chunks`, `mc ls minio/tempo-traces`, and `mc ls minio/mimir-blocks` all show new objects landing.
-  3. Operator changes `loki_retention_period` in `group_vars/` from the shipped default to a different value, re-runs the role, and `curl http://<host>:3100/config` reflects the new retention — same knob exists per-backend for Tempo (both `block_retention` and `compacted_block_retention`) and Mimir.
-  4. Tempo's OTLP receivers bind to `:14317` (gRPC) and `:14318` (HTTP) — confirmed by `ss -tlnp` on the host — and the standard `:4317`/`:4318` ports are still free for the OTel Collector to claim in Phase 3.
-  5. Per-role port-acceptance gates pass on each of Loki/Tempo/Mimir (idempotent re-run, grep clean, healthcheck green, image pinned).
-**Plans**: 3 plans
-Plans:
-- [x] 02-01-PLAN.md — Loki 3.7.2 monolithic role port + wire into deploy_docker.yml (BACK-01, BACK-02)
-- [x] 02-02-PLAN.md — Tempo 2.10.5 monolithic role port (dual-knob retention; OTLP alt ports :14317/:14318; metrics-generator local-WAL path) + wire into deploy_docker.yml (BACK-01, BACK-03, BACK-05)
-- [x] 02-03-PLAN.md — Mimir 3.0.6 monolithic role port (three distinct MinIO buckets; D-36 monolithic tuning) + wire into deploy_docker.yml (BACK-01, BACK-04)
-
-### Phase 3: Ingest Plane
-**Goal**: Operator can run the playbook and have Prometheus, OTel Collector, Fluent Bit, and node_exporter running — with Prometheus scraping the Collector's self-metrics and node_exporter, remote-writing to Mimir, and evaluating a baseline alert-rule set; the OTel Collector accepting OTLP on the standard ports and fanning out to all three backends; Fluent Bit tailing host logs through the Collector to Loki; and node_exporter exposing host metrics on `:9100`. The four pieces come up in their internal dependency order (Prometheus needs Mimir, OTel needs all three backends, Fluent Bit needs OTel).
-**Depends on**: Phase 2
-**Requirements**: INGEST-01, INGEST-02, INGEST-03, INGEST-04, INGEST-05, INGEST-06, INGEST-07, INGEST-08
-**Success Criteria** (what must be TRUE):
-  1. Operator runs `ansible-playbook --tags prometheus,opentelemetry,fluentbit,node_exporter` and `curl http://<host>:9090/-/ready`, `curl http://<host>:4318/v1/traces` (200 on POST), `curl http://<host>:2020/api/v1/health` (Fluent Bit), and `curl http://<host>:9100/metrics` all respond healthy; `curl http://<host>:9090/api/v1/targets` shows OTel Collector and node_exporter as `up`.
-  2. Operator pushes a synthetic OTLP trace + log + metric to the Collector's `:4317`/`:4318` and within 30s the trace appears via Tempo's API, the log appears via Loki's API, and the metric appears in Prometheus (which has already remote-written it to Mimir, verifiable by querying both).
-  3. Prometheus evaluates the baseline alert-rule set (`HostDown`, `FilesystemAlmostFull`, `ContainerRestartLoop`, `OTelCollectorDroppingSignals`) — `curl http://<host>:9090/api/v1/rules` returns all four rule names; operators can add their own via `prometheus_extra_rules` in inventory.
-  4. The OTel Collector pipeline order is `processors: [memory_limiter, batch, ...]` (verifiable in `/etc/telemetron/opentelemetry/config.yaml`); `GOMEMLIMIT` is set to ~80% of the container's memory limit; every exporter has `sending_queue: enabled` and `retry_on_failure` configured — and the container does not OOM under a 5-minute synthetic load test.
-  5. Fluent Bit ships only the labels `{job, host, service, env, level}` to Loki (high-cardinality fields go to structured metadata) — verifiable by inspecting Loki streams via `/loki/api/v1/labels`; `Time_System_Timezone Etc/UTC` and `Multiline_Flush 5` are set in the rendered config.
-**Plans**: 5 plans
-Plans:
-- [x] 03-01-node-exporter-PLAN.md — node_exporter v1.11.1 role port (INGEST-08); Wave 1
-- [x] 03-02-opentelemetry-PLAN.md — OTel Collector Contrib 0.152.0 role port with D-44 amendment + D-43 dual-exporter + D-51 docker_stats (INGEST-04, INGEST-05); Wave 2
-- [x] 03-03-prometheus-PLAN.md — Prometheus 3.11.3 role port with 4 baseline alert rules + Pitfall 3 relabel defaults + remote_write to Mimir (INGEST-01, INGEST-02, INGEST-03); Wave 3
-- [x] 03-04-fluentbit-PLAN.md — Fluent Bit 4.2.3 role port with D-46 role inversion + D-47 label allowlist + D-50 Pitfall 6 mitigation pack (INGEST-06, INGEST-07); Wave 4
-- [x] 03-05-fluentbit-label-enrichment-PLAN.md -- INGEST-07 gap closure (FB Lua + docker-labels); Wave 5
-
-### Phase 4: Alert Plane
-**Goal**: Operator can run the playbook and have Alertmanager running on `:9093` (`quay.io/prometheus/alertmanager:v0.32.1`) configured with `group_by: [alertname, cluster, service]`, `group_interval: 5m`, `repeat_interval: 4h`, `group_wait: 30s`, a single default `null` receiver, and one default inhibit rule (`source severity=critical -> target severity=warning, equal: [instance]`). Persistent state survives container restart via the `telemetron_alertmanager_data` named volume mounted at `/alertmanager`. Prometheus' `prometheus.yml` is extended with an `alerting: alertmanagers:` block pointing at `alertmanager:9093` so the four baseline rules from Phase 3 (`HostDown`, `FilesystemAlmostFull`, `ContainerRestartLoop`, `OTelCollectorDroppingSignals`) actually reach Alertmanager when they fire. The hook router (Flask app + role + sample bundles) is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.
-**Depends on**: Phase 3
-**Requirements**: ALERT-01 (ALERT-02..06 deferred to v2 as ALERT-V2-01..05)
-**Success Criteria** (what must be TRUE):
-  1. Operator runs `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml --tags alertmanager` and `curl -fsS http://alertmanager:9093/-/ready` returns HTTP 200; `docker inspect telemetron-alertmanager --format '{{.State.Health.Status}}'` returns `healthy`.
-  2. `curl -fsS http://alertmanager:9093/api/v2/receivers | jq -e '.[0].name == "null"'` exits 0 (single null receiver default).
-  3. `curl -fsS http://alertmanager:9093/api/v2/status | jq -r '.config.original'` contains `group_by:` listing `alertname/cluster/service`, `group_interval: 5m`, `repeat_interval: 4h`, `group_wait: 30s` (D-61).
-  4. `curl -fsS http://prometheus:9090/api/v1/alertmanagers | jq -e '.data.activeAlertmanagers[0].url == "http://alertmanager:9093/api/v2/alerts"'` exits 0 (Prom->AM wiring live).
-  5. `docker exec telemetron-alertmanager /bin/amtool --alertmanager.url=http://localhost:9093 alert add alertname=TestAlert severity=warning instance=verify-host` exits 0; the subsequent `amtool alert query alertname=TestAlert` lists the alert as active; `amtool silence add` followed by `amtool silence query` confirms silence persistence.
-**Plans**: 2 plans
-Plans:
-- [x] 04-01-PLAN.md -- Alertmanager role port (ALERT-01) + Prometheus alerting wiring (D-64) + doc-rework cascade (D-58, defers ALERT-02..06 to v2 as ALERT-V2-01..05); Wave 1
-- [x] 04-02-PLAN.md -- UAT gap closure: Bug 1 (auto_remove race in alertmanager verify step 5) + Bug 2 (Docker single-file bind-mount stale-inode across 7 roles) + flush_handlers belt + roles/README.md doc gate; Wave 1 (depends on 04-01)
-
-### Phase 04.1: Drop vault prefix (INSERTED)
-
-**Goal**: Rename every `vault_*`-prefixed sensitive variable in the codebase to its role-namespaced unprefixed form (`vault_minio_root_user` -> `minio_root_user`, `vault_loki_s3_*` -> `loki_s3_*`, `vault_tempo_s3_*` -> `tempo_s3_*`, `vault_mimir_s3_*` -> `mimir_s3_*`) across the 4 affected roles (`minio`, `loki`, `tempo`, `mimir`). Rename `inventory/example-homelab/group_vars/all/vault.yml.example` -> `secrets.yml.example` with all 8 keys renamed inside. Cascade the convention change through PROJECT.md OPS-02 wording, REQUIREMENTS.md OPS-02 acceptance text, roles/README.md Gate 3 description (`Vault-discipline gate` -> `Secrets-discipline gate`), and Phase 1+2 CONTEXT.md historical references (annotated inline `(superseded by D-90)` rather than rewritten). Re-run the six per-role gates on all four affected roles and validate the stack still boots via a leviathan smoke test (push a synthetic log + metric, confirm Loki and Mimir still receive). Phase 5 plan 05-01 must NOT begin until this lands.
-
-**Source of truth:** `.planning/phases/05-ui-plane/05-CONTEXT.md` D-90. Convention rationale: the `vault_*` prefix added no value (role-namespace + suffix carry the same meaning), steered operators toward Ansible vault specifically when vaulting is one option among many (sops, env vars, external secret managers), and implied tooling enforcement Ansible doesn't actually provide. Per user memory `feedback_no_decorative_convention_prefixes.md`: decoration prefixes that imply enforcement are rejected project-wide.
-
-**Depends on:** Phase 4
-**Requirements**: None (project-level convention change; no new functional requirement).
-**Success Criteria** (what must be TRUE):
-  1. `grep -rE 'vault_(minio|loki|tempo|mimir)' roles/ inventory/` returns zero matches across all 4 affected roles and the example inventory.
-  2. `inventory/example-homelab/group_vars/all/secrets.yml.example` exists with 8 unprefixed keys (`minio_root_user`, `minio_root_password`, `loki_s3_access_key`, `loki_s3_secret_key`, `tempo_s3_access_key`, `tempo_s3_secret_key`, `mimir_s3_access_key`, `mimir_s3_secret_key`); the old `vault.yml.example` no longer exists in git.
-  3. PROJECT.md OPS-02 line + REQUIREMENTS.md OPS-02 acceptance text + roles/README.md Gate 3 wording all reflect "role-namespaced sensitive variables" rather than the old `vault_<role>_<purpose>` convention.
-  4. All four affected roles pass Gates 1-8 (grep-clean, image-pin, secrets-discipline using new naming, idempotency, healthcheck+restart, README schema, label-stamp, parent-dir bind-mount) on a re-run.
-  5. Leviathan smoke test: after Phase 4.1 lands, `ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml` runs to convergence and a synthetic log push to Loki + synthetic metric push to Mimir both succeed (validating that the rename did not break credential plumbing).
-
-**Plans:** 1/1 plans complete
-
-Plans:
-- [x] 04.1-01-PLAN.md -- Vault-prefix rename across 4 roles + secrets.yml.example + doc cascade + gate re-run + leviathan smoke test
-
-### Phase 5: UI Plane
-**Goal**: Operator can run the playbook and have Grafana running with datasources explicitly provisioned at stable UIDs (`prometheus`, `loki`, `tempo`, `mimir`), 5-10 curated starter dashboards rendering real data on a fresh deploy, trace-to-logs correlation wired through Tempo's `tracesToLogsV2` + a derived `trace_id` field on Loki — plus Karma running against Alertmanager and PromLens pinned to `v0.3.0` and marked deprecation-candidate in its role README. Grafana's datasource provisioning is the de-facto smoke test for everything that came before.
-**Depends on**: Phase 4
-**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06
-**Success Criteria** (what must be TRUE):
-  1. Operator runs `ansible-playbook --tags grafana,karma,promlens`, opens `http://<host>:3000`, logs in with the vault-supplied admin password, and the four provisioned datasources (Prometheus, Loki, Tempo, Mimir) appear with UIDs exactly `prometheus`, `loki`, `tempo`, `mimir` — `curl http://<host>:3000/api/datasources/uid/loki` returns 200.
-  2. Operator opens any one of the bundled dashboards in a fresh browser session and every panel renders real data (host health from node_exporter, Loki Explore landing, Tempo Explore landing, OTel Collector self-metrics, backend health metrics) — no "Datasource not found" errors.
-  3. Operator clicks a trace span in Grafana Explore and the "Logs for this span" link navigates to Loki Explore with a `trace_id` filter pre-applied; the corresponding log lines render — confirming `tracesToLogsV2` + Loki derived-field plumbing is wired correctly.
-  4. Operator opens `http://<host>:8082` (Karma) and sees the M1 Alertmanager's current alerts in Karma's grid view; opens `http://<host>:8081` (PromLens) and gets a working PromQL editor pointed at Prometheus.
-  5. `roles/promlens/README.md` explicitly marks PromLens as a deprecation candidate and notes Prometheus 3's UI absorbs the tree-view feature; Karma container image is `ghcr.io/prymitive/karma:v0.130` (the GHCR official, not `lmierzwa/karma` Docker Hub fork).
-**Plans**: 3 plans + N gap-closure plans
-Plans:
-- [x] 05-01-PLAN.md -- Grafana role port (UI-01, UI-02, UI-03, UI-04) + Gate 9 D-73 + doc cascade; Wave 1
-- [x] 05-02-PLAN.md -- Karma role port (UI-05); Wave 2
-- [x] 05-03-PLAN.md -- PromLens role port (UI-06) + deprecation banner; Wave 2
-- [x] 05-04-PLAN.md -- gap closure (non-ASCII regression + dashboard uid rewrite bug + Gate 9.5); Wave 1
-- [x] 05-05-PLAN.md -- gap closure (grafana verify.yml auto_remove race + Gate 9.5 reachability); Wave 1
-- [x] 05-06-PLAN.md -- gap closure (tempo-self-metrics 51 upstream-org UIDs normalized); Wave 1
-- [x] 05-07-PLAN.md -- gap closure (Loki derivedField matcherType structured_metadata + regex fallback); Wave 1
-- [x] 05-08-PLAN.md -- gap closure (karma healthcheck OPT-IN by default; scratch-image constraint + karma/promlens verify.yml auto_remove race fix); Wave 1
-**UI hint**: yes
-
-### Phase 6: Opt-in, Orchestration, Docs & Smoke Test
-**Goal**: Operator can clone the repo, edit one hostname + SSH-user pair in `inventory/example-homelab/`, supply a vault password, run a single `ansible-playbook` command, and have the full M1 stack come up on a fresh Docker host — then push a synthetic log + metric + trace and see all three in Grafana within 60 seconds. The `nfsd` role exists for opt-in legacy NFS log ingestion (default-off), `playbooks/deploy_docker.yml` orchestrates 13 deployed roles + nfsd as the 14th opt-in slot (hook_router deferred to v2 per ALERT-V2-01..05) in correct dependency order with per-role tags, three docs (`architecture.md`, `quickstart.md`, `inventory.md`) are authored against a stack that actually booted, and the top-level README reflects what shipped.
-**Depends on**: Phase 5
-**Requirements**: LEGACY-01, INV-01, INV-03, OPS-07, DOCS-01, DOCS-02, DOCS-03, DOCS-04
-**Success Criteria** (what must be TRUE):
-  1. Operator clones the repo, edits a single hostname + SSH-user in `inventory/example-homelab/example-homelab.hosts`, copies `vault.yml.example` to `vault.yml` and fills it in, then runs `ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml` and the full 13-role stack comes up end-to-end (nfsd is the 14th slot, opt-in default-off; hook_router deferred to v2) on a fresh Docker host — every role's tag works for `--tags <role>` targeted re-runs.
-  2. With `enable_nfsd: false` (the default in the example inventory), no `nfsd` container is created; flipping it to `true` and re-running the playbook deploys the NFS server container; `roles/nfsd/README.md` documents what it does and why most operators should ignore it.
-  3. M1 acceptance smoke test: operator pushes a synthetic log (via Fluent Bit tail or direct OTLP), a synthetic metric (via OTel Collector OTLP), and a synthetic trace (via OTel Collector OTLP); within 60 seconds the log appears in Grafana Loki Explore using the bundled `loki` UID, the metric is queryable from both Prometheus (`uid: prometheus`) and Mimir (`uid: mimir`), and the trace appears in Grafana Tempo Explore using `uid: tempo`.
-  4. `docs/architecture.md` (components, monolithic-mode tradeoffs, signal flow apps→OTel→backends→Grafana, port-allocation cheat sheet), `docs/quickstart.md` (zero-to-dashboards path verified by an operator running it verbatim on a fresh target), and `docs/inventory.md` (in-depth inventory model beyond the `inventory/README.md` stub) all exist and the quickstart works step-by-step on a clean host.
-  5. Top-level `README.md` is updated post-M1 to reflect what's actually shipped (replacing "early" / "skeleton only" language) and links to `docs/quickstart.md`; the entire deploy is idempotent (a second back-to-back playbook run reports `changed=0`).
-**Plans**: 4 plans
-Plans:
-- [x] 06-01-PLAN.md — nfsd role port (LEGACY-01) + FB tail-input integration; Wave 1
-- [x] 06-02-PLAN.md — playbooks/smoke_test.yml + 3 OTLP/HTTP producers + 4 Grafana-proxy asserters (OPS-07); Wave 2
-- [x] 06-03-PLAN.md — docs/architecture.md + docs/quickstart.md + docs/inventory.md (DOCS-01, DOCS-02, DOCS-03); Wave 3
-- [x] 06-04-PLAN.md — README.md rewrite (DOCS-04) + INV-01/INV-03 close-out + idempotency revalidation; Wave 4
+No active phases. Scope via `/gsd:new-milestone`.
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation & Storage | 3/3 | Complete   | 2026-05-17 |
-| 2. Telemetry Backends | 3/3 | Complete   | 2026-05-17 |
-| 3. Ingest Plane | 5/5 | Complete   | 2026-05-18 |
-| 4. Alert Plane | 2/2 | Complete   | 2026-05-19 |
-| 4.1. Drop vault prefix (INSERTED) | 1/1 | Complete | 2026-05-19 |
-| 5. UI Plane | 8/8 | Complete (verified) | 2026-05-19 |
-| 6. Opt-in, Orchestration, Docs & Smoke Test | 4/4 | Complete (verified) | 2026-05-19 |
+| Phase | Milestone | Plans Complete | Status   | Completed  |
+|-------|-----------|----------------|----------|------------|
+| 1     | v1.0.0    | 3/3            | Complete | 2026-05-17 |
+| 2     | v1.0.0    | 3/3            | Complete | 2026-05-17 |
+| 3     | v1.0.0    | 5/5            | Complete | 2026-05-18 |
+| 4     | v1.0.0    | 2/2            | Complete | 2026-05-19 |
+| 04.1  | v1.0.0    | 1/1            | Complete | 2026-05-19 |
+| 5     | v1.0.0    | 8/8            | Complete | 2026-05-19 |
+| 6     | v1.0.0    | 4/4            | Complete | 2026-05-19 |
 
 ## Backlog
 
-Captured during Phase 03 autonomous UAT on leviathan (2026-05-18). All four
-items are non-blocking follow-ups; none affect the stack converging or the
-SC1-SC5 acceptance. Promote with `/gsd:review-backlog` when triaging.
+Captured during M1 execution. Promoted backlog phases live under
+`.planning/milestones/v1.0.0-phases/999.x-*/` as raw notes; promote with
+`/gsd:review-backlog` when triaging v2 scope.
 
 ### Phase 999.1: Mimir blocks_retention_period — re-wire under per-tenant `limits:` (BACKLOG)
 
 **Goal:** [Captured for future planning]
-**Requirements:** TBD
-**Plans:** 4/4 plans complete
 
 Context:
 - Phase 2 UAT removed `compactor.blocks_retention_period` from `mimir.yaml.j2` because Mimir 3.0 moved it out of `compactor.Config`. Mimir crashed at parse with "field blocks_retention_period not found in type compactor.Config".
@@ -178,47 +57,29 @@ Context:
 - `mimir_compactor_blocks_retention_period` var still defined in `roles/mimir/defaults/main.yml` but no template references it (orphan dead code).
 - Right home in Mimir 3.0 is the per-tenant `limits:` block: `limits.compactor_blocks_retention_period`.
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
 ### Phase 999.2: Tempo compactor.block_ranges_period — clean up or re-wire (BACKLOG)
 
 **Goal:** [Captured for future planning]
-**Requirements:** TBD
-**Plans:** 0 plans
 
 Context:
 - Phase 2 UAT removed `compactor.compaction.block_ranges_period` from `tempo.yaml.j2` because Tempo 2.10 dropped the field from `tempodb.CompactorConfig`.
 - `tempo_compactor_block_ranges_period: 5m` var still exists in `roles/tempo/defaults/main.yml` but is no longer referenced (orphan dead code).
 - Either delete the var (cosmetic cleanup) OR re-wire to the actual Tempo 2.10 knob `-compactor.compaction.compaction-window` (controls compaction time-range; default 1h0m).
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
 ### Phase 999.3: Fluent Bit timestamp_fallback — re-enable with FB-4-compatible syntax (BACKLOG)
 
 **Goal:** [Captured for future planning]
-**Requirements:** TBD
-**Plans:** 0 plans
 
 Context:
 - Phase 3 UAT disabled the `[FILTER] modify` block that added `@timestamp ${ingest_time}` because FB 4.2.3 rejected it with "Invalid operation add : @timestamp in configuration". Suspected causes: (a) `${ingest_time}` isn't a defined env var so substitution leaves value empty, (b) keys starting with `@` may need quoting in FB 4.
 - Currently commented out in `roles/fluentbit/templates/fluent-bit.conf.j2`. Docker logs include their own timestamp so the fallback is a no-op for the homelab Docker-tail path — but PITFALLS.md Pitfall 6 Mode 2 says this is the defensive safety net for log sources without timestamps.
 - Right fix: either inject `ingest_time` as a real FB env var (e.g. via the `record_modifier` filter using `Record ingest_time ${HOSTNAME}` style), or switch to FB's native `Time_Key` / `Time_Format` mechanism for the fallback.
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
 ### Phase 999.4: Reconcile FB 5-label spec with OTel-first ingest reality (BACKLOG)
 
 **Goal:** [Captured for future planning]
-**Requirements:** TBD
-**Plans:** 0 plans
 
 Context:
 - Phase 3 SC5 spec calls for Loki labels exactly `{host, env, service, job, level}`. Live Loki labels on leviathan are `{host, job, service_name}` — `service_name` is OTel's resource-attribute convention (`service.name` → `service_name`) surfaced by the OTel Collector's `otlphttp/loki` exporter, not FB's intended `service` label.
 - The high-cardinality leak gate IS working (no `container_id`/`image_id` leaks); this is a naming-convention drift, not a correctness bug.
 - Three resolution paths: (a) accept that OTel-pushed logs surface OTel attribute names; rewrite the SC5 spec accordingly. (b) Wire FB's enriched labels to overwrite OTel attributes on the Loki side. (c) Move canonical naming to a relabel rule on the OTel Collector's `loki` exporter side (cleanest — single place owns the label contract).
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)

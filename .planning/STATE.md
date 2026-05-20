@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.32.1
-milestone_name: milestone
-status: verifying
-stopped_at: "Completed 06-04-PLAN.md -- M1 SHIPPED on leviathan 2026-05-19. README rewritten per D-106; docs/README.md ticks 3/7 M1/v2 split; PROJECT/ROADMAP/REQUIREMENTS declare M1 complete; full-surface idempotency (enable_nfsd:true) ok=138 changed=0; INV-01 fresh-clone PASS; INV-03 13-role tag audit PASS. Next: v2 milestone scoping."
-last_updated: "2026-05-19T23:02:22.747Z"
-last_activity: 2026-05-19
+milestone: v1.0.0
+milestone_name: "M1 — LGTM observability plane on Docker"
+status: Awaiting next milestone
+stopped_at: "Milestone v1.0.0 archived 2026-05-19. M1 SHIPPED on leviathan. Archive: .planning/milestones/v1.0.0-{ROADMAP.md,REQUIREMENTS.md,phases/}. Tag: v1.0.0. Next: /gsd:new-milestone."
+last_updated: "2026-05-19T23:58:54.033Z"
+last_activity: 2026-05-19 — Milestone v1.0.0 completed and archived
 progress:
-  total_phases: 11
+  total_phases: 7
   completed_phases: 7
   total_plans: 26
   completed_plans: 26
-  percent: 0
+  percent: 100
+backlog:
+  carried_to_v2: 4  # 999.1..999.4 captured during M1, archived to .planning/milestones/v1.0.0-phases/
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-17)
+See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
-**Core value:** A homelab operator can clone the repo, edit one hostname in the example inventory, run a single Ansible playbook, and end up with a working LGTM + Alertmanager + hook-router observability plane on a single Docker host.
-**Current focus:** Phase 06 — opt-in-orchestration-docs-smoke-test
+**Core value:** A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. **Shipped in v1.0.0.**
+**Current focus:** Awaiting v2 milestone scoping via `/gsd:new-milestone`. Candidate themes documented in PROJECT.md Active section.
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-19
-
-Progress: [░░░░░░░░░░] 0%
+Phase: Milestone v1.0.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-05-19 — Milestone v1.0.0 completed and archived
 
 ## Performance Metrics
 
@@ -195,14 +195,27 @@ Recent decisions affecting current work (Phase 1):
 
 ### Pending Todos
 
-None yet.
+None active. v2 scope to be defined by `/gsd:new-milestone`.
 
 ### Blockers/Concerns
 
-None active. (Prior "Phase 5 blocked on Phase 4.1" concern is resolved -- 04.1 landed and Phase 5 has now been verified.)
+None active.
+
+### Known Debt (carried into v2)
+
+- **MinIO on archived `RELEASE.2025-04-22T22-12-26Z`** — Garage migration is the queued replacement (community archived early 2026).
+- **Hook router deferred to v2** (ALERT-V2-01..05 in archived v1.0.0-REQUIREMENTS.md). Design preserved in `.planning/milestones/v1.0.0-phases/04-alert-plane/04-DISCUSSION-LOG.md`.
+- **PromLens v0.3.0** marked deprecation-candidate; Prometheus 3 absorbs the tree-view surface.
+- **Single-host amd64 only** — distributed-mode + multi-host inventory + arm64 + Kube path all v2 candidates.
+- **7 deferred docs** (alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics) — tracked as DOCS-V2-01..07.
+- **Backlog 999.x items** (mimir blocks_retention re-wire, tempo block_ranges_period cleanup, fluentbit timestamp_fallback FB-4 syntax, FB label-spec vs OTel-reality reconciliation) — archived to `.planning/milestones/v1.0.0-phases/999.x-*/`.
 
 ## Session Continuity
 
 Last session: 2026-05-19T22:48:16.010Z
 Stopped at: Completed 06-04-PLAN.md -- M1 SHIPPED on leviathan 2026-05-19. README rewritten per D-106; docs/README.md ticks 3/7 M1/v2 split; PROJECT/ROADMAP/REQUIREMENTS declare M1 complete; full-surface idempotency (enable_nfsd:true) ok=138 changed=0; INV-01 fresh-clone PASS; INV-03 13-role tag audit PASS. Next: v2 milestone scoping.
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
