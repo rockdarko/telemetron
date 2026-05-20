@@ -209,6 +209,12 @@ None active.
 - **7 deferred docs** (alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics) — tracked as DOCS-V2-01..07.
 - **Backlog 999.x items** (mimir blocks_retention re-wire, tempo block_ranges_period cleanup, fluentbit timestamp_fallback FB-4 syntax, FB label-spec vs OTel-reality reconciliation) — archived to `.planning/milestones/v1.0.0-phases/999.x-*/`.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260519-sod | Remove PromLens from the Telemetron stack (v1.0.1 patch) | 2026-05-19 | d10005a | [260519-sod-remove-promlens-from-the-telemetron-stac](./quick/260519-sod-remove-promlens-from-the-telemetron-stac/) |
+
 ## Session Continuity
 
 Last session: 2026-05-19T22:48:16.010Z
