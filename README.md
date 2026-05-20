@@ -42,13 +42,13 @@ and confirms visibility in Grafana within 60 seconds.
 | Alertmanager | `quay.io/prometheus/alertmanager:v0.32.1` | Alert routing (null receiver default) |
 | Grafana | `grafana/grafana-oss:13.0.1` | Dashboards + Explore |
 | Karma | `ghcr.io/prymitive/karma:v0.130` | Alert triage UI |
-| PromLens | `prom/promlens:v0.3.0` | PromQL editor (deprecation candidate) |
 | nfsd (opt-in) | host package (`nfs-utils` / `nfs-kernel-server`) | Optional NFS server for legacy log ingestion |
 
 Architecture detail: [`docs/architecture.md`](docs/architecture.md).
 
 ### Not in M1
 
+- **PromLens** was bundled in v1.0.0 for upstream-INSPQ parity and removed in v1.0.1 after confirming the upstream repo has been Dependabot-only since December 2022. Prometheus 3.x's native UI at `http://prometheus:9090/graph` covers the PromQL tree-view and query-explorer use case.
 - **Hook router** (Alertmanager -> CI/automation webhook bridge) is deferred to a future milestone. Alerts are visible in Karma but not auto-dispatched.
 - **HAProxy** (load balancing for distributed-mode backends) is only useful when Loki / Mimir / Tempo run in microservices mode, which is a future-milestone deployment topology.
 - **Kubernetes / OpenShift deployment path** is a future milestone; M1 ships the Docker path only.

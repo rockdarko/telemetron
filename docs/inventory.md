@@ -32,7 +32,6 @@ inventory/
         alertmanager.yml
         grafana.yml
         karma.yml
-        promlens.yml
     host_vars/
       <hostname>.yml         # optional per-host overrides
 ```

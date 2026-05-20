@@ -18,7 +18,6 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `node_exporter`          | host metrics exporter (CPU, memory, disk, network, FS) | ☑ |
 | `opentelemetry`          | OTel Collector                                    | ☑ |
 | `prometheus`             | short-term metrics + alerting eval                | ☑ |
-| `promlens`               | PromQL editor (deprecation candidate)             | ☑ |
 | `tempo`                  | trace backend (monolithic mode)                   | ☑ |
 
 **Dropped from upstream**: `graylog` (legacy aggregator no longer needed), `mongodb` (Graylog's metadata store; no remaining consumer), `mcp` (observability MCP server; not core to the plane), `haproxy` (only useful in distributed mode, which is deferred to a future milestone), `application_web_docker` (Apache vhost pairing binds operators to a single reverse-proxy choice; Telemetron is reverse-proxy-agnostic), and `postgres` (Grafana uses embedded SQLite on a persistent volume for single-host homelab use; Postgres returns only if HA Grafana lands in a later milestone).
@@ -67,7 +66,7 @@ labels:
   org.telemetron.job: <component>
 ```
 
-`<component>` matches the role name (e.g. `prometheus`, `loki`, `node_exporter`) so that Fluent Bit's `[FILTER] lua` enrichment (`roles/fluentbit/files/enrich.lua`) picks them up from `/var/lib/docker/containers/<id>/config.v2.json` and ships them as the `service` + `job` Loki labels (INGEST-07 allowlist). Phase 4 (alertmanager) and Phase 5 (grafana, karma, promlens) role ports MUST stamp these labels. (The hook_router role is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.) No Docker socket access is added; the Lua filter only reads the bind-mounted JSON files Fluent Bit already tails.
+`<component>` matches the role name (e.g. `prometheus`, `loki`, `node_exporter`) so that Fluent Bit's `[FILTER] lua` enrichment (`roles/fluentbit/files/enrich.lua`) picks them up from `/var/lib/docker/containers/<id>/config.v2.json` and ships them as the `service` + `job` Loki labels (INGEST-07 allowlist). Phase 4 (alertmanager) and Phase 5 (grafana, karma) role ports MUST stamp these labels. (The hook_router role is deferred to a future milestone -- see REQUIREMENTS.md ALERT-V2-01..05.) No Docker socket access is added; the Lua filter only reads the bind-mounted JSON files Fluent Bit already tails.
 
 **8. Parent-directory bind-mount convention (Bug-fix 04-02; moby/moby#6011):**
 

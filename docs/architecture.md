@@ -74,11 +74,11 @@ and a conditional Fluent Bit tail input over the share root.
 +-----------------------------------------------------------------+
 |                            UI PLANE                              |
 |                                                                  |
-|  +-------------+   +----------+   +-----------+   +-----------+  |
-|  |  Grafana    |   |  Karma   |   | PromLens  |   | MinIO     |  |
-|  |  :3000      |   |  :8082   |   |  :8081    |   | console   |  |
-|  | (admin/UI)  |   | -> AM    |   | -> Prom   |   |  :9001    |  |
-|  +-------------+   +----------+   +-----------+   +-----------+  |
+|  +-------------+   +----------+   +-----------+                  |
+|  |  Grafana    |   |  Karma   |   | MinIO     |                  |
+|  |  :3000      |   |  :8082   |   | console   |                  |
+|  | (admin/UI)  |   | -> AM    |   |  :9001    |                  |
+|  +-------------+   +----------+   +-----------+                  |
 +-----------------------------------------------------------------+
 
 Opt-in (default off, enable_nfsd: true):
@@ -101,7 +101,6 @@ Opt-in (default off, enable_nfsd: true):
 | Alertmanager | quay.io/prometheus/alertmanager:v0.32.1 | 9093 | single | Alert routing (null receiver default) |
 | Grafana | grafana/grafana-oss:13.0.1 | 3000 | OSS | Dashboards + Explore |
 | Karma | ghcr.io/prymitive/karma:v0.130 | 8082 | UI | Alert triage UI |
-| PromLens | prom/promlens:v0.3.0 | 8081 | UI (deprecation candidate) | PromQL editor |
 | nfsd | host package (`nfs-utils` / `nfs-kernel-server`) | 2049 (opt-in) | systemd | Optional NFS server for legacy log ingestion |
 
 ## Port Allocation
@@ -117,7 +116,6 @@ Opt-in (default off, enable_nfsd: true):
 | Tempo OTLP HTTP (internal) | 14318 | none |
 | Prometheus | 9090 | 9090 |
 | Alertmanager | 9093 | 9093 |
-| PromLens | 8080 | 8081 |
 | Karma | 8080 | 8082 |
 | Mimir | 9009 | 9009 |
 | MinIO API | 9000 | 9000 |
@@ -177,10 +175,10 @@ read-only into the corresponding container.
   release. A future milestone replaces MinIO with Garage or SeaweedFS.
   Loki, Tempo, and Mimir configurations all target the S3 API, so the
   replacement is contained to the `minio` role.
-- **PromLens is frozen.** Last release v0.3.0 (Dec 2022). The
-  Prometheus 3 UI absorbs its tree-view feature. The role README marks
-  it as a deprecation candidate; new deployments may pass
-  `--skip-tags promlens`.
+- **PromLens was removed in v1.0.1.** The bundled Prometheus 3.x UI at
+  `http://prometheus:9090/graph` covers the tree-view and query-explorer
+  use case that PromLens served in v1.0.0. Upstream had not shipped a
+  real release since v0.3.0 (Dec 2022).
 - **Hook router is deferred.** The Alertmanager-to-CI webhook bridge is
   a future-milestone item. M1 ships Alertmanager with a `null` default
   receiver; alerts are visible in Karma but not dispatched automatically.

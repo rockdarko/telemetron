@@ -2,7 +2,7 @@
 
 Deploys Grafana OSS 13.0.1 (`grafana/grafana-oss:13.0.1`) on the `telemetron` Docker bridge network, listening on port `:3000` (host-published by default -- D-82 inverts the `telemetron_publish_default:false` convention for the UI plane). The role ships four datasources provisioned at hardcoded UIDs (`prometheus`, `loki`, `tempo`, `mimir`) and seven curated starter dashboards under the `Telemetron` folder. Trace-to-logs correlation is wired via `tracesToLogsV2` on the Tempo datasource and a `derivedFields` trace_id link on the Loki datasource. Embedded SQLite on the `telemetron_grafana_data` persistent volume is the backing store (no Postgres needed for M1 single-host homelab use).
 
-Requirements: UI-01 (persistent volume), UI-02 (datasource UIDs), UI-03 (curated dashboards), UI-04 (trace-to-logs correlation). Cross-linked to Phase 5 `karma` (plan 05-02) and `promlens` (plan 05-03 -- deprecation candidate) roles.
+Requirements: UI-01 (persistent volume), UI-02 (datasource UIDs), UI-03 (curated dashboards), UI-04 (trace-to-logs correlation). Cross-linked to Phase 5 `karma` (plan 05-02) role.
 
 ---
 
