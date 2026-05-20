@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: "M1 — LGTM observability plane on Docker"
 status: Awaiting next milestone
-stopped_at: "Milestone v1.0.0 archived 2026-05-19. M1 SHIPPED on leviathan. Archive: .planning/milestones/v1.0.0-{ROADMAP.md,REQUIREMENTS.md,phases/}. Tag: v1.0.0. Next: /gsd:new-milestone."
-last_updated: "2026-05-19T23:58:54.033Z"
-last_activity: 2026-05-19 — Milestone v1.0.0 completed and archived
+stopped_at: "Milestone v1.0.0 archived 2026-05-19. M1 SHIPPED on leviathan. Archive: .planning/milestones/v1.0.0-{ROADMAP.md,REQUIREMENTS.md,phases/}. Tag: v1.0.0. v1.0.1 patch shipped 2026-05-19 (PromLens removed). Next: /gsd:new-milestone."
+last_updated: "2026-05-20T00:50:00.000Z"
+last_activity: 2026-05-19 — v1.0.1 patch shipped: PromLens removed from stack
 progress:
   total_phases: 7
   completed_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 Phase: Milestone v1.0.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-05-19 — Milestone v1.0.0 completed and archived
+Last activity: 2026-05-19 — v1.0.1 patch shipped: PromLens removed from stack
 
 ## Performance Metrics
 
@@ -205,7 +205,6 @@ None active.
 
 - **MinIO on archived `RELEASE.2025-04-22T22-12-26Z`** — Garage migration is the queued replacement (community archived early 2026).
 - **Hook router deferred to v2** (ALERT-V2-01..05 in archived v1.0.0-REQUIREMENTS.md). Design preserved in `.planning/milestones/v1.0.0-phases/04-alert-plane/04-DISCUSSION-LOG.md`.
-- **PromLens v0.3.0** marked deprecation-candidate; Prometheus 3 absorbs the tree-view surface.
 - **Single-host amd64 only** — distributed-mode + multi-host inventory + arm64 + Kube path all v2 candidates.
 - **7 deferred docs** (alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics) — tracked as DOCS-V2-01..07.
 - **Backlog 999.x items** (mimir blocks_retention re-wire, tempo block_ranges_period cleanup, fluentbit timestamp_fallback FB-4 syntax, FB label-spec vs OTel-reality reconciliation) — archived to `.planning/milestones/v1.0.0-phases/999.x-*/`.

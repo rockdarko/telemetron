@@ -62,6 +62,22 @@
 
 ---
 
+## Post-Ship Correction: v1.0.1 — PromLens removed
+
+**Date:** 2026-05-19 (same day as v1.0.0 ship).
+
+**What happened:** During ship-day review of bundled components, a quick upstream check confirmed `prom/promlens` has had only Dependabot dependency-update commits since the v0.3.0 tag in December 2022. No functional release in 3.5 years; no maintainer activity beyond bot bumps. The role had already been marked deprecation-candidate in its own README when v1.0.0 shipped, but it was still in the deploy set.
+
+**The call:** Remove PromLens from the stack as a v1.0.1 patch ship. Prometheus 3.x's native Mantine-based UI at `http://prometheus:9090/graph` absorbs the PromQL tree-view + query-explorer feature that was PromLens's only remaining value. Zero capability loss for operators.
+
+**Scope:** 13 files touched in the live tree (7 deletions: 6 role files + 1 inventory file; 6 doc/config edits) + 4 planning bookkeeping files (CLAUDE.md, PROJECT.md, STATE.md, RETROSPECTIVE.md) + this v1.0.1 entry. Three atomic commits plus the annotated `v1.0.1` git tag.
+
+**Lesson for v2:** Before deciding to ship any component "for upstream parity," confirm upstream maintenance status. The cost of shipping unmaintained code in a clone-and-run project is non-trivial (operator confusion, CVE exposure, future removal work). The check is cheap — `gh api repos/<org>/<repo>` for `pushed_at` + last tag, plus a glance at recent commits to see if they're Dependabot-only — and would have prevented PromLens from appearing in v1.0.0 at all. Add this to the v2 planning checklist: every component slot answers "is upstream actually shipping?" before being scoped in.
+
+**Process observation:** v1.0.1 ran through `/gsd:quick` (not a full phase) and demonstrated the patch-release loop works cleanly on top of the milestone-archive structure. The worktree-isolation path failed because the orchestrator forgot the `isolation="worktree"` parameter on the Agent call; the executor caught the discrepancy and halted instead of self-recovering — exactly the right behavior. Falling back to inline execution on `main` for a 3-commit doc/cleanup patch was the right call; the worktree dance adds value when there are parallel agents, not for single-track surgical edits.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
