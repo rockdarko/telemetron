@@ -23,17 +23,25 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 
 ### Active
 
-<!-- Awaiting v2 milestone scoping. M1 shipped 2026-05-19. -->
+<!-- Milestone v1.1.0: Garage migration + backlog sweep -->
 
-No active scope. Run `/gsd:new-milestone` to scope v2. Candidate themes from
-M1's known debt:
+## Current Milestone: v1.1.0 — Garage migration + backlog sweep
 
-- **Garage / SeaweedFS migration** off the archived MinIO community release
-- **Hook router** (Flask app + role + sample bundles + Jenkins `buildWithParameters` auth) — preserved design in archived `04-DISCUSSION-LOG.md`, tracked as `ALERT-V2-01..05` in `.planning/milestones/v1.0.0-REQUIREMENTS.md`
-- **Multi-host distributed inventory** + distributed-mode Loki/Tempo/Mimir + HAProxy in front
-- **Kubernetes / OpenShift deployment path** (`playbooks/deploy_kube.yml`)
-- **arm64 / multi-arch** support and testing surface
-- **Backlog 999.x items** carried into v2: mimir blocks_retention re-wire under `limits:`, tempo `compactor.block_ranges_period` cleanup, fluentbit `timestamp_fallback` FB-4-compatible syntax, FB label-spec vs OTel-reality reconciliation (now in `.planning/milestones/v1.0.0-phases/999.x-*`)
+**Goal:** Replace the archived MinIO community release with Garage as the S3-compatible object store, fix the Mimir retention regression, and close out the four M1 backlog items.
+
+**Target features:**
+- [ ] Replace `minio/minio` (archived) with `dxflrs/garage` (AGPL, actively maintained, homelab-designed). S3 API contract preserved; Loki/Tempo/Mimir storage configs retargeted to the Garage endpoint. Data migration guide for existing MinIO deployments.
+- [ ] Mimir `blocks_retention_period` re-wired under the per-tenant `limits:` block so the configured 30d retention actually takes effect (currently silently defaulting to Mimir's built-in 1-week).
+- [ ] Tempo `compactor.block_ranges_period` orphan var cleaned up or re-wired to the Tempo 2.10 `-compactor.compaction.compaction-window` knob.
+- [ ] Fluent Bit `timestamp_fallback` re-enabled with FB-4-compatible syntax (the `@timestamp ${ingest_time}` modify filter was disabled in M1 because FB 4.2.3 rejected the env-var substitution).
+- [ ] Fluent Bit label-spec reconciled with OTel-first ingest reality (Loki labels surface as `service_name` from OTel vs the spec's `service`; choose: accept OTel convention, overwrite, or relabel at OTel Collector exporter).
+
+**Deferred to later milestones (not in v1.1.0):**
+- Hook router (ALERT-V2-01..05)
+- Multi-host + distributed mode + HAProxy
+- Kubernetes / OpenShift path
+- arm64 / multi-arch
+- 7 deferred docs (DOCS-V2-01..07)
 
 ### Out of Scope
 
@@ -66,7 +74,7 @@ M1's known debt:
 - **Test target for M1:** Rock's own homelab — SSH in, run the playbook, eyeball it. No reproducible CI/molecule harness required for milestone 1.
 - **Audience layering:** Homelab and small deployments are the primary audience for M1. Bigger orgs (distributed mode + Kube/OpenShift) come in later milestones.
 - **Motivation is layered** (all three apply): a portfolio artifact, a stack Rock actually wants to run, and a community contribution back from a previously-internal codebase.
-- **Status:** v1.0.0 shipped 2026-05-19 on leviathan. Repo holds 13 working Ansible roles (alertmanager, fluentbit, grafana, karma, loki, mimir, minio, nfsd, node_exporter, opentelemetry, prometheus, promlens, tempo), a working `playbooks/deploy_docker.yml` orchestrator + `playbooks/smoke_test.yml` acceptance probe, a complete `inventory/example-homelab/` skeleton, and three operator docs (`docs/architecture.md`, `docs/quickstart.md`, `docs/inventory.md`). ~12,254 LOC across 139 files. Awaiting v2 scoping.
+- **Status:** v1.0.1 shipped 2026-05-20 on leviathan (v1.0.0 + PromLens removal). Repo holds 12 working Ansible roles (alertmanager, fluentbit, grafana, karma, loki, mimir, minio, nfsd, node_exporter, opentelemetry, prometheus, tempo), a working `playbooks/deploy_docker.yml` orchestrator + `playbooks/smoke_test.yml` acceptance probe, a complete `inventory/example-homelab/` skeleton, and three operator docs (`docs/architecture.md`, `docs/quickstart.md`, `docs/inventory.md`). Scoping v1.1.0 (Garage migration + backlog sweep).
 
 ## Constraints
 
@@ -122,4 +130,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-19 after v1.0.0 milestone close — M1 SHIPPED on leviathan. Full LGTM observability plane (13 deployed roles + nfsd opt-in 14th slot) deployable via a single `ansible-playbook` against `inventory/example-homelab/`; synthetic OTLP log+metric+trace visible in Grafana within 60s (Plan 06-02 smoke test); back-to-back deploy idempotent (`changed=0`) for both the 13-role default and the 14-role `enable_nfsd: true` shape. 37/37 v1 requirements checked off and archived to `.planning/milestones/v1.0.0-REQUIREMENTS.md`. Awaiting v2 milestone scoping via `/gsd:new-milestone`.*
+*Last updated: 2026-05-20 after v1.1.0 milestone scope lock — M1 SHIPPED on leviathan. Full LGTM observability plane (13 deployed roles + nfsd opt-in 14th slot) deployable via a single `ansible-playbook` against `inventory/example-homelab/`; synthetic OTLP log+metric+trace visible in Grafana within 60s (Plan 06-02 smoke test); back-to-back deploy idempotent (`changed=0`) for both the 13-role default and the 14-role `enable_nfsd: true` shape. 37/37 v1 requirements checked off and archived to `.planning/milestones/v1.0.0-REQUIREMENTS.md`. Awaiting v2 milestone scoping via `/gsd:new-milestone`.*

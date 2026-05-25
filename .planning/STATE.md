@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0.0
-milestone_name: "M1 — LGTM observability plane on Docker"
-status: Awaiting next milestone
-stopped_at: "Milestone v1.0.0 archived 2026-05-19. M1 SHIPPED on leviathan. Archive: .planning/milestones/v1.0.0-{ROADMAP.md,REQUIREMENTS.md,phases/}. Tag: v1.0.0. v1.0.1 patch shipped 2026-05-19 (PromLens removed). Next: /gsd:new-milestone."
-last_updated: "2026-05-20T00:50:00.000Z"
-last_activity: 2026-05-19 — v1.0.1 patch shipped: PromLens removed from stack
+milestone: v1.1.0
+milestone_name: Garage migration + backlog sweep
+status: planning
+last_updated: "2026-05-25T02:55:16.539Z"
+last_activity: 2026-05-25
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 26
-  completed_plans: 26
-  percent: 100
-backlog:
-  carried_to_v2: 4  # 999.1..999.4 captured during M1, archived to .planning/milestones/v1.0.0-phases/
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 ## Current Position
 
-Phase: Milestone v1.0.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-05-19 — v1.0.1 patch shipped: PromLens removed from stack
+Status: Defining requirements
+Last activity: 2026-05-25 — Milestone v1.1.0 started
 
 ## Performance Metrics
 
