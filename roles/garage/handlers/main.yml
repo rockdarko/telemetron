@@ -1,0 +1,15 @@
+---
+# roles/garage/handlers/main.yml
+# Per D-19 / Pitfall 8: container restarts on config change use
+# `docker restart <name>` (preserves container state). The module-level
+# `state` parameter is intentionally not used for restarts -- force-recreate
+# is non-idempotent.
+#
+# garage.toml changes require a container restart (no SIGHUP reload path),
+# so the TOML config template notifies this handler.
+
+- name: Docker restart garage
+  ansible.builtin.command:
+    cmd: "docker restart {{ garage_container_name }}"
+  changed_when: true
+  listen: restart garage

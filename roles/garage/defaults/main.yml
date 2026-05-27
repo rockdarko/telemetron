@@ -1,0 +1,129 @@
+---
+# roles/garage/defaults/main.yml
+# Garage role tunables. Override per-environment in
+# inventory/<env>/group_vars/all/garage.yml.
+#
+# Garage v2.3.0 is the S3-compatible object store for Telemetron's
+# Loki, Tempo, and Mimir. Actively maintained AGPL homelab-focused store.
+# Source: https://garagehq.deuxfleurs.fr/
+
+# --- Image pins (OPS-01: pin every image tag explicitly) ---
+# Garage server image -- actively maintained AGPL S3-compatible store.
+# SHA256 verified locally: sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
+# See: https://hub.docker.com/r/dxflrs/garage
+garage_image: dxflrs/garage
+garage_image_tag: "v2.3.0"
+
+# --- Container identity ---
+# Container name on the telemetron network. Other roles reach Garage at
+# http://{{ garage_container_name }}:3900 -- coordinate any change here
+# with every Phase 2 backend role's S3 endpoint config.
+garage_container_name: telemetron-garage
+
+# --- Host port publishing (Security: zero host publish by default) ---
+# Default: zero host publish. Inter-component traffic stays on the
+# telemetron Docker bridge network. Console access via SSH local-forward.
+# Override to `true` (publishes to 0.0.0.0) or `127.0.0.1` (loopback only)
+# in inventory/<env>/group_vars/all/garage.yml -- see operator README.
+# NOTE: RPC port (3901) is NEVER published to the host -- internal-only.
+garage_publish_host: "{{ garage_publish_host | default(false) }}"
+garage_api_port: 3900
+garage_rpc_port: 3901
+garage_admin_port: 3903
+
+# --- Storage layout (two named volumes for Garage's data separation) ---
+# Garage requires separate volumes for metadata and object data.
+# Both use the telemetron prefix for Docker volume namespacing.
+garage_meta_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_garage_meta"
+garage_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_garage_data"
+garage_meta_path: /var/lib/garage/meta
+garage_data_path: /var/lib/garage/data
+
+# Host-side config directory. The rendered garage.toml lives here and is
+# bind-mounted read-only into the container (Gate 8: parent-directory mount).
+garage_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/garage"
+
+# --- Bucket list (consumed by tasks/bootstrap.yml) ---
+# Pulled from inventory storage.yml when present; defaults provided here
+# so the role works standalone for testing.
+garage_buckets: "{{ telemetron_garage_buckets | default([
+  'loki-chunks',
+  'tempo-traces',
+  'mimir-blocks',
+  'mimir-ruler',
+  'mimir-alerts',
+]) }}"
+
+# --- Bootstrap pre-poll (D-10a amendment) ---
+# The bootstrap sequence only runs after Garage's Docker HEALTHCHECK
+# reports `healthy` (status polled via community.docker.docker_container_info).
+# These knobs control the pre-poll timing -- defaults are 30 retries
+# at 2-second intervals (60s total budget for Garage to come up).
+garage_health_retries: 30
+garage_health_delay: 2
+
+# --- Healthcheck (OPS-06) ---
+# Docker HEALTHCHECK -- the Garage image ships none (docker inspect returns
+# null Healthcheck). We use a binary-alive proxy: /garage --version exits 0
+# if the Garage binary is present and executable, which is sufficient for
+# HEALTHCHECK reporting. The authoritative readiness gate is the bootstrap
+# sequence succeeding (layout show working = Garage server up).
+#
+# Same binary-alive proxy pattern as Tempo and Mimir (Phases 02-02, 02-03).
+# IMPORTANT: must be a list, not a space-split string.
+garage_healthcheck_test:
+  - CMD
+  - /garage
+  - --version
+garage_healthcheck_interval: 15s
+garage_healthcheck_timeout: 5s
+garage_healthcheck_retries: 3
+garage_healthcheck_start_period: 20s
+
+# --- Bootstrap: layout, key, S3 region ---
+# Single-node Garage layout: zone "local", capacity "1G".
+# S3 region must match what Loki/Tempo/Mimir send (us-east-1 is the
+# AWS default and what Garage accepts without complaint).
+garage_layout_zone: local
+garage_layout_capacity: 1G
+garage_s3_region: us-east-1
+garage_s3_key_name: telemetron
+
+# --- D-112: S3 credential persistence (auto-generated, NOT operator-supplied) ---
+# Bootstrap generates the S3 key via /garage key create on first run.
+# The key ID and secret are persisted to this host file so re-runs load
+# existing credentials without regeneration.
+#
+# IMPORTANT: garage_s3_access_key_id and garage_s3_secret_key are NOT
+# defined as defaults here and are NOT in secrets.yml. They are auto-generated
+# by bootstrap (tasks/bootstrap.yml D-112 flow) and loaded from the host file.
+# Do not add them to secrets.yml.example -- they are not operator-supplied.
+garage_s3_credentials_file: "{{ garage_config_dir }}/s3-credentials"
+
+# --- Sensitive vars (no defaults -- must come from secrets.yml) ---
+# The following vars MUST be defined in secrets.yml (they have no defaults):
+#   garage_admin_token  -- Bearer token for Garage admin API and metrics scrape.
+#                          Generate: openssl rand -hex 32
+#   garage_rpc_secret   -- 32-byte hex secret for Garage inter-node RPC.
+#                          Generate: openssl rand -hex 32
+#
+# NOTE: S3 credentials (garage_s3_access_key_id, garage_s3_secret_key) are
+# NOT in secrets.yml -- they are auto-generated by bootstrap per D-112 and
+# persisted to {{ garage_s3_credentials_file }} (mode 0600) on the host.
+
+# --- Restart policy (OPS-06) ---
+# `unless-stopped`: survives host reboots; operator deliberate stops
+# aren't fought by the Docker daemon.
+garage_restart_policy: unless-stopped
+
+# --- Resource limits (homelab-safe; tune per environment) ---
+# Garage RAM use is lightweight for single-node homelab workloads.
+garage_memory_limit: 256m
+
+# --- Network ---
+# Created by playbooks/deploy_docker.yml pre_tasks; this role does NOT
+# create the network -- it only attaches to it.
+garage_network: "{{ telemetron_network | default('telemetron') }}"
+
+# --- Timezone (D-15 / OPS-06) ---
+garage_tz: "{{ telemetron_tz | default('Etc/UTC') }}"

@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+# Garage server configuration -- rendered by roles/garage.
+# Bind-mounted read-only into the container at /etc/garage/garage.toml.
+# DO NOT EDIT BY HAND -- changes here are overwritten by ansible-playbook.
+#
+# Source: https://garagehq.deuxfleurs.fr/documentation/reference-manual/configuration/
+
+replication_factor = 1
+consistency_mode = "consistent"
+db_engine = "lmdb"
+
+metadata_dir = "{{ garage_meta_path }}"
+data_dir = "{{ garage_data_path }}"
+
+rpc_secret = "{{ garage_rpc_secret }}"
+rpc_bind_addr = "[::]:{{ garage_rpc_port }}"
+
+[s3_api]
+api_bind_addr = "[::]:{{ garage_api_port }}"
+s3_region = "{{ garage_s3_region }}"
+root_domain = ".s3.garage.localhost"
+s3_force_path_style = true
+
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+index = "index.html"
+error_document = "error/404.html"
+
+[admin]
+api_bind_addr = "0.0.0.0:{{ garage_admin_port }}"
+admin_token = "{{ garage_admin_token }}"
+metrics_token = "{{ garage_admin_token }}"

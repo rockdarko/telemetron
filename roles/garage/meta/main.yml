@@ -1,0 +1,28 @@
+---
+galaxy_info:
+  role_name: garage
+  author: Rock Martel-Langlois
+  description: >
+    Deploys Garage v2.3.0 S3-compatible object storage on Docker, with
+    layout assign/apply and bucket bootstrap as blocking final tasks.
+    Backing store for Telemetron's Loki, Tempo, and Mimir roles.
+    Replaces the archived community S3 object store.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+  galaxy_tags:
+    - storage
+    - garage
+    - s3
+    - observability
+    - telemetron
+
+dependencies: []
+
+collections:
+  - community.docker
+  - ansible.builtin
