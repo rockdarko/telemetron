@@ -3,7 +3,7 @@
 # Consumed by every role's container volume / config-bind-mount paths.
 
 # Named-volume prefix. Every component's data volume is named
-# `<telemetron_volume_prefix>_<role>_data` (e.g. telemetron_minio_data,
+# `<telemetron_volume_prefix>_<role>_data` (e.g. telemetron_garage_data,
 # telemetron_loki_data). Prefix avoids clashes if the homelab host runs
 # other Docker stacks. Renaming the prefix renames every volume -- only
 # do this on a fresh install.
@@ -15,11 +15,11 @@ telemetron_volume_prefix: telemetron
 # container at the canonical container path.
 telemetron_config_root: /opt/telemetron
 
-# MinIO bucket names (consumed by Phase 1 minio role bucket-bootstrap
+# Garage bucket names (consumed by Phase 8 garage role bucket-bootstrap
 # AND by Phase 2 loki/tempo/mimir roles for their S3 endpoint config).
 # Renaming any bucket here MUST be paired with renaming in the backend
 # role's S3 config -- same name on both ends.
-telemetron_minio_buckets:
+telemetron_garage_buckets:
   - loki-chunks      # Phase 2: loki role consumes this
   - tempo-traces     # Phase 2: tempo role consumes this
   - mimir-blocks     # Phase 2: mimir role consumes this (blocks store)

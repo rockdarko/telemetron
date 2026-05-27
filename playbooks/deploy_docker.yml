@@ -7,7 +7,7 @@
 # network is created in pre_tasks below.
 #
 # Per-role targeted re-runs use --tags <role>:
-#   ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml --tags minio
+#   ansible-playbook -i inventory/example-homelab playbooks/deploy_docker.yml --tags garage
 #
 # Usage:
 #   ansible-playbook -i inventory/example-homelab \
@@ -33,9 +33,9 @@
         - network
 
   roles:
-    - role: minio
+    - role: garage
       tags:
-        - minio
+        - garage
     - role: loki
       tags:
         - loki
@@ -70,7 +70,7 @@
       tags:
         - nfsd
       when: enable_nfsd | default(false) | bool
-  # M1 deploy order (v1.0.1 -- PromLens removed):
-  # minio -> loki -> tempo -> mimir -> node_exporter -> opentelemetry
+  # M1 deploy order (v1.1.0 -- MinIO replaced by Garage):
+  # garage -> loki -> tempo -> mimir -> node_exporter -> opentelemetry
   # -> prometheus -> fluentbit -> alertmanager -> grafana -> karma
   # -> nfsd (opt-in via enable_nfsd).
