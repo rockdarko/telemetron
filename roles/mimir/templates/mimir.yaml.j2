@@ -82,3 +82,4 @@ querier:
 limits:
   max_global_series_per_user: {{ mimir_max_global_series_per_user }}     # CONTEXT.md D-36 + PITFALLS Pitfall 3 (homelab)
   max_global_series_per_metric: {{ mimir_max_global_series_per_metric }} # CONTEXT.md D-36 + PITFALLS Pitfall 3 (homelab)
+  compactor_blocks_retention_period: {{ mimir_compactor_blocks_retention_period }} # CONTEXT.md D-101 -- retention moved from compactor: to limits: in Mimir 3.0
