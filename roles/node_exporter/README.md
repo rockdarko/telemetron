@@ -5,7 +5,7 @@ v1.11.1 on the `telemetron` Docker bridge network. Ships host metrics (CPU,
 memory, disk, network, filesystem) on `:9100/metrics` for Phase 3 Prometheus
 (Plan 03-03) to scrape at `http://node-exporter:9100/metrics`.
 
-Mirrors the canonical role template established by `roles/minio`, `roles/loki`,
+Mirrors the canonical role template established by `roles/garage`, `roles/loki`,
 `roles/tempo`, and `roles/mimir` -- same defaults layout, same handler
 discipline (W6 single handler), same in-network verify pattern, same Docker
 HEALTHCHECK / running-state pre-poll (D-10a), same OPS-03 README schema.

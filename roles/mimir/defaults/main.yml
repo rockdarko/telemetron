@@ -51,7 +51,7 @@ mimir_s3_insecure: true
 
 # --- Three distinct buckets (BACK-04, Pitfall G, RESEARCH Finding 3) ---
 # Mimir refuses to start with shared bucket+prefix across these three
-# storage stores. The Phase 1 minio role bootstrapped all three buckets
+# storage stores. The Phase 8 garage role bootstrapped all three buckets
 # already; this role just references them.
 mimir_blocks_bucket: mimir-blocks
 mimir_ruler_bucket: mimir-ruler

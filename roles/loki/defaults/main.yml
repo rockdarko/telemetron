@@ -35,7 +35,7 @@ loki_http_port: 3100
 loki_grpc_port: 9095
 
 # --- Storage layout (D-16, D-17, D-18, Pitfall 12) ---
-# One named Docker volume covers MinIO chunks-related local state:
+# One named Docker volume covers Garage S3 chunks-related local state:
 # tsdb-index, tsdb-cache, and -- critically -- compactor/markers/.
 # See PITFALLS.md Pitfall 12 (marker file loss on container recreate).
 loki_data_volume: "{{ telemetron_volume_prefix | default('telemetron') }}_loki_data"

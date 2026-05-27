@@ -11,15 +11,15 @@ single Docker host.
     |-- group_vars/
     |   `-- all/
     |       |-- network.yml                    # telemetron_network, publish default, TZ
-    |       |-- storage.yml                    # volume prefix, MinIO bucket names, retention defaults
-    |       |-- minio.yml                      # MinIO-specific operator knobs
+    |       |-- storage.yml                    # volume prefix, Garage bucket names, retention defaults
+    |       |-- garage.yml                     # Garage-specific operator knobs
     |       `-- secrets.yml.example            # secret placeholders (copy to secrets.yml, fill in, protect with your tool of choice)
     `-- README.md                              # this file
 
-Phase 2 onward will add per-role files under `group_vars/all/` as the
-roles land (`loki.yml`, `tempo.yml`, `mimir.yml`, `grafana.yml`, ...).
-Same pattern as `minio.yml` -- one file per component, each tunable
-annotated with what it does and what its homelab default means.
+Per-role files live under `group_vars/all/` for each deployed component
+(`garage.yml`, `loki.yml`, `tempo.yml`, `mimir.yml`, `grafana.yml`, ...).
+One file per component; each tunable annotated with what it does and
+what its homelab default means.
 
 ## Quickstart
 
@@ -53,8 +53,7 @@ annotated with what it does and what its homelab default means.
    # Choose a vault password when prompted; remember it.
    ```
 
-4. **Run the playbook** (Phase 1 ships the MinIO role only; Phases 2-6
-   add the rest):
+4. **Run the playbook:**
 
    ```bash
    ansible-playbook -i inventory/example-homelab \
@@ -67,13 +66,13 @@ annotated with what it does and what its homelab default means.
    ```bash
    ansible-playbook -i inventory/example-homelab \
                     playbooks/deploy_docker.yml \
-                    --tags minio \
+                    --tags garage \
                     --ask-vault-pass
    ```
 
 ## Secrets discipline (OPS-02)
 
-- Naming convention: role-namespaced — `<role>_<purpose>` (e.g. `minio_root_password`).
+- Naming convention: role-namespaced — `<role>_<purpose>` (e.g. `garage_admin_token`).
   No `vault_` prefix; the role namespace + descriptive suffix carry the meaning
   (per D-90 / [[feedback-no-decorative-convention-prefixes]]).
 - Every sensitive `{{ <role>_<purpose> }}` reference in a role MUST have a matching

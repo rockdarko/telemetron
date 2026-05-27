@@ -3,7 +3,7 @@ galaxy_info:
   role_name: mimir
   author: Rock Martel-Langlois
   description: >
-    Deploys Grafana Mimir 3.0.6 in monolithic mode against MinIO S3
+    Deploys Grafana Mimir 3.0.6 in monolithic mode against Garage S3
     with three distinct buckets (mimir-blocks / mimir-ruler /
     mimir-alerts). Long-term metrics backend for Telemetron's
     observability plane; receives Prometheus remote_write (Phase 3).
