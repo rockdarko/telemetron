@@ -131,6 +131,20 @@ local function hostname_from_nfs_tag(tag)
     return parts[4]
 end
 
+-- D-104: set @timestamp from the Fluent Bit pipeline ingest timestamp when
+-- the record lacks an embedded timestamp field. Sets record["@timestamp"]
+-- to the FB-provided timestamp argument (the ingest-time value from Fluent
+-- Bit's pipeline). Never overwrites a valid source timestamp -- the nil-or-empty
+-- guard ensures this only fires when the record has no @timestamp already.
+-- Fixes Pitfall 6 Mode 2 (missing date in source line) without relying on the
+-- disabled [FILTER] modify block (which rejected `Add @timestamp ${ingest_time}`
+-- in Fluent Bit 4.x with "Invalid operation add : @timestamp").
+local function set_ingest_timestamp(record, timestamp)
+    if not record["@timestamp"] or record["@timestamp"] == "" then
+        record["@timestamp"] = timestamp
+    end
+end
+
 -- Public callback. Signature per Fluent Bit Lua filter docs:
 --   function name(tag, timestamp, record)
 --   returns code, timestamp, record  -- code 2 = record modified
@@ -146,6 +160,7 @@ function enrich(tag, timestamp, record)
         record["host"]    = host
         record["service"] = "remote"
         record["job"]     = "remote-syslog"
+        set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
     end
 
@@ -153,6 +168,7 @@ function enrich(tag, timestamp, record)
     if not container_id then
         record["service"] = UNLABELED_SERVICE
         record["job"] = UNLABELED_JOB
+        set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
     end
 
@@ -161,6 +177,7 @@ function enrich(tag, timestamp, record)
     if entry and entry.expires_at > now then
         record["service"] = entry.service
         record["job"] = entry.job
+        set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
     end
 
@@ -169,6 +186,7 @@ function enrich(tag, timestamp, record)
         -- Read failed -- still emit the record with fallback labels.
         record["service"] = UNLABELED_SERVICE
         record["job"] = UNLABELED_JOB
+        set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
     end
 
@@ -180,5 +198,6 @@ function enrich(tag, timestamp, record)
     }
     record["service"] = svc
     record["job"] = job
+    set_ingest_timestamp(record, timestamp) -- D-104
     return 2, timestamp, record
 end

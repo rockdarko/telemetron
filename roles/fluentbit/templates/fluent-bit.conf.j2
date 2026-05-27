@@ -151,20 +151,6 @@
     Match             docker.*
     Add               level {{ fluentbit_default_level }}
 
-# Pitfall 6 (Mode 2: missing date in source line) -- fallback @timestamp.
-# DISABLED: Fluent Bit 4.x rejects `Add @timestamp ${ingest_time}` as
-# "Invalid operation add : @timestamp". Likely cause: `${ingest_time}` is
-# not a defined env var so the substitution leaves the value empty, AND/OR
-# keys beginning with `@` need quoting in FB 4. Docker logs already include
-# their own timestamp so this fallback is for edge cases only. Re-enable
-# with proper FB-4-compatible syntax in a follow-up. Caught Phase 3 UAT
-# 2026-05-18 (03-UAT.md gap fluentbit-modify-add-at-timestamp-rejected).
-#[FILTER]
-#    Name              modify
-#    Alias             timestamp_fallback
-#    Match             *
-#    Add               @timestamp ${ingest_time}
-
 # D-49: ship to OTel Collector via OTLP/HTTP.
 # Logs_uri default resolves to: /v1/logs (Loki OTLP receiver path on the
 # OTel Collector side; see roles/opentelemetry/templates/config.yaml.j2).

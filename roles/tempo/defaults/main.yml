@@ -76,10 +76,14 @@ tempo_compacted_block_retention: 1h
 # per CONTEXT.md "Deferred Ideas").
 tempo_metrics_generator_enabled: true
 
-# --- Compactor tuning (Claude's Discretion per D-39) ---
-# Single-host monolithic homelab. Block ranges shorter than upstream
-# default to keep compactor cycle time predictable for small volume.
-tempo_compactor_block_ranges_period: 5m
+# --- Compactor tuning (D-102) ---
+# compaction_window controls the time range each compaction cycle covers.
+# 1h matches the Tempo 2.10 upstream default and is appropriate for a
+# single-host homelab with low trace volume. The prior orphan var was
+# removed in D-102 (it referenced a field that does not exist in
+# tempodb.CompactorConfig in Tempo 2.10).
+# Caught Phase 2 UAT 2026-05-18 (02-UAT.md gap tempo-config-ranges-unknown).
+tempo_compaction_window: 1h
 
 # --- Healthcheck approach (RESEARCH Finding 6, PITFALLS Pitfall B) ---
 # Tempo 2.10.5 is distroless (gcr.io/distroless/static-debian12) --
