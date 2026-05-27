@@ -1,10 +1,12 @@
 ---
 # roles/tempo/tasks/verify.yml
 # Pre-poll Tempo readiness, push a synthetic OTLP/HTTP trace via in-network
-# curl one-shot. Step 3 (MinIO bucket assertion) is intentionally omitted
-# in Phase 2 -- block flush is non-deterministic on single-trace push;
-# RESEARCH Finding 8 documents this. The bucket-landing assertion moves
-# to Phase 6 OPS-07 smoke test (longer running window).
+# curl one-shot, then verify the tempo-traces bucket exists in Garage via
+# docker_container_exec (D-118: new Step 3 added in Phase 8 for consistency
+# with Loki and Mimir -- all three backends now have bucket verification).
+# Note: bucket-landing (objects in bucket) is NOT asserted -- block flush is
+# non-deterministic on single-trace push (RESEARCH Finding 8 documents this).
+# Existence of the bucket is the gate.
 #
 # Mirrors the canonical roles/loki/tasks/verify.yml pattern (D-10a + W7 +
 # W8 + D-32). When tempo_healthcheck_enabled is true, Step 1a polls
@@ -133,11 +135,22 @@
     - tempo
     - tempo-verify
 
-# Step 3 (intentionally omitted): MinIO bucket assertion.
-# RESEARCH Finding 8 explicitly documents that Tempo does not flush
-# blocks to S3 on a single synthetic push -- max_block_duration defaults
-# to 2h. Asserting `mc ls local/tempo-traces` shows objects in Phase 2
-# would either (a) require waiting 2+ hours, or (b) require lowering
-# tempo_max_block_duration for test purposes, polluting the homelab
-# defaults. The Phase 2 verify gates at "push returned 200" -- the
-# bucket-landing assertion belongs to Phase 6's M1 smoke test (OPS-07).
+# Step 3 (D-118): verify tempo-traces bucket exists in Garage.
+# Added in Phase 8 alongside the D-117 mc-to-exec migration across all backends.
+# All three backends (Loki, Tempo, Mimir) now have consistent bucket verification
+# via docker_container_exec against the running Garage container.
+# NOTE: block-landing (objects in the bucket) is NOT asserted here --
+# RESEARCH Finding 8 documents that Tempo does not flush blocks to S3 on
+# a single synthetic push (max_block_duration defaults to 2h). Bucket
+# *existence* is the correct gate; object existence belongs to OPS-07.
+# Cross-role var garage_container_name from roles/garage/defaults.
+- name: Verify tempo-traces bucket exists in Garage
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage bucket info {{ tempo_s3_bucket }}
+  changed_when: false
+  register: tempo_verify_bucket
+  failed_when: tempo_verify_bucket.rc is defined and tempo_verify_bucket.rc != 0
+  tags:
+    - tempo
+    - tempo-verify

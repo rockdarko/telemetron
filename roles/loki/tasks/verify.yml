@@ -1,8 +1,8 @@
 ---
 # roles/loki/tasks/verify.yml
 # Pre-poll Loki's Docker HEALTHCHECK, push a synthetic log line via
-# in-network curl one-shot, then assert an object key landed in MinIO's
-# loki-chunks bucket via a one-shot mc container.
+# in-network curl one-shot, then verify the loki-chunks bucket exists in
+# Garage via docker_container_exec (D-117: migrated from mc one-shot in Phase 8).
 #
 # Mirrors the canonical roles/minio/tasks/bootstrap.yml pattern (D-10a +
 # W7 + W8 + D-32). Failure of any step fails the playbook.
@@ -60,39 +60,19 @@
     - loki
     - loki-verify
 
-# Step 3: assert an object key landed in minio/loki-chunks within ~30s.
-# Loki flushes chunks on idle period or chunk_target_size; the verify
-# one-shot retries with a sleep to bound the wait. The mc container is
-# the same pinned image used by roles/minio/tasks/bootstrap.yml.
-# Per W8: mc ls --json is the documented stable interface.
-- name: Assert loki-chunks bucket received an object
-  community.docker.docker_container:
-    name: "{{ loki_container_name }}-verify-bucket"
-    image: "{{ loki_mc_image }}:{{ loki_mc_image_tag }}"
-    state: started
-    detach: false
-    auto_remove: true
-    recreate: true
-    cleanup: true
-    networks:
-      - name: "{{ loki_network }}"
-    env:
-      MC_HOST_local: "http://{{ loki_s3_access_key }}:{{ loki_s3_secret_key }}@minio:9000"
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        i=0 ;
-        while [ $i -lt 15 ] ; do
-          COUNT=$(mc ls --json --recursive local/{{ loki_s3_bucket }} 2>/dev/null | wc -l) ;
-          if [ "$COUNT" -gt 0 ] ; then echo "objects_found=$COUNT" ; exit 0 ; fi ;
-          i=$((i+1)) ;
-          sleep 2 ;
-        done ;
-        echo "no objects landed in {{ loki_s3_bucket }} within 30s" ;
-        exit 1
-  register: loki_verify_bucket
-  failed_when: loki_verify_bucket.status is defined and loki_verify_bucket.status != 0
+# Step 3 (D-117): verify loki-chunks bucket exists in Garage.
+# Migrated from the mc one-shot container pattern to docker_container_exec against
+# the running Garage container. Uses /garage bucket info which returns 0 if
+# the bucket exists and the admin token is valid. Phase 4 canonical verify
+# pattern: exec inside an already-healthy container, no separate container
+# lifecycle. Cross-role var garage_container_name from roles/garage/defaults.
+- name: Verify loki-chunks bucket exists in Garage
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage bucket info {{ loki_s3_bucket }}
   changed_when: false
+  register: loki_verify_bucket
+  failed_when: loki_verify_bucket.rc is defined and loki_verify_bucket.rc != 0
   tags:
     - loki
     - loki-verify

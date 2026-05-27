@@ -37,7 +37,7 @@ schema_config:
   configs:
     - from: "{{ loki_schema_from }}"
       store: tsdb
-      object_store: s3
+      object_store: aws   # STORE-02 defensive: Garage compatibility requires aws (not s3) per RESEARCH Pitfall 7 / G-6
       schema: {{ loki_schema_version }}
       index:
         prefix: {{ loki_schema_index_prefix }}
@@ -48,7 +48,7 @@ storage_config:
     active_index_directory: {{ loki_data_path }}/tsdb-index
     cache_location: {{ loki_data_path }}/tsdb-cache
   aws:
-    endpoint: {{ loki_s3_endpoint }}   # Loki format: http:// prefix included
+    endpoint: {{ loki_s3_endpoint }}   # Loki format: http:// prefix included (Garage S3 on :3900)
     bucketnames: {{ loki_s3_bucket }}
     access_key_id: "{{ loki_s3_access_key }}"
     secret_access_key: "{{ loki_s3_secret_key }}"
