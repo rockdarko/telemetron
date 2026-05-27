@@ -68,7 +68,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-02-PLAN.md — Retarget Loki/Tempo/Mimir S3 + verify migration + Prometheus Garage scrape + secrets
+- [x] 08-02-PLAN.md — Retarget Loki/Tempo/Mimir S3 + verify migration + Prometheus Garage scrape + secrets
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -100,7 +100,7 @@ Plans:
 | 5     | v1.0.0    | 8/8            | Complete    | 2026-05-19 |
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
 | 7     | v1.1.0    | 1/1 | Complete   | 2026-05-27 |
-| 8     | v1.1.0    | 1/3 | In Progress|  |
+| 8     | v1.1.0    | 2/3 | In Progress|  |
 | 9     | v1.1.0    | 0/?            | Not started | —          |
 
 ## Backlog
