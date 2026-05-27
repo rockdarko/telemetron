@@ -80,21 +80,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STORE-01 | — | Pending |
-| STORE-02 | — | Pending |
-| STORE-03 | — | Pending |
-| CONFIG-01 | — | Pending |
-| CONFIG-02 | — | Pending |
-| INGEST-01 | — | Pending |
-| INGEST-02 | — | Pending |
-| INGEST-03 | — | Pending |
-| OPS-01 | — | Pending |
+| CONFIG-01 | Phase 7 | Pending |
+| CONFIG-02 | Phase 7 | Pending |
+| INGEST-01 | Phase 7 | Pending |
+| STORE-01 | Phase 8 | Pending |
+| STORE-02 | Phase 8 | Pending |
+| STORE-03 | Phase 8 | Pending |
+| OPS-01 | Phase 8 | Pending |
+| INGEST-02 | Phase 9 | Pending |
+| INGEST-03 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.1.0 requirements: 9 total
-- Mapped to phases: 0
-- Unmapped: 9 (pending roadmap creation)
+- Mapped to phases: 9
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after initial definition*
+*Last updated: 2026-05-26 after roadmap creation (phases 7-9 assigned)*

@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Garage migration + backlog sweep
 status: planning
-last_updated: "2026-05-25T02:55:16.539Z"
-last_activity: 2026-05-25
+last_updated: "2026-05-26T00:00:00.000Z"
+last_activity: 2026-05-26
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 **Core value:** A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. **Shipped in v1.0.0.**
-**Current focus:** Awaiting v2 milestone scoping via `/gsd:new-milestone`. Candidate themes documented in PROJECT.md Active section.
+**Current focus:** v1.1.0 — Garage migration + backlog sweep. Roadmap created: Phases 7-9. Ready to plan Phase 7.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 7 (not started — awaiting `/gsd:plan-phase 7`)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-25 — Milestone v1.1.0 started
+Status: Roadmap created; awaiting phase planning
+Last activity: 2026-05-26 — Roadmap v1.1.0 created (Phases 7-9)
 
 ## Performance Metrics
 
@@ -41,7 +41,9 @@ Last activity: 2026-05-25 — Milestone v1.1.0 started
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 7     | TBD   | —     | —        |
+| 8     | TBD   | —     | —        |
+| 9     | TBD   | —     | —        |
 
 **Recent Trend:**
 
@@ -81,7 +83,7 @@ Last activity: 2026-05-25 — Milestone v1.1.0 started
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work (Phase 1):
+Recent decisions affecting current work (Phase 7):
 
 - MinIO bucket bootstrap is a blocking step inside the `minio` role — downstream backends do not start until `mc mb --ignore-existing` exits for all five buckets (highest-impact M1 pitfall).
 - Pinned MinIO `RELEASE.2025-04-22T22-12-26Z` with loud README note; Garage migration queued for a future milestone.
@@ -189,22 +191,21 @@ Recent decisions affecting current work (Phase 1):
 ### Roadmap Evolution
 
 - Phase 04.1 inserted after Phase 4: Drop vault prefix (URGENT) -- 2026-05-19. Spec: `.planning/phases/05-ui-plane/05-CONTEXT.md` D-90. Drops the `vault_*` prefix from sensitive variables project-wide; renames 4 roles + 8 vault.yml.example keys + doc cascade. Hard precondition for Phase 5 plan 05-01.
+- v1.1.0 roadmap created 2026-05-26: Phases 7-9 defined. Phase 7 (regression fixes), Phase 8 (Garage + storage migration), Phase 9 (label reconciliation). All 9 v1.1.0 requirements mapped; all 4 M1 backlog items (999.1-999.4) addressed.
 
 ### Pending Todos
 
-None active. v2 scope to be defined by `/gsd:new-milestone`.
+None active. Phase 7 planning is the next step.
 
 ### Blockers/Concerns
 
 None active.
 
-### Known Debt (carried into v2)
+### Known Debt (carried into v1.2.0+)
 
-- **MinIO on archived `RELEASE.2025-04-22T22-12-26Z`** — Garage migration is the queued replacement (community archived early 2026).
-- **Hook router deferred to v2** (ALERT-V2-01..05 in archived v1.0.0-REQUIREMENTS.md). Design preserved in `.planning/milestones/v1.0.0-phases/04-alert-plane/04-DISCUSSION-LOG.md`.
-- **Single-host amd64 only** — distributed-mode + multi-host inventory + arm64 + Kube path all v2 candidates.
+- **Hook router deferred** (ALERT-V2-01..05). Design preserved in `.planning/milestones/v1.0.0-phases/04-alert-plane/04-DISCUSSION-LOG.md`.
+- **Single-host amd64 only** — distributed-mode + multi-host inventory + arm64 + Kube path all future candidates.
 - **7 deferred docs** (alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics) — tracked as DOCS-V2-01..07.
-- **Backlog 999.x items** (mimir blocks_retention re-wire, tempo block_ranges_period cleanup, fluentbit timestamp_fallback FB-4 syntax, FB label-spec vs OTel-reality reconciliation) — archived to `.planning/milestones/v1.0.0-phases/999.x-*/`.
 
 ### Quick Tasks Completed
 
@@ -214,10 +215,10 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-05-19T22:48:16.010Z
-Stopped at: Completed 06-04-PLAN.md -- M1 SHIPPED on leviathan 2026-05-19. README rewritten per D-106; docs/README.md ticks 3/7 M1/v2 split; PROJECT/ROADMAP/REQUIREMENTS declare M1 complete; full-surface idempotency (enable_nfsd:true) ok=138 changed=0; INV-01 fresh-clone PASS; INV-03 13-role tag audit PASS. Next: v2 milestone scoping.
+Last session: 2026-05-26T00:00:00.000Z
+Stopped at: v1.1.0 roadmap created (Phases 7-9). All 9 requirements mapped. Backlog cleared. Next: `/gsd:plan-phase 7`
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 7 with `/gsd:plan-phase 7`
