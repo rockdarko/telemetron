@@ -3,7 +3,7 @@
 # Mimir role tunables. Override per-environment in
 # inventory/<env>/group_vars/all/mimir.yml.
 #
-# Mimir 3.0.6 monolithic mode (-target=all). Storage backend: MinIO S3
+# Mimir 3.0.6 monolithic mode (-target=all). Storage backend: Garage S3
 # with THREE DISTINCT BUCKETS -- Mimir refuses to start sharing
 # prefixes across blocks_storage / ruler_storage / alertmanager_storage
 # (PITFALLS.md Pitfall G + BACK-04).
@@ -40,12 +40,12 @@ mimir_data_path: /data
 # Host-side config directory (D-18 flat layout).
 mimir_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/mimir"
 
-# --- S3 backend (D-39, RESEARCH Finding 3) ---
+# --- S3 backend (D-39, RESEARCH Finding 3, STORE-02) ---
 # NOTE: Mimir's common.storage.s3.endpoint format omits the http://
 # prefix; insecure: true signals plain HTTP. Matches Tempo's convention
-# and differs from Loki's. See RESEARCH Open Question #2 -- the safe
-# answer is `minio:9000` no scheme.
-mimir_s3_endpoint: "minio:9000"
+# and differs from Loki's. Garage S3 API on :3900 (no scheme prefix
+# per Pitfall 7 Mimir format; same as Tempo convention).
+mimir_s3_endpoint: "garage:3900"
 mimir_s3_region: us-east-1
 mimir_s3_insecure: true
 
@@ -134,12 +134,6 @@ mimir_network: "{{ telemetron_network | default('telemetron') }}"
 
 # --- Timezone (OPS-06; PITFALLS Pitfall 6 Etc/UTC default) ---
 mimir_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
-
-# --- mc image pins for the bucket-trinity verify one-shot ---
-# Used by tasks/verify.yml to assert all three mimir-* buckets are
-# reachable via the D-27-aliased mimir secret credentials (D-27 superseded by D-90).
-mimir_mc_image: minio/mc
-mimir_mc_image_tag: "RELEASE.2025-04-16T18-13-26Z"
 
 # --- Curl image pin for the /ready probe one-shot ---
 # curlimages/curl is a small busybox-shell + curl image; pin explicitly

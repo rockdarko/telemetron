@@ -35,11 +35,11 @@ storage:
     backend: s3
     s3:
       bucket: {{ tempo_s3_bucket }}
-      endpoint: {{ tempo_s3_endpoint }}   # Tempo S3 endpoint format: NO http:// prefix; insecure flag signals HTTP
+      endpoint: {{ tempo_s3_endpoint }}   # Tempo S3 endpoint format: NO http:// prefix; insecure flag signals HTTP (Garage on :3900)
       access_key: "{{ tempo_s3_access_key }}"
       secret_key: "{{ tempo_s3_secret_key }}"
       insecure: {{ tempo_s3_insecure | string | lower }}
-      forcepathstyle: {{ tempo_s3_force_path_style | string | lower }}   # MinIO requires path-style; Tempo key is `forcepathstyle` (single word)
+      forcepathstyle: {{ tempo_s3_force_path_style | string | lower }}   # Garage requires path-style; Tempo key is `forcepathstyle` (single word)
       region: {{ tempo_s3_region }}
     wal:
       path: {{ tempo_data_path }}/wal
@@ -49,7 +49,7 @@ storage:
 compactor:
   compaction:
     # DUAL-KNOB retention -- BOTH must be set or retention silently fails.
-    # See PITFALLS.md Pitfall 10 (Tempo + MinIO retention silently doing nothing).
+    # See PITFALLS.md Pitfall 10 (Tempo + S3 retention silently doing nothing).
     # CONTEXT.md D-34 / BACK-03.
     block_retention: {{ tempo_block_retention }}
     compacted_block_retention: {{ tempo_compacted_block_retention }}

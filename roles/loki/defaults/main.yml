@@ -3,8 +3,8 @@
 # Loki role tunables. Override per-environment in
 # inventory/<env>/group_vars/all/loki.yml.
 #
-# Loki 3.7.2 monolithic mode (-target=all). Storage backend: MinIO S3
-# (loki-chunks bucket bootstrapped by roles/minio in Phase 1). Single
+# Loki 3.7.2 monolithic mode (-target=all). Storage backend: Garage S3
+# (loki-chunks bucket bootstrapped by roles/garage in Phase 8). Single
 # tenant only (auth_enabled: false per CONTEXT.md D-26).
 
 # --- Image pin (OPS-01: pin every image tag explicitly) ---
@@ -45,11 +45,11 @@ loki_data_path: /loki
 # lives here; bind-mounted read-only into the container.
 loki_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/loki"
 
-# --- S3 backend (D-39, RESEARCH Finding 2) ---
-# MinIO endpoint on the telemetron bridge -- Loki's storage_config.aws.endpoint
+# --- S3 backend (D-39, RESEARCH Finding 2, STORE-02) ---
+# Garage endpoint on the telemetron bridge -- Loki's storage_config.aws.endpoint
 # uses the http:// prefix (Loki-specific format; Tempo/Mimir omit scheme).
-# MinIO requires s3forcepathstyle: true; insecure: true keeps plain HTTP.
-loki_s3_endpoint: "http://minio:9000"
+# Garage requires s3forcepathstyle: true; insecure: true keeps plain HTTP.
+loki_s3_endpoint: "http://garage:3900"
 loki_s3_bucket: loki-chunks
 loki_s3_region: us-east-1
 loki_s3_force_path_style: true
@@ -125,11 +125,6 @@ loki_network: "{{ telemetron_network | default('telemetron') }}"
 
 # --- Timezone (OPS-06; PITFALLS Pitfall 6 Etc/UTC default) ---
 loki_tz: "{{ telemetron_tz | default('Etc/UTC') }}"
-
-# --- mc image pins for the verify one-shot (mirrors roles/minio defaults) ---
-# Used by tasks/verify.yml to assert objects landed in loki-chunks.
-loki_mc_image: minio/mc
-loki_mc_image_tag: "RELEASE.2025-04-16T18-13-26Z"
 
 # --- Curl image pin for the verify push one-shot ---
 # curlimages/curl is a small busybox-shell + curl image; pin explicitly

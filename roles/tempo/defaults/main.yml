@@ -3,8 +3,8 @@
 # Tempo role tunables. Override per-environment in
 # inventory/<env>/group_vars/all/tempo.yml.
 #
-# Tempo 2.10.5 monolithic mode (-target=all). Storage backend: MinIO S3
-# (tempo-traces bucket bootstrapped by roles/minio in Phase 1). OTLP
+# Tempo 2.10.5 monolithic mode (-target=all). Storage backend: Garage S3
+# (tempo-traces bucket bootstrapped by roles/garage in Phase 8). OTLP
 # receivers on internal-only alt ports :14317 (gRPC) and :14318 (HTTP)
 # so the Phase 3 OTel Collector can claim the standard :4317/:4318
 # without clash (CONTEXT.md D-29 + BACK-05).
@@ -49,11 +49,12 @@ tempo_data_path: /var/tempo
 # Host-side config directory (D-18 flat layout).
 tempo_config_dir: "{{ telemetron_config_root | default('/opt/telemetron') }}/tempo"
 
-# --- S3 backend (D-39, RESEARCH Finding 4) ---
+# --- S3 backend (D-39, RESEARCH Finding 4, STORE-02) ---
 # NOTE: Tempo's S3 endpoint format is DIFFERENT from Loki -- no http://
 # prefix; the `insecure: true` flag signals plain HTTP. forcepathstyle
 # (single word) is the Tempo key; Loki uses s3forcepathstyle.
-tempo_s3_endpoint: "minio:9000"
+# Garage S3 API on :3900 (no scheme prefix per Pitfall 7 Tempo format).
+tempo_s3_endpoint: "garage:3900"
 tempo_s3_bucket: tempo-traces
 tempo_s3_region: us-east-1
 tempo_s3_force_path_style: true
