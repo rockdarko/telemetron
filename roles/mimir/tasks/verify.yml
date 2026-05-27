@@ -1,7 +1,8 @@
 ---
 # roles/mimir/tasks/verify.yml
-# Pre-poll Mimir readiness, curl-probe /ready, then assert all three
-# required MinIO buckets are reachable via a one-shot mc container.
+# Pre-poll Mimir readiness, curl-probe /ready, then verify all three
+# required Garage buckets exist via docker_container_exec (D-117: migrated
+# from mc one-shot container in Phase 8).
 #
 # Mirrors the canonical roles/tempo/tasks/verify.yml conditional
 # readiness shape (D-10a + W7 + W8 + D-32). The bucket-trinity
@@ -88,43 +89,30 @@
     - mimir
     - mimir-verify
 
-# Step 2: bucket-trinity assertion (BACK-04 + Pitfall G).
-# Confirms all three required buckets exist and are reachable via the
-# Mimir secret credentials (which alias to MinIO root creds per D-27, superseded by D-90).
-# Per W8: mc ls --json is the documented stable interface; we don't
-# need objects in the buckets at Phase 2 time, just bucket existence
-# and credential validity. set -e short-circuits the rest on first
-# failure, pointing at the bad bucket without ambiguity.
+# Step 2 (D-117): verify all three required Mimir buckets exist in Garage.
+# Migrated from mc one-shot container to docker_container_exec against
+# the running Garage container. Uses /garage bucket info <bucket> per bucket;
+# the loop fails immediately if any bucket is missing (failed_when: rc != 0).
+# Phase 4 canonical verify pattern: exec inside the healthy Garage container,
+# no separate container lifecycle (BACK-04 + Pitfall G -- all three MUST exist).
+# Cross-role var garage_container_name from roles/garage/defaults.
 #
 # A synthetic remote_write push is intentionally OMITTED from Phase 2
 # per RESEARCH Finding 8 -- the Prometheus remote_write protocol is
 # snappy-compressed protobuf, not curl-friendly to construct from a
 # shell one-liner. The end-to-end remote_write smoke happens in Phase 3
 # (when Prometheus comes online) and Phase 6 OPS-07.
-- name: Assert all three required Mimir buckets are reachable
-  community.docker.docker_container:
-    name: "{{ mimir_container_name }}-verify-buckets"
-    image: "{{ mimir_mc_image }}:{{ mimir_mc_image_tag }}"
-    state: started
-    detach: false
-    auto_remove: true
-    recreate: true
-    cleanup: true
-    networks:
-      - name: "{{ mimir_network }}"
-    env:
-      MC_HOST_local: "http://{{ mimir_s3_access_key }}:{{ mimir_s3_secret_key }}@minio:9000"
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        set -e ;
-        mc ls --json local/{{ mimir_blocks_bucket }} >/dev/null ;
-        mc ls --json local/{{ mimir_ruler_bucket }} >/dev/null ;
-        mc ls --json local/{{ mimir_alerts_bucket }} >/dev/null ;
-        echo "mimir_bucket_trinity_ok"
-  register: mimir_verify_buckets
-  failed_when: mimir_verify_buckets.status is defined and mimir_verify_buckets.status != 0
+- name: Verify all three required Mimir buckets exist in Garage
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage bucket info {{ item }}
+  loop:
+    - "{{ mimir_blocks_bucket }}"
+    - "{{ mimir_ruler_bucket }}"
+    - "{{ mimir_alerts_bucket }}"
   changed_when: false
+  register: mimir_verify_buckets
+  failed_when: mimir_verify_buckets.rc is defined and mimir_verify_buckets.rc != 0
   tags:
     - mimir
     - mimir-verify

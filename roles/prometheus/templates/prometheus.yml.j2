@@ -80,6 +80,24 @@ scrape_configs:
       - regex: '{{ prometheus_default_relabel_id_catchall_regex }}'
         action: labeldrop
 
+  - job_name: garage
+    # D-114: Garage S3 object store self-metrics on admin API :3903/metrics.
+    # D-115: Bearer token auth -- Garage admin API requires Authorization header.
+    # D-116: No opt-out toggle; consistent with the other three default jobs.
+    # This is the first job in this template with an authorization: block;
+    # bearer token is rendered inline from garage_admin_token (cross-role var).
+    static_configs:
+      - targets: ['{{ prometheus_garage_target }}']
+        labels:
+          service: garage
+    authorization:
+      credentials: {{ garage_admin_token }}
+    metric_relabel_configs:
+      - regex: '{{ prometheus_default_relabel_drop_regex }}'
+        action: labeldrop
+      - regex: '{{ prometheus_default_relabel_id_catchall_regex }}'
+        action: labeldrop
+
   # Operator-extensible scrape jobs. Sorted-keys (D-20) for idempotency.
 {% for job in prometheus_extra_scrape_configs | default([]) | sort(attribute='job_name') %}
   - job_name: {{ job.job_name }}

@@ -58,6 +58,7 @@ prometheus_alertmanager_target: "alertmanager:9093"
 prometheus_otel_self_target: "otel:8888"
 prometheus_otel_metrics_target: "otel:8889"
 prometheus_node_exporter_target: "node-exporter:9100"
+prometheus_garage_target: "garage:3903"   # D-114: Garage admin API metrics endpoint
 
 # --- Pitfall 3 metric_relabel_configs defaults ---
 # Always-applied set per scrape job. Operator extends via
