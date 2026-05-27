@@ -3,7 +3,7 @@ galaxy_info:
   role_name: tempo
   author: Rock Martel-Langlois
   description: >
-    Deploys Grafana Tempo 2.10.5 in monolithic mode against MinIO S3
+    Deploys Grafana Tempo 2.10.5 in monolithic mode against Garage S3
     (tempo-traces bucket). Trace backend for Telemetron's observability
     plane; OTLP receivers on internal-only alt ports :14317/:14318.
   license: MIT

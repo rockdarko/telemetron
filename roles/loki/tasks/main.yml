@@ -1,8 +1,8 @@
 ---
 # roles/loki/tasks/main.yml
 # Loki monolithic deploy + in-network verify.
-# Mirrors the canonical roles/minio/tasks/main.yml structure (D-32, OPS-06).
-# Per D-23: this role is wired into playbooks/deploy_docker.yml after minio.
+# Mirrors the canonical roles/garage/tasks/main.yml structure (D-32, OPS-06).
+# Per D-23: this role is wired into playbooks/deploy_docker.yml after garage.
 
 - name: Ensure Loki config directory exists on host
   ansible.builtin.file:
@@ -17,7 +17,7 @@
   ansible.builtin.template:
     src: loki.yaml.j2
     dest: "{{ loki_config_dir }}/loki.yaml"
-    # Owned by the container's UID/GID -- file contains the MinIO secret
+    # Owned by the container's UID/GID -- file contains the Garage S3
     # access key, so 0600 keeps it owner-only-readable on the host. The
     # container is the only legitimate reader. Caught Phase 2 UAT 2026-05-18
     # (02-UAT.md gap config-mode-unreadable-by-container-uid).
@@ -100,7 +100,7 @@
     - loki
     - loki-container
 
-# Verify MUST be the final task (D-32). Mirrors roles/minio/tasks/main.yml
+# Verify MUST be the final task (D-32). Mirrors roles/garage/tasks/main.yml
 # pattern -- verify is included from main; not a separate playbook.
 - name: Verify Loki end-to-end (synthetic push + bucket assert)
   ansible.builtin.include_tasks: verify.yml

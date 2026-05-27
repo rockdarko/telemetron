@@ -1,0 +1,20 @@
+---
+# Telemetron -- Garage operator knobs (Phase 8, D-120)
+# Role-specific overrides for the `garage` role.
+# See roles/garage/defaults/main.yml for the full default surface.
+
+# Default: zero host port publish. Neither :3900 (S3 API) nor :3903 (admin)
+# is exposed on the host. Inter-component traffic stays on the telemetron
+# Docker bridge network (e.g. Loki reaches Garage at http://garage:3900).
+# Operator accesses the admin API via SSH local-forward:
+#   ssh -L 3903:localhost:3903 <host>
+# Override to `true` to publish to all interfaces, or to `127.0.0.1` to
+# publish to loopback only.
+# NOTE: RPC port (3901) is NEVER published -- internal cluster communication only.
+garage_publish_host: false
+
+# Container name on the telemetron network. Other roles reach Garage at
+# http://garage:3900 via the Docker bridge network alias. Changing this
+# value changes the host-side container name; cross-role config refs
+# survive via the alias (see roles/garage/tasks/main.yml).
+garage_container_name: telemetron-garage

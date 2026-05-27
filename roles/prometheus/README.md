@@ -6,7 +6,7 @@ plane; it scrapes the OTel Collector (self-metrics + app-metrics) and
 node_exporter, evaluates baseline alert rules, and `remote_write`s
 everything to Mimir for long-term retention.
 
-Mirrors the canonical role template established by `roles/minio`,
+Mirrors the canonical role template established by `roles/garage`,
 `roles/loki`, `roles/tempo`, `roles/mimir`, `roles/node_exporter`, and
 `roles/opentelemetry` -- same defaults layout, same handler discipline
 (W6 single handler), same in-network verify pattern (D-54), same

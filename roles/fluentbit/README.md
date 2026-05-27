@@ -5,7 +5,7 @@ host. Fluent Bit is Telemetron's log shipper: it tails the host's
 Docker container JSON logs by default and ships through the OTel
 Collector (Plan 03-02) to Loki for long-term storage.
 
-Mirrors the canonical role template established by `roles/minio`,
+Mirrors the canonical role template established by `roles/garage`,
 `roles/loki`, `roles/tempo`, `roles/mimir`, `roles/node_exporter`,
 `roles/opentelemetry`, and `roles/prometheus` -- same defaults layout,
 same handler discipline (W6 single handler), same in-network verify
@@ -132,7 +132,7 @@ In an Ansible role using `community.docker.docker_container`:
       org.telemetron.job: myapp-web
 ```
 
-The eight Phase-1..3 telemetron stack roles (minio, loki, tempo, mimir,
+The eight Phase-1..3 telemetron stack roles (garage, loki, tempo, mimir,
 node_exporter, opentelemetry, prometheus, fluentbit) all stamp these
 labels per Plan 03-05; Phase 4/5 role ports inherit the convention via
 the per-role port-acceptance checklist in `roles/README.md`.

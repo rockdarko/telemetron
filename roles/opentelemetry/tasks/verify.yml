@@ -58,7 +58,7 @@
 # and assert each returns a 2xx response code (200/202/204 acceptable
 # per OTLP/HTTP spec; 400 is treated as "endpoint reachable, payload
 # rejected" -- still proves the receiver is bound and listening).
-# Mirrors W8 (one-shot push + assert) from minio/tasks/bootstrap.yml.
+# Mirrors W8 (one-shot push + assert) from garage/tasks/bootstrap.yml.
 # Per W7: changed_when: false (read-shaped verification).
 - name: Probe opentelemetry OTLP HTTP endpoints (traces, logs, metrics)
   community.docker.docker_container:

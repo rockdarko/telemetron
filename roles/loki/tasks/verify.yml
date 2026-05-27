@@ -4,7 +4,7 @@
 # in-network curl one-shot, then verify the loki-chunks bucket exists in
 # Garage via docker_container_exec (D-117: migrated from mc one-shot in Phase 8).
 #
-# Mirrors the canonical roles/minio/tasks/bootstrap.yml pattern (D-10a +
+# Mirrors the canonical roles/garage/tasks/bootstrap.yml pattern (D-10a +
 # W7 + W8 + D-32). Failure of any step fails the playbook.
 
 # Step 1: poll Loki's Docker HEALTHCHECK status until `healthy`.
@@ -27,7 +27,7 @@
     - loki-verify
 
 # Step 2: synthetic log push via one-shot curl container.
-# Mirrors W8 (one-shot push + assert) from minio/tasks/bootstrap.yml.
+# Mirrors W8 (one-shot push + assert) from garage/tasks/bootstrap.yml.
 # curlimages/curl is pinned via loki_curl_image_tag (OPS-01).
 # Per W7: changed_when: false -- this is a read-shaped verification,
 # not a state mutation worth reporting as changed.

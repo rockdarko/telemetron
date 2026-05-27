@@ -23,7 +23,7 @@
   ansible.builtin.template:
     src: tempo.yaml.j2
     dest: "{{ tempo_config_dir }}/tempo.yaml"
-    # Owned by the container's UID/GID; mode 0600 keeps the embedded MinIO
+    # Owned by the container's UID/GID; mode 0600 keeps the embedded Garage
     # secret owner-only-readable on the host. See roles/loki/tasks/main.yml
     # for the full rationale.
     owner: "{{ tempo_container_user.split(':')[0] }}"

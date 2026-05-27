@@ -14,7 +14,7 @@ user-defined bridge network (`telemetron`). The OTel Collector is the
 single ingress for new instrumentation; Prometheus retains its scrape
 model for infrastructure and self-metrics. The three Grafana-stack
 backends (Loki, Mimir, Tempo) run in monolithic mode against a single
-MinIO S3-compatible object store. Grafana is provisioned with explicit
+Garage S3-compatible object store. Grafana is provisioned with explicit
 datasource UIDs (`prometheus`, `loki`, `tempo`, `mimir`) and a curated
 set of starter dashboards.
 
@@ -56,9 +56,9 @@ and a conditional Fluent Bit tail input over the share root.
 |       |                     |                 |       |     |    |
 |       | (null)              |                 v       v     v    |
 |       v                     |              +---------------------+ |
-|     [Karma :8082]           +------------->|       MinIO         | |
-|                                            |   S3 API :9000      | |
-|                                            |   Console :9001     | |
+|     [Karma :8082]           +------------->|       Garage        | |
+|                                            |   S3 API :3900      | |
+|                                            |   Admin  :3903      | |
 |                                            |   buckets:          | |
 |                                            |     loki-chunks     | |
 |                                            |     tempo-traces    | |
@@ -75,9 +75,9 @@ and a conditional Fluent Bit tail input over the share root.
 |                            UI PLANE                              |
 |                                                                  |
 |  +-------------+   +----------+   +-----------+                  |
-|  |  Grafana    |   |  Karma   |   | MinIO     |                  |
-|  |  :3000      |   |  :8082   |   | console   |                  |
-|  | (admin/UI)  |   | -> AM    |   |  :9001    |                  |
+|  |  Grafana    |   |  Karma   |   | Garage    |                  |
+|  |  :3000      |   |  :8082   |   | admin     |                  |
+|  | (admin/UI)  |   | -> AM    |   |  :3903    |                  |
 |  +-------------+   +----------+   +-----------+                  |
 +-----------------------------------------------------------------+
 
@@ -90,7 +90,7 @@ Opt-in (default off, enable_nfsd: true):
 
 | Component | Image | Port (host) | Mode | Purpose |
 |-----------|-------|------------:|------|---------|
-| MinIO | minio/minio:RELEASE.2025-04-22T22-12-26Z | 9000 / 9001 | single-node | S3-compatible object storage for Loki/Tempo/Mimir |
+| Garage | dxflrs/garage:v2.3.0 | 3900 / 3903 | single-node | S3-compatible object storage for Loki/Tempo/Mimir |
 | Loki | grafana/loki:3.7.2 | 3100 | monolithic (-target=all) | Log backend |
 | Tempo | grafana/tempo:2.10.5 | 3200 (HTTP) / 14317-14318 (OTLP internal) | monolithic (-target=all) | Trace backend |
 | Mimir | grafana/mimir:3.0.6 | 9009 | monolithic (-target=all) | Long-term metrics |
@@ -118,8 +118,9 @@ Opt-in (default off, enable_nfsd: true):
 | Alertmanager | 9093 | 9093 |
 | Karma | 8080 | 8082 |
 | Mimir | 9009 | 9009 |
-| MinIO API | 9000 | 9000 |
-| MinIO Console | 9001 | 9001 |
+| Garage S3 API | 3900 | 3900 |
+| Garage Admin | 3903 | 3903 |
+| Garage RPC (internal) | 3901 | none |
 | node_exporter | 9100 | 9100 |
 | Fluent Bit HTTP | 2020 | none (bridge only) |
 | NFS (if enabled) | 2049 | 2049 |
@@ -134,12 +135,12 @@ The three Grafana-stack backends run as single binaries with `-target=all`:
 
 - **Loki**: distributor, ingester, querier, query-frontend, ruler,
   compactor, and index-gateway in one process; TSDB schema v13; S3
-  backend via the MinIO `loki-chunks` bucket. Single replica; no
+  backend via the Garage `loki-chunks` bucket. Single replica; no
   memberlist gossip cluster.
 - **Tempo**: distributor, ingester, querier, and compactor in one
   process; OTLP receivers bound to internal-only ports (14317/14318) to
   avoid clashing with the OTel Collector's published OTLP ports; S3
-  backend via the MinIO `tempo-traces` bucket. Metrics-generator persists
+  backend via the Garage `tempo-traces` bucket. Metrics-generator persists
   to a local WAL at `/var/tempo/generator/wal`.
 - **Mimir**: distributor, ingester, querier, compactor, ruler, and
   alertmanager-store in one process; multitenancy disabled (single
@@ -155,13 +156,13 @@ is a future-milestone item.
 
 | Backend | Object store | Bucket(s) | On-disk state |
 |---------|--------------|-----------|---------------|
-| Loki | MinIO | loki-chunks | `/loki/compactor/markers/` (marker-file persistence) |
-| Tempo | MinIO | tempo-traces | `/var/tempo/generator/wal` (metrics-generator WAL) |
-| Mimir | MinIO | mimir-blocks, mimir-ruler, mimir-alerts | ingester memory only |
+| Loki | Garage | loki-chunks | `/loki/compactor/markers/` (marker-file persistence) |
+| Tempo | Garage | tempo-traces | `/var/tempo/generator/wal` (metrics-generator WAL) |
+| Mimir | Garage | mimir-blocks, mimir-ruler, mimir-alerts | ingester memory only |
 | Prometheus | n/a (TSDB local) | n/a | `/prometheus/data` (15-day retention) |
 | Grafana | embedded SQLite | n/a | `telemetron_grafana_data` volume |
 | Alertmanager | n/a | n/a | `telemetron_alertmanager_data` volume |
-| MinIO | itself | (server) | `telemetron_minio_data` volume |
+| Garage | itself | (server) | `telemetron_garage_meta` + `telemetron_garage_data` volumes |
 
 Named volumes are prefixed `telemetron_<role>_data` to avoid clashes
 with other Docker stacks on the same host. Rendered configs live on the
@@ -170,11 +171,10 @@ read-only into the corresponding container.
 
 ## Known Debt
 
-- **MinIO community edition is archived.** The pinned tag
-  (`RELEASE.2025-04-22T22-12-26Z`) is the last published community
-  release. A future milestone replaces MinIO with Garage or SeaweedFS.
-  Loki, Tempo, and Mimir configurations all target the S3 API, so the
-  replacement is contained to the `minio` role.
+- **MinIO replaced by Garage v2.3.0 in v1.1.0.** The archived MinIO
+  community release (`RELEASE.2025-04-22T22-12-26Z`) was replaced by
+  Garage (AGPL, actively maintained homelab-focused S3 store). The
+  `minio` role is deleted; the `garage` role is the storage backend.
 - **PromLens was removed in v1.0.1.** The bundled Prometheus 3.x UI at
   `http://prometheus:9090/graph` covers the tree-view and query-explorer
   use case that PromLens served in v1.0.0. Upstream had not shipped a

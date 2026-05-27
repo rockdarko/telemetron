@@ -13,7 +13,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 | `karma`                  | alert triage UI                                   | ☑ |
 | `loki`                   | log backend (monolithic mode)                     | ☑ |
 | `mimir`                  | long-term metrics (monolithic mode)               | ☑ |
-| `minio`                  | S3-compatible object storage                      | ☑ |
+| `garage`                 | S3-compatible object storage (Garage v2.3.0)      | ☑ |
 | `nfsd`                   | NFS for legacy log ingestion (optional)           | ☑ |
 | `node_exporter`          | host metrics exporter (CPU, memory, disk, network, FS) | ☑ |
 | `opentelemetry`          | OTel Collector                                    | ☑ |
@@ -36,7 +36,7 @@ Ansible roles, one directory per component. These are forks of the upstream INSP
 
 ## Per-role port-acceptance gates
 
-Before ticking a role's box in the table above, every role port must pass the following checks. These gates were established in Phase 1 (`minio` role port) and apply to every Phase 2-6 role.
+Before ticking a role's box in the table above, every role port must pass the following checks. These gates were established in Phase 1 (storage role port) and apply to every subsequent role.
 
 **1. Grep gates (zero tolerance — Pitfall 9 from `.planning/research/PITFALLS.md`):**
 
@@ -56,7 +56,7 @@ grep -rPn '[^\x00-\x7F]' roles/<name>/
 
 **5. Healthcheck + restart-policy gate (OPS-06):** `docker inspect <container> --format '{{.State.Health.Status}}'` returns `healthy`; `docker inspect <container> --format '{{.HostConfig.RestartPolicy.Name}}'` returns `unless-stopped`. Healthcheck is declared on the container (either via Docker image default or explicit in the role's `community.docker.docker_container` task).
 
-**6. Per-role README gate (OPS-03):** `roles/<name>/README.md` exists and documents (in order): variables (with defaults and purpose), modes (if the role supports any), tags (one per role minimum), volumes (with `telemetron_<role>_*` prefix), healthcheck details (port, interval, timeout, retries), and deprecation notes if applicable. The `roles/minio/README.md` written in Phase 1 plan 03 is the canonical template every subsequent role README mirrors.
+**6. Per-role README gate (OPS-03):** `roles/<name>/README.md` exists and documents (in order): variables (with defaults and purpose), modes (if the role supports any), tags (one per role minimum), volumes (with `telemetron_<role>_*` prefix), healthcheck details (port, interval, timeout, retries), and deprecation notes if applicable. The `roles/garage/README.md` is the canonical template every subsequent role README mirrors.
 
 **7. Telemetron label-stamp gate (Plan 03-05; INGEST-07):** every `community.docker.docker_container` task in a Telemetron role MUST include a `labels:` argument with the two key/value pairs:
 

@@ -3,7 +3,7 @@ galaxy_info:
   role_name: loki
   author: Rock Martel-Langlois
   description: >
-    Deploys Grafana Loki 3.7.2 in monolithic mode against MinIO S3
+    Deploys Grafana Loki 3.7.2 in monolithic mode against Garage S3
     (loki-chunks bucket). Log backend for Telemetron's observability
     plane; consumed by Grafana (Phase 5) and Fluent Bit / OTel (Phase 3).
   license: MIT

@@ -19,7 +19,7 @@ Also surfaces the `docker_stats` receiver which feeds the
 `container_restarts_total` series consumed by Plan 03-03's
 ContainerRestartLoop alert rule (D-51).
 
-Mirrors the canonical role template established by `roles/minio`,
+Mirrors the canonical role template established by `roles/garage`,
 `roles/loki`, `roles/tempo`, `roles/mimir`, and `roles/node_exporter`
 -- same defaults layout, same handler discipline (W6 single handler),
 same in-network verify pattern (W8), same Docker HEALTHCHECK /
