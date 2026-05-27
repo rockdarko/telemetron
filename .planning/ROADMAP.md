@@ -42,7 +42,9 @@ Tag: `v1.0.0`
   2. `docker exec telemetron_tempo grep compaction_window /etc/tempo/tempo.yaml` returns the wired value (default `1h`); no orphan `block_ranges_period` key appears in the file
   3. `docker exec telemetron_fluentbit grep set_ingest_timestamp /fluent-bit/scripts/enrich.lua` returns a match, confirming the Lua fallback function is present; a synthetic log injected without a timestamp field lands in Loki with a valid `@timestamp` within 10 seconds
   4. Back-to-back deploy remains idempotent (`changed=0`) for all three affected roles (mimir, tempo, fluentbit)
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 07-01-PLAN.md — Mimir retention, Tempo compaction_window, FB timestamp fallback
 
 ### Phase 8: Garage Role + Backend Retargeting
 **Goal**: Operator can run the playbook on leviathan and have Garage v2.3.0 running in place of MinIO as the S3-compatible object store: the `garage` container is healthy on the `telemetron` bridge with S3 API on `:3900` and admin on `:3903`, single-node layout is assigned and applied, all five buckets (`loki-chunks`, `tempo-traces`, `mimir-blocks`, `mimir-ruler`, `mimir-alerts`) are bootstrapped with a read/write/owner key, Loki and Tempo and Mimir all write through Garage's S3 API successfully, the `minio` role and all MinIO-specific vars are gone from the codebase, and Garage's self-metrics at `:3903/metrics` are scraped by Prometheus or OTel Collector so storage usage appears in Grafana.
@@ -78,13 +80,13 @@ Tag: `v1.0.0`
 | 04.1  | v1.0.0    | 1/1            | Complete    | 2026-05-19 |
 | 5     | v1.0.0    | 8/8            | Complete    | 2026-05-19 |
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
-| 7     | v1.1.0    | 0/?            | Not started | —          |
+| 7     | v1.1.0    | 0/1            | Planning    | —          |
 | 8     | v1.1.0    | 0/?            | Not started | —          |
 | 9     | v1.1.0    | 0/?            | Not started | —          |
 
 ## Backlog
 
-All four M1 backlog items (Phases 999.1–999.4) are addressed by v1.1.0 phases:
+All four M1 backlog items (Phases 999.1-999.4) are addressed by v1.1.0 phases:
 
 | Former backlog item | Addressed by |
 |---------------------|--------------|
