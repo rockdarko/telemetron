@@ -38,7 +38,7 @@ and confirms visibility in Grafana within 60 seconds.
 | Prometheus | `prom/prometheus:v3.11.3` | Short-term metrics + alert evaluation |
 | node_exporter | `quay.io/prometheus/node-exporter:v1.11.1` | Host metrics |
 | Fluent Bit | `fluent/fluent-bit:4.2.3` | Container log shipping |
-| MinIO | `minio/minio:RELEASE.2025-04-22T22-12-26Z` | S3-compatible object storage |
+| Garage | `dxflrs/garage:v2.3.0` | S3-compatible object storage |
 | Alertmanager | `quay.io/prometheus/alertmanager:v0.32.1` | Alert routing (null receiver default) |
 | Grafana | `grafana/grafana-oss:13.0.1` | Dashboards + Explore |
 | Karma | `ghcr.io/prymitive/karma:v0.130` | Alert triage UI |
