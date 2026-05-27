@@ -28,7 +28,7 @@ Tag: `v1.0.0`
 ### 📋 v1.1.0 — Garage migration + backlog sweep (planning)
 
 - [x] **Phase 7: Backlog Regression Fixes** — Mimir retention re-wired under `limits:`, Tempo orphan var rebound to `compaction_window`, Fluent Bit timestamp fallback re-enabled via Lua (completed 2026-05-27)
-- [ ] **Phase 8: Garage Role + Backend Retargeting** — New `roles/garage/` replaces `roles/minio/`; Loki/Tempo/Mimir S3 configs retargeted; MinIO removed; Garage self-metrics scrape wired
+- [x] **Phase 8: Garage Role + Backend Retargeting** — New `roles/garage/` replaces `roles/minio/`; Loki/Tempo/Mimir S3 configs retargeted; MinIO removed; Garage self-metrics scrape wired (completed 2026-05-27)
 - [ ] **Phase 9: Label Reconciliation** — `service` → `service_name` across enrich.lua, dashboard JSONs, and OTel Collector namespace strip
 
 ## Phase Details
@@ -72,7 +72,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 08-03-PLAN.md — Remove MinIO role + inventory renames + documentation updates + CLAUDE.md
+- [x] 08-03-PLAN.md — Remove MinIO role + inventory renames + documentation updates + CLAUDE.md
 
 ### Phase 9: Label Reconciliation
 
@@ -100,7 +100,7 @@ Plans:
 | 5     | v1.0.0    | 8/8            | Complete    | 2026-05-19 |
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
 | 7     | v1.1.0    | 1/1 | Complete   | 2026-05-27 |
-| 8     | v1.1.0    | 2/3 | In Progress|  |
+| 8     | v1.1.0    | 3/3 | Complete   | 2026-05-27 |
 | 9     | v1.1.0    | 0/?            | Not started | —          |
 
 ## Backlog
