@@ -4,14 +4,14 @@ milestone: v1.1.0
 milestone_name: Garage migration + backlog sweep
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-05-27T12:12:19.051Z"
-last_activity: 2026-05-27 -- Phase 07 execution started
+last_updated: "2026-05-27T16:12:24.622Z"
+last_activity: 2026-05-27 -- Phase 08 execution started
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 1
+  total_plans: 4
   completed_plans: 1
-  percent: 33
+  percent: 25
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 **Core value:** A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. **Shipped in v1.0.0.**
-**Current focus:** Phase 07 — backlog-regression-fixes
+**Current focus:** Phase 08 — garage-role-backend-retargeting
 
 ## Current Position
 
-Phase: 07 (backlog-regression-fixes) — EXECUTING
-Plan: 1 of 1
-Status: Executing Phase 07
-Last activity: 2026-05-27 -- Phase 07 execution started
+Phase: 08 (garage-role-backend-retargeting) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 08
+Last activity: 2026-05-27 -- Phase 08 execution started
 
 ## Performance Metrics
 
