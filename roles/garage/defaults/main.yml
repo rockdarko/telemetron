@@ -3,8 +3,8 @@
 # Garage role tunables. Override per-environment in
 # inventory/<env>/group_vars/all/garage.yml.
 #
-# Garage v2.3.0 replaces the archived MinIO community edition as the
-# S3-compatible object store for Telemetron's Loki, Tempo, and Mimir.
+# Garage v2.3.0 is the S3-compatible object store for Telemetron's
+# Loki, Tempo, and Mimir. Actively maintained AGPL homelab-focused store.
 # Source: https://garagehq.deuxfleurs.fr/
 
 # --- Image pins (OPS-01: pin every image tag explicitly) ---
