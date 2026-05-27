@@ -156,7 +156,7 @@
 
 # Step 7d: create a new Garage S3 key (first-run path, no host file).
 # The key secret is only shown at creation time (Pitfall 3).
-# Output is JSON containing accessKeyId and secretAccessKey.
+# Output is human-readable text with "Key ID:" and "Secret key:" lines.
 - name: Create Garage S3 key
   community.docker.docker_container_exec:
     container: "{{ garage_container_name }}"
@@ -168,11 +168,12 @@
     - garage
     - garage-bootstrap
 
-# Step 7e: set credential facts from the key create JSON output (first-run path).
+# Step 7e: set credential facts from key create output (first-run path).
+# CR-01 fix: parse human-readable output via regex, not from_json.
 - name: Set Garage S3 credential facts from key create output
   ansible.builtin.set_fact:
-    garage_s3_access_key_id: "{{ (garage_key_create_result.stdout | from_json).accessKeyId }}"
-    garage_s3_secret_key: "{{ (garage_key_create_result.stdout | from_json).secretAccessKey }}"
+    garage_s3_access_key_id: "{{ garage_key_create_result.stdout | regex_search('Key ID:\\s*(\\S+)', '\\1') | first }}"
+    garage_s3_secret_key: "{{ garage_key_create_result.stdout | regex_search('Secret key:\\s*(\\S+)', '\\1') | first }}"
   when: not garage_creds_file.stat.exists
   tags:
     - garage

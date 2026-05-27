@@ -91,7 +91,7 @@ scrape_configs:
         labels:
           service: garage
     authorization:
-      credentials: {{ garage_admin_token }}
+      credentials: "{{ garage_admin_token }}"
     metric_relabel_configs:
       - regex: '{{ prometheus_default_relabel_drop_regex }}'
         action: labeldrop
