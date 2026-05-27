@@ -1,0 +1,122 @@
+---
+# roles/garage/tasks/main.yml
+# Garage server deploy + bootstrap.
+# Per D-08: bootstrap is the LAST task in this role; downstream backends
+# depend on serial role ordering in playbooks/deploy_docker.yml.
+
+- name: Ensure Garage config directory exists on host
+  ansible.builtin.file:
+    path: "{{ garage_config_dir }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - garage
+    - garage-config
+
+- name: Render Garage TOML config
+  ansible.builtin.template:
+    src: garage.toml.j2
+    dest: "{{ garage_config_dir }}/garage.toml"
+    mode: "0600"
+  notify: restart garage
+  tags:
+    - garage
+    - garage-config
+
+- name: Ensure Garage metadata volume exists
+  community.docker.docker_volume:
+    name: "{{ garage_meta_volume }}"
+    state: present
+  tags:
+    - garage
+
+- name: Ensure Garage data volume exists
+  community.docker.docker_volume:
+    name: "{{ garage_data_volume }}"
+    state: present
+  tags:
+    - garage
+
+- name: Pull Garage image
+  community.docker.docker_image:
+    name: "{{ garage_image }}:{{ garage_image_tag }}"
+    source: pull
+    force_source: false
+  tags:
+    - garage
+
+- name: Run Garage server container
+  community.docker.docker_container:
+    name: "{{ garage_container_name }}"
+    image: "{{ garage_image }}:{{ garage_image_tag }}"
+    state: started
+    recreate: false
+    restart_policy: "{{ garage_restart_policy }}"
+    memory: "{{ garage_memory_limit }}"
+    # Garage reads TOML config, not env vars. GARAGE_CONFIG_FILE tells the
+    # binary where to find its config inside the container.
+    # CRITICAL: path is /etc/garage/garage.toml (parent-dir bind mount per
+    # Gate 8 maps host {{ garage_config_dir }} to /etc/garage inside container).
+    env:
+      GARAGE_CONFIG_FILE: "/etc/garage/garage.toml"
+      TZ: "{{ garage_tz }}"
+    networks:
+      - name: "{{ garage_network }}"
+        aliases:
+          # Container name is `telemetron-garage` (visible in `docker ps`).
+          # Short alias preserves backward-compat for cross-role config refs
+          # like `http://garage:3900` in loki/tempo/mimir templates.
+          - "{{ garage_container_name }}"
+          - garage
+    labels:
+      org.telemetron.service: telemetron
+      org.telemetron.job: garage
+    # Per D-12, D-13 pattern: zero host publish by default.
+    # RPC port (3901) is NEVER published -- internal-only.
+    # Only S3 API (3900) and admin (3903) are conditionally published.
+    published_ports: >-
+      {{
+        (
+          [ garage_api_port | string + ':' + garage_api_port | string,
+            garage_admin_port | string + ':' + garage_admin_port | string ]
+          if garage_publish_host is sameas true else
+          [ '127.0.0.1:' + garage_api_port | string + ':' + garage_api_port | string,
+            '127.0.0.1:' + garage_admin_port | string + ':' + garage_admin_port | string ]
+          if garage_publish_host == '127.0.0.1' else
+          []
+        )
+      }}
+    mounts:
+      # Named volume for Garage metadata (lmdb database)
+      - source: "{{ garage_meta_volume }}"
+        target: "{{ garage_meta_path }}"
+        type: volume
+      # Named volume for Garage object data
+      - source: "{{ garage_data_volume }}"
+        target: "{{ garage_data_path }}"
+        type: volume
+      # Bind mount: host garage_config_dir -> /etc/garage (parent dir, Gate 8).
+      # The TOML config is at /etc/garage/garage.toml inside the container.
+      # read_only: true -- Garage reads this at startup; no write needed.
+      - source: "{{ garage_config_dir }}"
+        target: /etc/garage
+        type: bind
+        read_only: true
+    healthcheck:
+      test: "{{ garage_healthcheck_test }}"
+      interval: "{{ garage_healthcheck_interval }}"
+      timeout: "{{ garage_healthcheck_timeout }}"
+      retries: "{{ garage_healthcheck_retries }}"
+      start_period: "{{ garage_healthcheck_start_period }}"
+  tags:
+    - garage
+    - garage-container
+
+# Bootstrap MUST be the final task -- D-08. Downstream Phase 2 backends
+# (loki, tempo, mimir) depend on serial role ordering in deploy_docker.yml
+# so they don't start until this include returns.
+- name: Bootstrap Garage layout, S3 key, and buckets (blocking)
+  ansible.builtin.include_tasks: bootstrap.yml
+  tags:
+    - garage
+    - garage-bootstrap

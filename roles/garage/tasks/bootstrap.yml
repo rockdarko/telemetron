@@ -1,0 +1,247 @@
+---
+# roles/garage/tasks/bootstrap.yml
+# Multi-step bootstrap for Garage: HEALTHCHECK poll, layout assign/apply,
+# S3 key create-and-persist (D-112), bucket create, bucket allow, verify.
+#
+# All bootstrap exec tasks use changed_when: false except layout assign/apply
+# (which are gated with `when:`) and key create (changed_when: true, first-run only).
+#
+# Idempotency gates:
+# - Layout assign/apply: defensive dual-check (rc != 0 OR 'NO ROLE ASSIGNED' in stdout)
+# - Key create: D-112 host file check (stat -> slurp if exists, key create if absent)
+# - Bucket create: failed_when accepts both rc=0 and 'already exists' in stderr
+#
+# Direct mitigation for RESEARCH Pitfall 1 (layout apply re-run) and
+# Pitfall 3 (key create secret shown once).
+
+# Step 1: poll the container's Docker HEALTHCHECK status until it
+# reports `healthy`. Per D-10a: we read the status via docker_container_info
+# rather than firing uri against :3900, because the no-host-publish model
+# means the control host cannot reach the Garage API directly.
+- name: Wait for Garage container HEALTHCHECK to report healthy
+  community.docker.docker_container_info:
+    name: "{{ garage_container_name }}"
+  register: garage_health_check
+  until: >-
+    garage_health_check.container is defined
+    and garage_health_check.container.State is defined
+    and garage_health_check.container.State.Health is defined
+    and garage_health_check.container.State.Health.Status == 'healthy'
+  retries: "{{ garage_health_retries }}"
+  delay: "{{ garage_health_delay }}"
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 2: get the Garage node ID (hex@ip:port format).
+# We need only the hex prefix for layout assign (Pitfall 6).
+- name: Get Garage node ID
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage node id --quiet
+  register: garage_node_id_raw
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 3: extract just the hex node ID by stripping the @ip:port suffix.
+# Example: "abcdef1234567890@192.168.1.100:3901" -> "abcdef1234567890"
+- name: Set garage_node_id fact
+  ansible.builtin.set_fact:
+    garage_node_id: "{{ garage_node_id_raw.stdout.split('@')[0] }}"
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 4: check current layout status.
+# Used as the gate for steps 5 and 6 (layout assign/apply).
+# Defensive dual-check: rc != 0 is the primary gate (handles unexpected
+# output format); 'NO ROLE ASSIGNED' in stdout is secondary confirmation.
+# If the node has no zone assignment the output includes 'NO ROLE ASSIGNED'.
+- name: Check Garage layout status
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage layout show
+  register: garage_layout_show
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 5: assign layout zone and capacity (only if not yet assigned).
+# The defensive dual-check gates this task so re-runs skip it when the
+# layout is already in place (avoids version mismatch errors -- Pitfall 1).
+- name: Assign Garage layout
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: >-
+      /garage layout assign
+      -z {{ garage_layout_zone }}
+      -c {{ garage_layout_capacity }}
+      {{ garage_node_id }}
+  changed_when: true
+  when: garage_layout_show.rc != 0 or 'NO ROLE ASSIGNED' in garage_layout_show.stdout
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 6: apply the layout (commits the assignment).
+# Gated with the same defensive dual-check as Step 5.
+# --version 1 is correct for first-run; re-runs are skipped by the when: guard.
+- name: Apply Garage layout
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage layout apply --version 1
+  changed_when: true
+  when: garage_layout_show.rc != 0 or 'NO ROLE ASSIGNED' in garage_layout_show.stdout
+  tags:
+    - garage
+    - garage-bootstrap
+
+# ---------- D-112: S3 key create with host-file persistence ----------
+# The Garage S3 key is auto-generated on first run and persisted to a
+# host-side file (garage_s3_credentials_file, mode 0600). Re-runs load
+# credentials from the file, skipping key creation entirely.
+#
+# S3 credentials are NOT in secrets.yml -- they are ephemeral from Garage's
+# perspective (only shown at creation time via `key create`) and must be
+# persisted by the bootstrap.
+
+# Step 7a: check if credentials are already persisted on the host.
+# Default path: {{ garage_config_dir }}/s3-credentials (mode 0600, T-08-02).
+- name: Check if Garage S3 credentials exist on host
+  ansible.builtin.stat:
+    path: "{{ garage_s3_credentials_file }}"
+  register: garage_creds_file
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 7b: load existing credentials from the host file (re-run path).
+# File format: two lines -- line 1: key_id=<value>, line 2: secret=<value>
+- name: Load existing Garage S3 credentials from host file
+  ansible.builtin.slurp:
+    src: "{{ garage_s3_credentials_file }}"
+  register: garage_creds_raw
+  when: garage_creds_file.stat.exists
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 7c: set credential facts from the host file (re-run path).
+- name: Set Garage S3 credential facts from host file
+  ansible.builtin.set_fact:
+    garage_s3_access_key_id: >-
+      {{
+        (garage_creds_raw.content | b64decode).split('\n')
+        | select('match', '^key_id=')
+        | first
+        | regex_replace('^key_id=', '')
+      }}
+    garage_s3_secret_key: >-
+      {{
+        (garage_creds_raw.content | b64decode).split('\n')
+        | select('match', '^secret=')
+        | first
+        | regex_replace('^secret=', '')
+      }}
+  when: garage_creds_file.stat.exists
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 7d: create a new Garage S3 key (first-run path, no host file).
+# The key secret is only shown at creation time (Pitfall 3).
+# Output is JSON containing accessKeyId and secretAccessKey.
+- name: Create Garage S3 key
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage key create -n {{ garage_s3_key_name }}
+  register: garage_key_create_result
+  changed_when: true
+  when: not garage_creds_file.stat.exists
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 7e: set credential facts from the key create JSON output (first-run path).
+- name: Set Garage S3 credential facts from key create output
+  ansible.builtin.set_fact:
+    garage_s3_access_key_id: "{{ (garage_key_create_result.stdout | from_json).accessKeyId }}"
+    garage_s3_secret_key: "{{ (garage_key_create_result.stdout | from_json).secretAccessKey }}"
+  when: not garage_creds_file.stat.exists
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 7f: persist the credentials to the host file (first-run path).
+# mode 0600: only readable by root/ansible user (T-08-02 mitigation).
+- name: Persist Garage S3 credentials to host file
+  ansible.builtin.copy:
+    content: |
+      key_id={{ garage_s3_access_key_id }}
+      secret={{ garage_s3_secret_key }}
+    dest: "{{ garage_s3_credentials_file }}"
+    mode: "0600"
+  when: not garage_creds_file.stat.exists
+  tags:
+    - garage
+    - garage-bootstrap
+
+# ---------- Bucket create, allow, verify ----------
+
+# Step 8: create the required buckets.
+# Defensive failed_when accepts BOTH rc=0 (clean create) AND rc != 0 when
+# 'already exists' appears in stderr -- handles both idempotent exit codes
+# (Open Question Q2 from RESEARCH resolved with defensive guard).
+- name: Create Garage buckets
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage bucket create {{ item }}
+  loop: "{{ garage_buckets }}"
+  register: garage_bucket_create
+  changed_when: false
+  failed_when: >-
+    garage_bucket_create.rc is defined
+    and garage_bucket_create.rc != 0
+    and 'already exists' not in (garage_bucket_create.stderr | default(''))
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 9: grant the S3 key read/write/owner permissions on each bucket.
+# The `allow` command is idempotent (re-granting existing permissions is a no-op).
+- name: Allow S3 key on Garage buckets
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: >-
+      /garage bucket allow
+      --read --write --owner
+      {{ item }}
+      --key {{ garage_s3_key_name }}
+  loop: "{{ garage_buckets }}"
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+# Step 10: verify all required buckets exist.
+# /garage bucket info <bucket> exits non-zero if the bucket does not exist.
+# failed_when: rc != 0 ensures missing buckets abort the playbook.
+- name: Verify Garage buckets exist
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage bucket info {{ item }}
+  loop: "{{ garage_buckets }}"
+  register: garage_bucket_verify
+  changed_when: false
+  failed_when: >-
+    garage_bucket_verify.rc is defined
+    and garage_bucket_verify.rc != 0
+  tags:
+    - garage
+    - garage-bootstrap
