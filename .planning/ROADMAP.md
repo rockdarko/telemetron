@@ -54,7 +54,11 @@ Tag: `v1.0.0`
   3. Running `playbooks/smoke_test.yml` completes with `failed=0` — synthetic OTLP log, metric, and trace data round-trips through Loki, Mimir, and Tempo respectively, all of which are now writing to and reading from Garage
   4. `grep -r 'minio' roles/ playbooks/ inventory/example-homelab/` returns zero matches (excluding inline comments that document the migration); `roles/minio/` directory does not exist; `docker ps` shows no `telemetron_minio` container
   5. `curl -s -H "Authorization: Bearer <garage_admin_token>" http://leviathan:3903/metrics` returns Prometheus-format text with at least one `garage_` metric; the Prometheus or OTel scrape config contains a job targeting `garage:3903`
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 08-01-PLAN.md — Create roles/garage/ (defaults, tasks, template, handlers, meta, README)
+- [ ] 08-02-PLAN.md — Retarget Loki/Tempo/Mimir S3 + verify migration + Prometheus Garage scrape + secrets
+- [ ] 08-03-PLAN.md — Remove MinIO role + inventory renames + documentation updates + CLAUDE.md
 
 ### Phase 9: Label Reconciliation
 **Goal**: Operator can query Loki in Grafana and find both Fluent Bit-originated and OTel Collector-originated logs under the single label `service_name` — there is no split between `service` (FB) and `service_name` (OTel) that forces different queries for the same logical service; all seven curated dashboards use `service_name=` in their LogQL matchers; and the OTel Collector strips the `service.namespace` resource attribute before forwarding to Loki, preventing the `namespace/service` concatenation corruption.
@@ -79,7 +83,7 @@ Tag: `v1.0.0`
 | 5     | v1.0.0    | 8/8            | Complete    | 2026-05-19 |
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
 | 7     | v1.1.0    | 1/1 | Complete   | 2026-05-27 |
-| 8     | v1.1.0    | 0/?            | Not started | —          |
+| 8     | v1.1.0    | 0/3            | Planned    | —          |
 | 9     | v1.1.0    | 0/?            | Not started | —          |
 
 ## Backlog
