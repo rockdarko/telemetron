@@ -27,7 +27,7 @@ Tag: `v1.0.0`
 
 ### 📋 v1.1.0 — Garage migration + backlog sweep (planning)
 
-- [ ] **Phase 7: Backlog Regression Fixes** — Mimir retention re-wired under `limits:`, Tempo orphan var rebound to `compaction_window`, Fluent Bit timestamp fallback re-enabled via Lua
+- [x] **Phase 7: Backlog Regression Fixes** — Mimir retention re-wired under `limits:`, Tempo orphan var rebound to `compaction_window`, Fluent Bit timestamp fallback re-enabled via Lua (completed 2026-05-27)
 - [ ] **Phase 8: Garage Role + Backend Retargeting** — New `roles/garage/` replaces `roles/minio/`; Loki/Tempo/Mimir S3 configs retargeted; MinIO removed; Garage self-metrics scrape wired
 - [ ] **Phase 9: Label Reconciliation** — `service` → `service_name` across enrich.lua, dashboard JSONs, and OTel Collector namespace strip
 
@@ -42,9 +42,7 @@ Tag: `v1.0.0`
   2. `docker exec telemetron_tempo grep compaction_window /etc/tempo/tempo.yaml` returns the wired value (default `1h`); no orphan `block_ranges_period` key appears in the file
   3. `docker exec telemetron_fluentbit grep set_ingest_timestamp /fluent-bit/scripts/enrich.lua` returns a match, confirming the Lua fallback function is present; a synthetic log injected without a timestamp field lands in Loki with a valid `@timestamp` within 10 seconds
   4. Back-to-back deploy remains idempotent (`changed=0`) for all three affected roles (mimir, tempo, fluentbit)
-**Plans**: 1 plan
-Plans:
-- [ ] 07-01-PLAN.md — Mimir retention, Tempo compaction_window, FB timestamp fallback
+**Plans**: 1 plan (07-01)
 
 ### Phase 8: Garage Role + Backend Retargeting
 **Goal**: Operator can run the playbook on leviathan and have Garage v2.3.0 running in place of MinIO as the S3-compatible object store: the `garage` container is healthy on the `telemetron` bridge with S3 API on `:3900` and admin on `:3903`, single-node layout is assigned and applied, all five buckets (`loki-chunks`, `tempo-traces`, `mimir-blocks`, `mimir-ruler`, `mimir-alerts`) are bootstrapped with a read/write/owner key, Loki and Tempo and Mimir all write through Garage's S3 API successfully, the `minio` role and all MinIO-specific vars are gone from the codebase, and Garage's self-metrics at `:3903/metrics` are scraped by Prometheus or OTel Collector so storage usage appears in Grafana.
@@ -80,7 +78,7 @@ Plans:
 | 04.1  | v1.0.0    | 1/1            | Complete    | 2026-05-19 |
 | 5     | v1.0.0    | 8/8            | Complete    | 2026-05-19 |
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
-| 7     | v1.1.0    | 0/1            | Planning    | —          |
+| 7     | v1.1.0    | 1/1 | Complete   | 2026-05-27 |
 | 8     | v1.1.0    | 0/?            | Not started | —          |
 | 9     | v1.1.0    | 0/?            | Not started | —          |
 
