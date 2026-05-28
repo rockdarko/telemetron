@@ -86,7 +86,13 @@ Plans:
   3. `grep -r '"service="' roles/grafana/files/dashboards/` returns zero matches; all seven dashboard JSONs use `service_name=` in their LogQL selectors
   4. `docker exec telemetron_opentelemetry grep -A5 'transform' /etc/otelcol/config.yaml` shows a `transform` processor configured to delete `service.namespace` from resource attributes before the `otlphttp/loki` exporter; no `namespace/` prefix appears in Loki log stream labels when queried via `{job="smoke_test"}`
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+**Wave 1** (no inter-plan dependencies — fluentbit and opentelemetry roles touch disjoint files)
+
+- [ ] 09-01-PLAN.md — Fluent Bit label rename (INGEST-02): enrich.lua 5-site rename + defaults D-47 comment + fluentbit README cascade + nfsd README amendment + dashboard verify-only audit
+- [ ] 09-02-PLAN.md — OTel Collector transform processor + docs cascade (INGEST-03): config.yaml.j2 transform/strip_namespace + logs-pipeline edit + docs/quickstart.md Upgrade notes
 
 ## Progress
 
@@ -101,7 +107,7 @@ Plans:
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
 | 7     | v1.1.0    | 1/1 | Complete   | 2026-05-27 |
 | 8     | v1.1.0    | 3/3 | Complete   | 2026-05-27 |
-| 9     | v1.1.0    | 0/?            | Not started | —          |
+| 9     | v1.1.0    | 0/2            | Planning    | —          |
 
 ## Backlog
 
