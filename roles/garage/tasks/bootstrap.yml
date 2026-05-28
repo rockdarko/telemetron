@@ -160,7 +160,7 @@
 - name: Create Garage S3 key
   community.docker.docker_container_exec:
     container: "{{ garage_container_name }}"
-    command: /garage key create -n {{ garage_s3_key_name }}
+    command: /garage key create {{ garage_s3_key_name }}
   register: garage_key_create_result
   changed_when: true
   when: not garage_creds_file.stat.exists
