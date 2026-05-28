@@ -2,7 +2,7 @@
 -- Plan 03-05 -- INGEST-07 gap closure (iteration 1).
 --
 -- Fluent Bit [FILTER] lua callback that enriches every record with
--- `service` and `job` Loki labels derived from the source container's
+-- `service_name` and `job` Loki labels derived from the source container's
 -- Docker labels `org.telemetron.service` and `org.telemetron.job`.
 --
 -- Source of truth: /var/lib/docker/containers/<container_id>/config.v2.json
@@ -33,7 +33,7 @@
 --
 -- In-memory cache keyed by container_id with 300s TTL avoids per-log-line
 -- disk reads. Cache miss -> read JSON as raw string, pattern-match, populate.
--- JSON read failure (container died) -> emit service="unlabeled" + job="unknown"
+-- JSON read failure (container died) -> emit service_name="unlabeled" + job="unknown"
 -- and log a single stderr warning per container_id.
 
 -- Tunables -- mirror roles/fluentbit/defaults/main.yml.
@@ -158,7 +158,7 @@ function enrich(tag, timestamp, record)
     if string.match(tag or "", "^nfs%.") then
         local host = hostname_from_nfs_tag(tag) or "unknown-nfs-host"
         record["host"]    = host
-        record["service"] = "remote"
+        record["service_name"] = "remote"
         record["job"]     = "remote-syslog"
         set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
@@ -166,7 +166,7 @@ function enrich(tag, timestamp, record)
 
     local container_id = container_id_from_tag(tag)
     if not container_id then
-        record["service"] = UNLABELED_SERVICE
+        record["service_name"] = UNLABELED_SERVICE
         record["job"] = UNLABELED_JOB
         set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
@@ -175,7 +175,7 @@ function enrich(tag, timestamp, record)
     local now = os.time()
     local entry = cache[container_id]
     if entry and entry.expires_at > now then
-        record["service"] = entry.service
+        record["service_name"] = entry.service
         record["job"] = entry.job
         set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
@@ -184,7 +184,7 @@ function enrich(tag, timestamp, record)
     local svc, job, name, ok = read_container_config(container_id)
     if not ok then
         -- Read failed -- still emit the record with fallback labels.
-        record["service"] = UNLABELED_SERVICE
+        record["service_name"] = UNLABELED_SERVICE
         record["job"] = UNLABELED_JOB
         set_ingest_timestamp(record, timestamp) -- D-104
         return 2, timestamp, record
@@ -196,7 +196,7 @@ function enrich(tag, timestamp, record)
         container_name = name,
         expires_at = now + CACHE_TTL_SECONDS,
     }
-    record["service"] = svc
+    record["service_name"] = svc
     record["job"] = job
     set_ingest_timestamp(record, timestamp) -- D-104
     return 2, timestamp, record
