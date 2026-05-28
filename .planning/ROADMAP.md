@@ -29,7 +29,7 @@ Tag: `v1.0.0`
 
 - [x] **Phase 7: Backlog Regression Fixes** — Mimir retention re-wired under `limits:`, Tempo orphan var rebound to `compaction_window`, Fluent Bit timestamp fallback re-enabled via Lua (completed 2026-05-27)
 - [x] **Phase 8: Garage Role + Backend Retargeting** — New `roles/garage/` replaces `roles/minio/`; Loki/Tempo/Mimir S3 configs retargeted; MinIO removed; Garage self-metrics scrape wired (completed 2026-05-27)
-- [ ] **Phase 9: Label Reconciliation** — `service` → `service_name` across enrich.lua, dashboard JSONs, and OTel Collector namespace strip
+- [x] **Phase 9: Label Reconciliation** — `service` → `service_name` across enrich.lua, dashboard JSONs, and OTel Collector namespace strip (completed 2026-05-28)
 
 ## Phase Details
 
@@ -91,8 +91,8 @@ Plans:
 Plans:
 **Wave 1** (no inter-plan dependencies — fluentbit and opentelemetry roles touch disjoint files)
 
-- [ ] 09-01-PLAN.md — Fluent Bit label rename (INGEST-02): enrich.lua 5-site rename + defaults D-47 comment + fluentbit README cascade + nfsd README amendment + dashboard verify-only audit
-- [ ] 09-02-PLAN.md — OTel Collector transform processor + docs cascade (INGEST-03): config.yaml.j2 transform/strip_namespace + logs-pipeline edit + docs/quickstart.md Upgrade notes
+- [x] 09-01-PLAN.md — Fluent Bit label rename (INGEST-02): enrich.lua 5-site rename + defaults D-47 comment + fluentbit README cascade + nfsd README amendment + dashboard verify-only audit
+- [x] 09-02-PLAN.md — OTel Collector transform processor + docs cascade (INGEST-03): config.yaml.j2 transform/strip_namespace + logs-pipeline edit + docs/quickstart.md Upgrade notes
 
 ## Progress
 
@@ -107,7 +107,7 @@ Plans:
 | 6     | v1.0.0    | 4/4            | Complete    | 2026-05-19 |
 | 7     | v1.1.0    | 1/1 | Complete   | 2026-05-27 |
 | 8     | v1.1.0    | 3/3 | Complete   | 2026-05-27 |
-| 9     | v1.1.0    | 0/2            | Planning    | —          |
+| 9     | v1.1.0    | 2/2 | Complete   | 2026-05-28 |
 
 ## Backlog
 
