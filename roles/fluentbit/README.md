@@ -63,18 +63,18 @@ source-side Pitfall 4 mitigation (label explosion).
 |-----------|------------------------------------------------------------------------|
 | `host`    | `{{ ansible_hostname }}` rendered at deploy time (static literal)      |
 | `env`     | `{{ telemetron_env | default('homelab') }}` rendered at deploy time    |
-| `service` | Docker label `org.telemetron.service` (M1 convention: `telemetron`); fallback `unlabeled` |
+| `service_name` | Docker label `org.telemetron.service` (M1 convention: `telemetron`); fallback `unlabeled` |
 | `job`     | Docker label `org.telemetron.job` (M1 convention: per-component); fallback container_name from JSON `Name` field |
 | `level`   | regex-extracted from log line via `level_extractor` parser; `info` default |
 
-The `service` and `job` labels are populated at runtime by a `[FILTER] lua`
+The `service_name` and `job` labels are populated at runtime by a `[FILTER] lua`
 script (`roles/fluentbit/files/enrich.lua`) that reads each source container's
 `/var/lib/docker/containers/<id>/config.v2.json` -- the sibling of the JSON
 log file Fluent Bit already tails. The script extracts the two Docker labels
 `org.telemetron.service` and `org.telemetron.job` (M1 convention: each
 telemetron stack role stamps these on its `docker_container` at creation
 time), caches results per container_id with a 300-second TTL, and falls
-back to `service=unlabeled` + `job=<container_name>` when a container is
+back to `service_name=unlabeled` + `job=<container_name>` when a container is
 not stamped. NO Docker socket is mounted -- the Lua filter only reads the
 on-disk JSON files Fluent Bit already has RO access to via the bind-mount
 from Plan 03-04.
@@ -87,13 +87,13 @@ containers at creation time:
 
 | Label key                  | Value                              | Purpose                              |
 |----------------------------|------------------------------------|--------------------------------------|
-| `org.telemetron.service`   | a stable service identifier        | populates Loki `service` label       |
+| `org.telemetron.service`   | a stable service identifier        | populates Loki `service_name` label  |
 | `org.telemetron.job`       | a per-component identifier         | populates Loki `job` label           |
 
 The Fluent Bit Lua filter (`roles/fluentbit/files/enrich.lua`) picks
 up these labels from the container's `config.v2.json` on the host and
 applies them to every log line shipped to Loki. Unlabeled operator
-containers still ship logs -- they just land with `service=unlabeled`
+containers still ship logs -- they just land with `service_name=unlabeled`
 and `job=<container_name>` until the operator stamps the convention
 labels.
 
@@ -175,7 +175,7 @@ the rendered config with the `loki` output plugin pointing at
     Host              loki
     Port              3100
     Uri               /loki/api/v1/push
-    Labels            host=$host,env=$env,service=$service,job=$job,level=$level
+    Labels            host=$host,env=$env,service_name=$service_name,job=$job,level=$level
     Auto_Kubernetes_Labels off
     Line_Format       json
 ```

@@ -36,7 +36,7 @@ fluentbit_docker_logs_path: "/var/lib/docker/containers"
 # --- D-47 label allowlist (deploy-time static labels) ---
 # host: ansible_hostname (set in Jinja at template render time)
 # env: telemetron_env override
-# service / job: container_name fallback (Q3 -- Docker-label promotion deferred)
+# service_name / job: container_name fallback (D-121: service -> service_name OTel-convention rename; Q3 Docker-label promotion deferred)
 telemetron_env: "{{ telemetron_env | default('homelab') }}"
 
 # --- D-48 extension knobs (all default-off) ---

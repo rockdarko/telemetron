@@ -83,7 +83,7 @@ The Fluent Bit tag-asterisk expansion produces tags like `nfs.srv.telemetron-nfs
 - `parts[4] = "oldbox"` (the hostname)
 - `parts[5..]` = filename components
 
-The Lua filter extracts `parts[4]` as the `host` Loki label and hardcodes `service = "remote"` and `job = "remote-syslog"`. This is the path-derived-label trick: the deterministic share-root depth lets us recover the hostname without parsing the log content.
+The Lua filter extracts `parts[4]` as the `host` Loki label and hardcodes `service_name = "remote"` and `job = "remote-syslog"`. This is the path-derived-label trick: the deterministic share-root depth lets us recover the hostname without parsing the log content.
 
 **Important caveat:** If you change `nfsd_share_root` to a different path depth, you MUST also update the segment index in `roles/fluentbit/files/enrich.lua` (the `parts[4]` constant). This is documented inline in `enrich.lua`. Acceptable for M1; a more robust extraction is a v2 enhancement.
 
