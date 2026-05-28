@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Garage migration + backlog sweep
-status: live_uat_complete
-stopped_at: Phase 09 + Phase 08 leviathan UAT PASS; milestone v1.1.0 ready to close
-last_updated: "2026-05-28T18:55:00.000Z"
-last_activity: 2026-05-28 -- leviathan cutover deploy + UAT complete; minio orphan removed
+status: milestone_complete
+stopped_at: v1.1.0 archived; awaiting v1.2.0 scoping via /gsd-new-milestone
+last_updated: "2026-05-28T19:10:00.000Z"
+last_activity: 2026-05-28 -- v1.1.0 milestone closed, tagged, archive files created
 progress:
   total_phases: 3
   completed_phases: 3
@@ -25,16 +25,14 @@ See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 ## Current Position
 
-Phase: 09 (label-reconciliation) — LIVE UAT PASS on leviathan
-Plan: 2 of 2 complete
-Status: live_uat_complete
-Last activity: 2026-05-28 -- leviathan cutover deploy + UAT complete; minio orphan removed
-UAT notes:
-  - Three Phase 8 regressions surfaced + fixed mid-UAT (garage CLI -n flag,
-    garage layout status check, garage credentials file re-run parse)
-  - Idempotency PASS: third deploy ok=135 changed=0 failed=0
-  - Loki labels live: ["host", "job", "service_name"]; legacy "service" empty
-  - minio container stopped + removed; telemetron_minio_data volume preserved
+Milestone: v1.1.0 — Garage migration + backlog sweep — SHIPPED 2026-05-28
+Status: milestone_complete
+Next: v1.2.0 scoping via /gsd-new-milestone (TBD)
+Last activity: 2026-05-28 -- v1.1.0 milestone closed, tagged, archive files created
+Archive:
+  - .planning/milestones/v1.1.0-ROADMAP.md
+  - .planning/milestones/v1.1.0-REQUIREMENTS.md
+  - tag v1.1.0
 
 ## Performance Metrics
 
