@@ -250,6 +250,25 @@ For alerts, open `http://<your-host>:8082` to see the Karma alert
 triage UI. The default Alertmanager route uses a `null` receiver in M1,
 so alerts are visible but not dispatched.
 
+## Upgrade notes
+
+If upgrading from a v1.0.x deployment (or a pre-Phase-9 v1.1.0 build),
+the Loki label key for Fluent-Bit-shipped Docker logs changed from
+`service=` to `service_name=`. This aligns with the OpenTelemetry
+`service.name` resource-attribute convention so Fluent Bit-originated and
+OTel-Collector-originated logs share one queryable label key. Old Loki
+streams ingested before the upgrade retain the `service=` label and age
+out per your Loki retention setting; query historical pre-upgrade windows
+with `{service="..."}` and post-upgrade windows with
+`{service_name="..."}`. The 7 curated dashboards already use
+`service_name=`. No data migration is required.
+
+The OTel Collector also strips the `service.namespace` resource attribute
+from logs before forwarding to Loki so that OTel-SDK-instrumented apps
+that set both `service.namespace` and `service.name` do not see them
+concatenated into the `service_name` Loki label (upstream issue #32497).
+This is on by default and requires no inventory configuration.
+
 ## Building your own inventory
 
 The example inventory at `inventory/example-homelab/` is one worked

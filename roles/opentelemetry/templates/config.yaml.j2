@@ -52,6 +52,17 @@ processors:
     send_batch_size: {{ opentelemetry_batch_send_batch_size }}
     send_batch_max_size: {{ opentelemetry_batch_send_batch_max_size }}
 
+  # D-124: strip service.namespace from resource attributes so Loki's
+  # service_name heuristic does not concatenate namespace/service into
+  # the label value (upstream issue #32497). Logs pipeline only (D-126).
+  # Always-on (D-127); modern path-qualified OTTL syntax per
+  # transformprocessor v0.152.0 README (legacy context-block form still
+  # works -- fall back to it if a future version regresses).
+  transform/strip_namespace:
+    error_mode: ignore
+    log_statements:
+      - delete_key(resource.attributes, "service.namespace")
+
 exporters:
   # OTel -> Loki via OTLP/HTTP. D-44 AMENDED -- the `loki` exporter was
   # REMOVED from contrib in v0.131.0 (see RESEARCH Finding 2). The
@@ -136,7 +147,7 @@ service:
 
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, batch, transform/strip_namespace]   # D-125: append after batch (D-45 order preserved); D-126 logs-only
       exporters: [otlphttp/loki]   # D-44 AMENDED
 
     metrics:
