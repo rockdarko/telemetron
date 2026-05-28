@@ -59,11 +59,12 @@
 # Used as the gate for steps 5 and 6 (layout assign/apply).
 # Defensive dual-check: rc != 0 is the primary gate (handles unexpected
 # output format); 'NO ROLE ASSIGNED' in stdout is secondary confirmation.
-# If the node has no zone assignment the output includes 'NO ROLE ASSIGNED'.
+# 'garage status' is the correct command -- the 'NO ROLE ASSIGNED' string
+# appears in the per-node status column, not in 'garage layout show' output.
 - name: Check Garage layout status
   community.docker.docker_container_exec:
     container: "{{ garage_container_name }}"
-    command: /garage layout show
+    command: /garage status
   register: garage_layout_show
   changed_when: false
   tags:
