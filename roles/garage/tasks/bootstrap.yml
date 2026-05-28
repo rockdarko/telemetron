@@ -134,22 +134,13 @@
     - garage-bootstrap
 
 # Step 7c: set credential facts from the host file (re-run path).
+# File format: two lines -- line 1: key_id=<value>, line 2: secret=<value>.
+# regex_search with multiline (?m) is robust to trailing newline + matches
+# regardless of YAML-vs-Jinja newline-literal interpretation.
 - name: Set Garage S3 credential facts from host file
   ansible.builtin.set_fact:
-    garage_s3_access_key_id: >-
-      {{
-        (garage_creds_raw.content | b64decode).split('\n')
-        | select('match', '^key_id=')
-        | first
-        | regex_replace('^key_id=', '')
-      }}
-    garage_s3_secret_key: >-
-      {{
-        (garage_creds_raw.content | b64decode).split('\n')
-        | select('match', '^secret=')
-        | first
-        | regex_replace('^secret=', '')
-      }}
+    garage_s3_access_key_id: "{{ (garage_creds_raw.content | b64decode) | regex_search('(?m)^key_id=(.+)$', '\\1') | first }}"
+    garage_s3_secret_key: "{{ (garage_creds_raw.content | b64decode) | regex_search('(?m)^secret=(.+)$', '\\1') | first }}"
   when: garage_creds_file.stat.exists
   tags:
     - garage
