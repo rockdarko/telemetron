@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1.0
-milestone_name: Garage migration + backlog sweep
-status: milestone_complete
-stopped_at: v1.1.0 archived; awaiting v1.2.0 scoping via /gsd-new-milestone
-last_updated: "2026-05-28T19:10:00.000Z"
-last_activity: 2026-05-28 -- v1.1.0 milestone closed, tagged, archive files created
+milestone: v1.2.0
+milestone_name: Operator Undeploy Path
+status: planning
+last_updated: "2026-05-28T23:33:45.246Z"
+last_activity: 2026-05-28
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,14 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 ## Current Position
 
-Milestone: v1.1.0 — Garage migration + backlog sweep — SHIPPED 2026-05-28
-Status: milestone_complete
-Next: v1.2.0 scoping via /gsd-new-milestone (TBD)
-Last activity: 2026-05-28 -- v1.1.0 milestone closed, tagged, archive files created
-Archive:
-  - .planning/milestones/v1.1.0-ROADMAP.md
-  - .planning/milestones/v1.1.0-REQUIREMENTS.md
-  - tag v1.1.0
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-28 — Milestone v1.2.0 started
 
 ## Performance Metrics
 

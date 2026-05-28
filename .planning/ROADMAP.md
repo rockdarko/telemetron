@@ -4,7 +4,7 @@
 
 - ✅ **v1.0.0 — M1 — LGTM observability plane on Docker** — Phases 1-6 (shipped 2026-05-19 on leviathan)
 - ✅ **v1.1.0 — Garage migration + backlog sweep** — Phases 7-9 (shipped 2026-05-28 on leviathan)
-- 📋 **v1.2.0 — TBD** (not yet started — run `/gsd-new-milestone` to define)
+- 📋 **v1.2.0 — Operator Undeploy Path** — Phases 10-12 (in progress — started 2026-05-28)
 
 ## Phases
 
@@ -40,13 +40,59 @@ Tag: `v1.1.0`
 
 </details>
 
-### 📋 v1.2.0 — TBD (not yet started)
+### 📋 v1.2.0 — Operator Undeploy Path (Phases 10-12)
 
-Run `/gsd-new-milestone` to scope the next milestone. Candidate themes from CLAUDE.md + carried-forward requirements:
-- Hook router (ALERT-V2-01..05) — Alertmanager webhook → CI bridge
-- Distributed-mode (DIST-01..03) — multi-host Loki/Tempo/Mimir + HAProxy + Kubernetes/OpenShift path
-- arm64 / multi-arch (ARCH-01..02)
-- Documentation deep-dives (DOCS-V2-01..07)
+- [ ] **Phase 10: Per-Role Uninstall Surface** — every deploy role gains `tasks/uninstall.yml`; container stop + removal, role-private config dir cleanup, named volumes preserved by default; `roles/README.md` Gate 9 documents the contract (TBD plans)
+- [ ] **Phase 11: Undeploy Orchestrator + Safety + Idempotency** — `playbooks/undeploy_docker.yml` reverse-order orchestrator; three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`); pre-task WARNING messages for irreversible ops; live UAT on leviathan (idempotency + full cycle); same `--ask-vault-pass` and `--tags <role>` UX as deploy (TBD plans)
+- [ ] **Phase 12: Documentation Cascade** — `docs/quickstart.md` gains `## Removing Telemetron` section; root `README.md` gains "When you're done evaluating" link; all 12 deployed role READMEs + nfsd gain one-line Uninstall reference; `roles/README.md` Gate 9 wording finalized (TBD plans)
+
+## Phase Details
+
+### Phase 10: Per-Role Uninstall Surface
+
+**Goal**: Every deploy role can cleanly remove its own container and config artifacts, leaving named Docker volumes untouched, so the Phase 11 orchestrator has a tested uninstall task to call for each role.
+**Depends on**: Nothing — all changes are confined to individual role directories
+**Requirements**: UNDEPLOY-02
+**Success Criteria** (what must be TRUE):
+  1. `roles/<name>/tasks/uninstall.yml` exists for all 12 deployed roles (alertmanager, fluentbit, garage, grafana, karma, loki, mimir, node_exporter, opentelemetry, prometheus, tempo) plus nfsd
+  2. Running a role's uninstall task stops and removes its container; `docker ps -a | grep <role>` returns nothing afterward
+  3. Running a role's uninstall task removes the role's config directory under `/opt/telemetron/<role>/`; `ls /opt/telemetron/<role>/` returns "no such file" afterward
+  4. Running a role's uninstall task leaves its named Docker volume intact; `docker volume ls | grep telemetron_<role>` still returns the volume
+  5. Re-running the uninstall task on an already-clean host (container absent, config dir absent) produces `changed=0` — uninstall is idempotent
+  6. `roles/README.md` documents "every deploy role ships a tested uninstall path" as Gate 9 alongside the existing 8 gates
+**Plans**: TBD
+
+---
+
+### Phase 11: Undeploy Orchestrator + Safety + Idempotency
+
+**Goal**: Operators can run a single `ansible-playbook playbooks/undeploy_docker.yml` command against their inventory to cleanly remove the Telemetron stack from a Docker host, with conservative defaults that preserve data and opt-in flags for irreversible cleanup.
+**Depends on**: Phase 10 (per-role uninstall tasks must exist before the orchestrator calls them)
+**Requirements**: UNDEPLOY-01, PURGE-01, PURGE-02, OPS-01, OPS-02
+**Success Criteria** (what must be TRUE):
+  1. Running `ansible-playbook playbooks/undeploy_docker.yml` against `inventory/example-homelab` or `inventory/leviathan` removes all 12 deployed containers and the `telemetron` Docker bridge network; `docker ps -a | grep telemetron` and `docker network ls | grep telemetron` both return nothing afterward
+  2. After a default (no extra-vars) undeploy run, all named Docker volumes under the `telemetron_*` prefix are still present; `docker volume ls | grep telemetron_` returns the same list as before
+  3. Running the playbook twice in sequence on an already-clean host produces `changed=0` in the PLAY RECAP of the second run; running it after a partial deploy (some roles up, some not) removes whatever is present and reports `failed=0`
+  4. Running with `--extra-vars "telemetron_purge_data=true"` removes all `telemetron_*` named Docker volumes; each irreversible flag emits a "WARNING: irreversible" pre-task message before acting
+  5. Running `--extra-vars "telemetron_purge_host_dirs=true"` removes the `/opt/telemetron/` tree (including the Garage S3 credential file at `/opt/telemetron/garage/s3-credentials`); running `--extra-vars "telemetron_purge_images=true"` removes the exact pinned image tags Telemetron deployed without touching other tags on the host
+  6. After a default undeploy, running `ansible-playbook playbooks/deploy_docker.yml` brings the full 12-container stack back up to healthy; after a purge-data undeploy, the re-deploy starts from scratch with new Garage S3 credentials and empty Loki/Tempo/Mimir buckets
+**Plans**: TBD
+
+---
+
+### Phase 12: Documentation Cascade
+
+**Goal**: Operators can find the complete undeploy story from first contact (root README) through to the reference details (quickstart.md) and per-role uninstall hints, without having to read source code or run `--help`.
+**Depends on**: Phase 11 (final playbook flags and behavior must be settled before docs are written)
+**Requirements**: DOCS-01, DOCS-02
+**Success Criteria** (what must be TRUE):
+  1. `docs/quickstart.md` contains a `## Removing Telemetron` section that covers the default conservative command line, all three opt-in purge flags with example invocations, the order-of-operations expectation (containers must come down before volumes can be purged), and the manual `docker volume rm` / `docker image rm` fallback
+  2. Root `README.md` Quick Start section contains a "When you're done evaluating" line that links to `docs/quickstart.md#removing-telemetron`
+  3. Every deployed role README (12 roles + nfsd) contains a one-line "Uninstall:" entry in its Operator Surface section pointing to `playbooks/undeploy_docker.yml --tags <role>`
+  4. `roles/README.md` documents Gate 9 ("every deploy role ships a tested uninstall path") in the per-role port-acceptance gates section, in the same style and detail level as Gates 1-8
+**Plans**: TBD
+
+---
 
 ## Progress
 
@@ -62,9 +108,12 @@ Run `/gsd-new-milestone` to scope the next milestone. Candidate themes from CLAU
 | 7     | v1.1.0    | 1/1            | Complete    | 2026-05-27 |
 | 8     | v1.1.0    | 3/3            | Complete    | 2026-05-27 |
 | 9     | v1.1.0    | 2/2            | Complete    | 2026-05-28 |
+| 10    | v1.2.0    | 0/?            | Not started | -          |
+| 11    | v1.2.0    | 0/?            | Not started | -          |
+| 12    | v1.2.0    | 0/?            | Not started | -          |
 
 ## Backlog
 
 Empty at v1.1.0 close. All four prior M1 backlog items (999.1–999.4) were absorbed into Phases 7 + 9 of v1.1.0 (see `.planning/milestones/v1.1.0-ROADMAP.md`).
 
-New backlog items, if any, will be added under v1.2.0 scoping.
+v1.2.0 scope is fully mapped across Phases 10-12 — no backlog items at milestone start.

@@ -24,18 +24,27 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 
 ### Active
 
-<!-- v1.2.0 not yet scoped. Run /gsd-new-milestone to define next milestone. -->
+<!-- Milestone v1.2.0: Operator undeploy path -->
 
-## Current Milestone: TBD (run `/gsd-new-milestone` to scope v1.2.0)
+## Current Milestone: v1.2.0 — Operator Undeploy Path
 
-Telemetron is in a shippable state at v1.1.0 with full live UAT validation. Candidate themes for the next milestone, carried forward from deferred v1.0.0 + v1.1.0 requirement families:
+**Goal:** Ship a symmetric `playbooks/undeploy_docker.yml` so operators can cleanly remove Telemetron from a host without `docker prune` brute force or hand-by-hand container/network/volume teardown.
 
-- **Hook router (ALERT-V2-01..05)** — Alertmanager webhook receiver → CI/automation endpoint with per-rule label allowlist, per-(alertname, job) rate limiting, Jenkins `buildWithParameters` auth from vault, sample runbook bundles. The original Flask design is preserved in `.planning/milestones/v1.0.0-phases/04-alert-plane/04-DISCUSSION-LOG.md`.
-- **Distributed / scale-out (DIST-01..03)** — Multi-host example inventory + distributed-mode Loki/Tempo/Mimir + HAProxy role + Kubernetes / OpenShift deployment path (`playbooks/deploy_kube.yml`).
-- **Multi-arch (ARCH-01..02)** — arm64 support tested on Pi 5 / Apple Silicon; multi-arch CI matrix.
-- **Documentation deep-dives (DOCS-V2-01..07)** — alerts.md, retention.md, fluentbit-timestamps.md, hook-router.md, instrumentation-otel.md, migration-from-inspq.md, metrics.md.
+**Target features:**
+- [ ] `playbooks/undeploy_docker.yml` — reverse-order orchestrator mirroring `deploy_docker.yml`; default run removes the 12 deployed containers + the `telemetron` Docker bridge network. Same `--ask-vault-pass` UX, same `--tags <role>` targeted-re-run pattern, same `inventory/example-homelab` and `inventory/leviathan` compatibility.
+- [ ] Per-role `tasks/uninstall.yml` for every deploy role (alertmanager, fluentbit, garage, grafana, karma, loki, mimir, nfsd opt-in, node_exporter, opentelemetry, prometheus, tempo); `roles/README.md` documents the contract as a new gate.
+- [ ] Opt-in purge flags for irreversible steps — `telemetron_purge_data=true` (named Docker volumes), `telemetron_purge_host_dirs=true` (`/opt/telemetron`), `telemetron_purge_images=true` (pinned images). Conservative by default: volumes + host-dirs + images stay unless explicitly purged.
+- [ ] Idempotency — second `undeploy_docker.yml` run on an already-clean host produces `changed=0`. Matches the deploy-side M1 quality bar.
+- [ ] Documentation — `docs/quickstart.md` gains a `## Removing Telemetron` section; root `README.md` and per-role READMEs link to it. Covers the conservative default, the three purge flags, and the order-of-operations expectation (e.g. you cannot purge the volume of a container that's still running, so containers come down first).
 
-No commitment yet — `/gsd-new-milestone` asks what the milestone is *for* before scoping.
+**Deferred to later milestones (not in v1.2.0):**
+- Preflight check playbook ("is this host ready / does it have prior state?")
+- Backup/restore for stateful volumes (Garage S3, Prometheus TSDB, Grafana SQLite, Alertmanager state)
+- Secrets rotation
+- Hook router (ALERT-V2-01..05 — still deferred)
+- Distributed / scale-out (DIST-01..03 — still deferred)
+- Multi-arch (ARCH-01..02 — still deferred)
+- Documentation deep-dives (DOCS-V2-01..07 — still deferred)
 
 ### Out of Scope
 
@@ -127,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-28 after v1.1.0 milestone close — Garage migration + backlog sweep SHIPPED on leviathan. Full LGTM observability plane (12 deployed roles + nfsd opt-in 13th slot, MinIO replaced by Garage) deployable via a single `ansible-playbook` against `inventory/example-homelab/`; live UAT third-deploy idempotency PASS (`ok=135 changed=0 failed=0`); Loki labels reconciled on `service_name`. 9/9 v1.1.0 requirements validated and archived to `.planning/milestones/v1.1.0-REQUIREMENTS.md`. Awaiting v1.2.0 milestone scoping via `/gsd-new-milestone`.*
+*Last updated: 2026-05-28 after v1.2.0 milestone scope lock — Operator Undeploy Path. Goal: ship `playbooks/undeploy_docker.yml` symmetric with the deploy playbook so operators can cleanly remove Telemetron from a host. Conservative-by-default safety tiering; opt-in purge flags for irreversible volume/host-dir/image removal. Live UAT on leviathan is the acceptance bar. v1.1.0 milestone close: 9/9 requirements validated, archived to `.planning/milestones/v1.1.0-REQUIREMENTS.md`, tagged `v1.1.0`.*
