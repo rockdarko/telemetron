@@ -102,3 +102,21 @@ Applies to the `roles/grafana/` role specifically (the only role with cross-comp
 4. Assert that `/api/datasources/uid/loki` returns a JSON body containing `derivedFields` and `"datasourceUid":"tempo"` (UI-04 wiring).
 
 Auth: Basic Auth with admin + `grafana_admin_password`. In-network via `curlimages/curl:8.10.1` one-shot containers on the `telemetron` bridge (D-54 / D-69 pattern). This is THE M1 acceptance heuristic for "everything wired correctly" -- if Grafana boots and Gate 9 passes, the whole pre-Phase-5 stack is validated end-to-end.
+
+**10. Per-role uninstall contract (UNDEPLOY-02; D-148):**
+
+Every deploy role MUST ship a tested uninstall path. The contract has five parts:
+
+(a) `tasks/uninstall.yml` exists in the role and is invocable by the orchestrator via `include_role: { name: <role>, tasks_from: uninstall }` (D-132). The file references role variables from the role's own `defaults/main.yml` directly (D-134) -- no hardcoded container names, no hardcoded paths.
+
+(b) Stops and removes the role's container via `community.docker.docker_container` with `state: absent` and `keep_volumes: true`. The `keep_volumes: true` argument is the explicit mechanism that prevents the docker module from touching the named Docker volume(s) the container is attached to -- the volume is preserved by default per UNDEPLOY-02.
+
+(c) Removes role-private host artifacts under `/opt/telemetron/<role>/` (the role's `<role>_config_dir`) via `ansible.builtin.file` with `state: absent`. Removal is scoped to the role's own subdirectory only; the parent `/opt/telemetron/` is the orchestrator's concern, not the role's (D-144).
+
+(d) Does NOT touch named Docker volumes. The volume-preservation default is the most operator-protective posture for a homelab: an accidental `undeploy` followed by `deploy` re-bootstraps cleanly against surviving data. Wholesale named-volume removal is reserved for Phase 11's `telemetron_purge_data=true` flag, not anything a per-role `uninstall.yml` does.
+
+(e) Idempotent: re-running the uninstall against an already-clean host (container absent, config directory absent) produces `changed=0` in the PLAY RECAP. The mechanism is to trust `state: absent` semantics on the underlying modules (`community.docker.docker_container`, `ansible.builtin.file`, `ansible.builtin.blockinfile`) -- all return `changed: false` when the target is already gone. No `docker_container_info` / `stat` pre-checks (D-141). No `notify:` handlers (D-142) -- the container is being removed, there is nothing to restart. Tasks carry the role tag only, no `<role>-uninstall` sub-tag (D-133).
+
+`nfsd` follows the same contract with its host-package adaptation -- it removes only the Telemetron-managed `/etc/exports` block via `ansible.builtin.blockinfile` with `state: absent` and the IDENTICAL marker string (`# {mark} TELEMETRON NFSD ANSIBLE MANAGED BLOCK`) used by `roles/nfsd/tasks/exports.yml`, then runs `exportfs -ra` so the kernel re-reads its export table. It does NOT remove OS packages (`nfs-kernel-server` / `nfs-utils`), does NOT stop or disable `nfs-server.service`, and does NOT touch `nfsd_share_root` (`/srv/telemetron-nfs/`) or per-remote-host subdirs -- those may hold operator log data that arrived via NFS from external hosts (D-136..D-140).
+
+Orchestrator behaviour -- purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`), reverse-order role iteration in `playbooks/undeploy_docker.yml`, WARNING messages for irreversible operations -- is out of Gate 10 scope; that will be Gate 11 in Phase 11 if it materializes as a cross-cutting concern. Established in Phase 10 plans 10-01 through 10-05; future role additions inherit this contract.
