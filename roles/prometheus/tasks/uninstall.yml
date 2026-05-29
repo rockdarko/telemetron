@@ -1,0 +1,26 @@
+---
+# roles/prometheus/tasks/uninstall.yml
+# Per-role uninstall surface for Prometheus (Phase 10 / UNDEPLOY-02).
+# Named volume {{ prometheus_data_volume }} (default: telemetron_prometheus_data)
+# is intentionally PRESERVED -- volume removal is Phase 11's concern (driven
+# by telemetron_purge_data=true). Phase 11's playbooks/undeploy_docker.yml
+# invokes this file via `include_role: { name: prometheus, tasks_from: uninstall }`
+# (D-132). Inverts the deploy sequence in tasks/main.yml minus volume +
+# image removal; the single `file: state=absent` on prometheus_config_dir
+# is recursive by Ansible default and handles the nested rules/ subdir.
+# Carries no notify: (D-142) and only the role tag (D-133).
+
+- name: Remove prometheus container
+  community.docker.docker_container:
+    name: "{{ prometheus_container_name }}"
+    state: absent
+    keep_volumes: true
+  tags:
+    - prometheus
+
+- name: Remove prometheus config directory
+  ansible.builtin.file:
+    path: "{{ prometheus_config_dir }}"
+    state: absent
+  tags:
+    - prometheus
