@@ -65,7 +65,6 @@
     keep_volumes: true
   tags:
     - garage
-    - garage-uninstall
 
 # Task 2 (D-145): WARN the operator -- separately named so it appears as
 # its own line in PLAY OUTPUT, not as a silent side effect of the
@@ -75,7 +74,6 @@
     msg: "WARNING: removing Garage S3 credentials at {{ garage_s3_credentials_file }} -- next deploy will auto-generate a new S3 key"
   tags:
     - garage
-    - garage-uninstall
 
 # Task 3 (D-145): Remove the persisted S3 credentials file from the host.
 # The next deploy will hit the first-run branch in bootstrap.yml and
@@ -86,7 +84,6 @@
     state: absent
   tags:
     - garage
-    - garage-uninstall
 
 # Task 4 (D-145): Remove the rendered Garage config directory from the
 # host. The next deploy re-renders garage.toml and the parent-dir bind
@@ -97,4 +94,3 @@
     state: absent
   tags:
     - garage
-    - garage-uninstall
