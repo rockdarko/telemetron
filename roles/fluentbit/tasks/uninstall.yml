@@ -1,0 +1,30 @@
+---
+# roles/fluentbit/tasks/uninstall.yml
+# Phase 10 per-role uninstall surface for fluentbit (UNDEPLOY-02).
+#
+# PRESERVATION CONTRACT (D-50): the `fluentbit_buffer_volume` named Docker
+# volume (`telemetron_fluentbit_buffer`, mounted at /var/log/flb-storage) is
+# the crash-safe Fluent Bit filesystem log buffer. This file MUST NOT remove
+# it. Wholesale removal is Phase 11's `telemetron_purge_data=true` flag.
+#
+# Host bind sources `/var/log` and `/var/lib/docker/containers` are RO bind
+# mounts owned by the host -- uninstall MUST NEVER touch them. Once the
+# container is removed, the bind mount references vanish with the container.
+#
+# Invoked by Phase 11's orchestrator via
+# `include_role: { name: fluentbit, tasks_from: uninstall }` (D-132).
+
+- name: Remove fluentbit container
+  community.docker.docker_container:
+    name: "{{ fluentbit_container_name }}"
+    state: absent
+    keep_volumes: true
+  tags:
+    - fluentbit
+
+- name: Remove fluentbit config directory
+  ansible.builtin.file:
+    path: "{{ fluentbit_config_dir }}"
+    state: absent
+  tags:
+    - fluentbit
