@@ -1,0 +1,51 @@
+---
+# roles/nfsd/tasks/uninstall.yml
+# Phase 10 per-role uninstall surface for nfsd (UNDEPLOY-02).
+# nfsd is the ONLY host-package role in M1, so its uninstall is the most
+# differentiated of the set: there is no container to remove and no
+# role-private /opt/telemetron/<role>/ directory to delete. The only
+# Telemetron-managed surface on the host is the block of lines this role
+# wrote into /etc/exports via blockinfile.
+#
+# WHAT THIS UNINSTALL DOES:
+#   1. Removes the Telemetron-managed block from /etc/exports using
+#      blockinfile state=absent with the byte-identical marker from
+#      roles/nfsd/tasks/exports.yml line 10 (D-137).
+#   2. Runs `exportfs -ra` so the kernel re-reads /etc/exports and
+#      forgets the just-removed exports (D-139). Equivalent to the
+#      `reload nfsd exports` handler but invoked as an inline task --
+#      uninstall paths do NOT notify handlers (D-142).
+#
+# WHAT THIS UNINSTALL INTENTIONALLY DOES NOT DO:
+#   - OS packages intentionally NOT removed per D-136. `nfs-kernel-server`
+#     (Debian) / `nfs-utils` (RedHat) stay installed; the operator may
+#     have been using NFS on this host before Telemetron was deployed,
+#     and auto-purge would clobber unrelated workloads.
+#   - Service intentionally NOT stopped per D-139. `nfs-server.service`
+#     stays running and enabled for the same operator-friendly reason.
+#   - Share root intentionally NOT removed per D-138. `nfsd_share_root`
+#     (default /srv/telemetron-nfs) and per-remote-host subdirs may hold
+#     log files arrived via NFS from external hosts -- operator data,
+#     not role-private state.
+#   - Gating on enable_nfsd happens at the Phase 11 orchestrator level
+#     per D-140 -- the orchestrator's `include_role: { name: nfsd,
+#     tasks_from: uninstall }` carries `when: enable_nfsd | default(false)
+#     | bool`, symmetric with the deploy-side gate in
+#     playbooks/deploy_docker.yml. This file itself is unconditional.
+
+- name: Remove Telemetron-managed /etc/exports block
+  ansible.builtin.blockinfile:
+    path: /etc/exports
+    marker: "# {mark} TELEMETRON NFSD ANSIBLE MANAGED BLOCK"
+    state: absent
+  become: true
+  tags:
+    - nfsd
+
+- name: Re-export NFS shares after block removal
+  ansible.builtin.command:
+    cmd: exportfs -ra
+  changed_when: false
+  become: true
+  tags:
+    - nfsd
