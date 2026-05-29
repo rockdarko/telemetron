@@ -1,0 +1,31 @@
+---
+# roles/opentelemetry/tasks/uninstall.yml
+# Phase 10 per-role uninstall surface for opentelemetry (UNDEPLOY-02).
+#
+# OTel Collector is stateless -- no named volume exists; nothing to
+# preserve at the volume layer. keep_volumes: true is set on the
+# container task for shape consistency with the rest of the Phase 10
+# surface (no-op documents intent).
+#
+# The deploy container RO-bind-mounts the host docker socket (see
+# tasks/main.yml `mounts:` block) so the docker_stats receiver can
+# read container stats. This uninstall MUST NEVER `file: state=absent`
+# the host socket -- once the container is removed, the bind
+# reference vanishes with it.
+#
+# Phase 11 invokes via `include_role: { name: opentelemetry, tasks_from: uninstall }` (D-132).
+
+- name: Remove opentelemetry container
+  community.docker.docker_container:
+    name: "{{ opentelemetry_container_name }}"
+    state: absent
+    keep_volumes: true
+  tags:
+    - opentelemetry
+
+- name: Remove opentelemetry config directory
+  ansible.builtin.file:
+    path: "{{ opentelemetry_config_dir }}"
+    state: absent
+  tags:
+    - opentelemetry
