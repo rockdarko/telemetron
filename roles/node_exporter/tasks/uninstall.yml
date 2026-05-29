@@ -1,0 +1,26 @@
+---
+# roles/node_exporter/tasks/uninstall.yml
+# Phase 10 per-role uninstall surface for node_exporter (UNDEPLOY-02).
+#
+# node_exporter has NO `<role>_config_dir` and NO named volume -- this
+# uninstall is a single task by design (D-143). Gate 10 uniformity
+# requires every deploy role have a `tasks/uninstall.yml` so the
+# Phase 11 orchestrator can iterate roles without conditional logic.
+#
+# Host RO-bind sources `/proc`, `/sys`, and `/` (see tasks/main.yml
+# `mounts:` block) are kernel-managed real filesystems -- this
+# uninstall MUST NEVER `file: state=absent` them. Once the container
+# is removed, the bind-mount references vanish with the container.
+#
+# Phase 11 invokes via `include_role: { name: node_exporter, tasks_from: uninstall }` (D-132).
+# keep_volumes: true is set for shape consistency with the rest of the
+# Phase 10 surface even though this role has no named volume (no-op
+# documents intent).
+
+- name: Remove node_exporter container
+  community.docker.docker_container:
+    name: "{{ node_exporter_container_name }}"
+    state: absent
+    keep_volumes: true
+  tags:
+    - node_exporter
