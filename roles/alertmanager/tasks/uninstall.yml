@@ -1,0 +1,24 @@
+---
+# roles/alertmanager/tasks/uninstall.yml
+# Per-role uninstall surface for Alertmanager (Phase 10 / UNDEPLOY-02).
+# Named volume {{ alertmanager_data_volume }} (default: telemetron_alertmanager_data)
+# is intentionally PRESERVED -- volume removal is Phase 11's concern (driven
+# by telemetron_purge_data=true). Phase 11's playbooks/undeploy_docker.yml
+# invokes this file via `include_role: { name: alertmanager, tasks_from: uninstall }`
+# (D-132). Inverts the deploy sequence in tasks/main.yml minus volume +
+# image removal; carries no notify: (D-142) and only the role tag (D-133).
+
+- name: Remove alertmanager container
+  community.docker.docker_container:
+    name: "{{ alertmanager_container_name }}"
+    state: absent
+    keep_volumes: true
+  tags:
+    - alertmanager
+
+- name: Remove alertmanager config directory
+  ansible.builtin.file:
+    path: "{{ alertmanager_config_dir }}"
+    state: absent
+  tags:
+    - alertmanager

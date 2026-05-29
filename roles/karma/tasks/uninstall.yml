@@ -1,0 +1,25 @@
+---
+# roles/karma/tasks/uninstall.yml
+# Per-role uninstall surface for Karma (Phase 10 / UNDEPLOY-02).
+# Karma is stateless -- no named volume to preserve (see defaults/main.yml
+# line 29 comment "no volume -- Karma is stateless"). keep_volumes: true is
+# still set on the container task for consistency and is a documented no-op
+# in this case. Phase 11's playbooks/undeploy_docker.yml invokes this file
+# via `include_role: { name: karma, tasks_from: uninstall }` (D-132).
+# Inverts the deploy sequence in tasks/main.yml minus image removal;
+# carries no notify: (D-142) and only the role tag (D-133).
+
+- name: Remove karma container
+  community.docker.docker_container:
+    name: "{{ karma_container_name }}"
+    state: absent
+    keep_volumes: true
+  tags:
+    - karma
+
+- name: Remove karma config directory
+  ansible.builtin.file:
+    path: "{{ karma_config_dir }}"
+    state: absent
+  tags:
+    - karma
