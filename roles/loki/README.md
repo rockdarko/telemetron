@@ -92,6 +92,18 @@ multi-tenant operation are deferred to a future milestone.
 | `telemetron_loki_data` (named) | `/loki` | Loki data root -- covers tsdb-index, tsdb-cache, chunks, compactor/ (incl. markers/). Persistent across container recreates. Pitfall 12 mitigation -- marker files survive recreate. |
 | `/opt/telemetron/loki/loki.yaml` (bind) | `/etc/loki/loki.yaml` (ro) | Rendered config |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags loki --ask-vault-pass
+```
+
+Named volume `telemetron_loki_data` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 The Loki image is distroless (no shell). The Docker HEALTHCHECK uses

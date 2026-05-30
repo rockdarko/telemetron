@@ -153,6 +153,18 @@ Monolithic only (`-target=all`). Distributed Tempo and the
 | `telemetron_tempo_data` (named) | `/var/tempo` | Tempo data root -- covers wal/, traces/, generator/wal, generator/traces. Persistent across container recreates. |
 | `/opt/telemetron/tempo/tempo.yaml` (bind) | `/etc/tempo.yaml` (ro) | Rendered config |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags tempo --ask-vault-pass
+```
+
+Named volume `telemetron_tempo_data` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 Tempo 2.10.5 is built on the `gcr.io/distroless/static-debian12` base

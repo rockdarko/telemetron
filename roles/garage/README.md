@@ -122,6 +122,19 @@ future milestone and is not part of this role's variable surface.
 | `telemetron_garage_data` | named | `/var/lib/garage/data` | Garage S3 object data blocks. Persistent across container recreates. |
 | `/opt/telemetron/garage/` | bind (read-only) | `/etc/garage` | Host config directory bind-mounted into container. Garage reads `garage.toml` from `/etc/garage/garage.toml`. |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags garage --ask-vault-pass
+```
+
+Named volumes `telemetron_garage_meta` and `telemetron_garage_data` are
+preserved by default. To also remove them:
+`--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 Docker HEALTHCHECK uses a binary-alive proxy: `[CMD, /garage, --version]`.

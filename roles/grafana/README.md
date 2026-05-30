@@ -105,6 +105,20 @@ Postgres-backed HA Grafana is deferred to a future milestone per PROJECT.md (no 
 
 ---
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags grafana --ask-vault-pass
+```
+
+Named volume `telemetron_grafana_data` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
+---
+
 ## Healthcheck
 
 Image `grafana/grafana-oss:13.0.1` ships **no built-in HEALTHCHECK** (RESEARCH Risk 3). The role declares an explicit probe:

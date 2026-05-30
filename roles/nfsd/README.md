@@ -188,3 +188,26 @@ cat /etc/exports
 ```
 
 If you set `enable_nfsd: true` but `nfsd_exports: []`, `showmount -e` returns an empty list and `/etc/exports` does not contain the marker block (the export-management task is skipped). This is the fail-safe state -- the NFS server is running but exposing nothing.
+
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags nfsd --ask-vault-pass
+```
+
+Removes only the `TELEMETRON NFSD ANSIBLE MANAGED BLOCK` from
+`/etc/exports` and re-runs `exportfs -ra`. Does NOT:
+
+- remove OS packages (`nfs-kernel-server` on Debian/Ubuntu, `nfs-utils`
+  on EL); operators may have installed these before deploying nfsd.
+- stop or disable `nfs-server.service`; another service on the host
+  may rely on it.
+- touch `/srv/telemetron-nfs/` (the share root) or per-remote-host
+  subdirectories beneath it; those may hold operator log data that
+  arrived via NFS from external hosts.
+
+No purge flag affects nfsd -- it has no container, no Docker volume,
+and no Docker image, so `telemetron_purge_data`, `telemetron_purge_images`,
+and `telemetron_purge_host_dirs` are all no-ops for this role.
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story.
