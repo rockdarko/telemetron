@@ -267,4 +267,35 @@
       tags:
         - garage
 
-  post_tasks: []
+  # D-150: inverts deploy_docker.yml pre_tasks. Deploy creates the bridge
+  # network first; undeploy removes it LAST after every container is gone.
+  # D-155: parent-only host_dirs purge -- Phase 10 uninstall.yml ALREADY
+  # removes each role's /opt/telemetron/<role>/ subdir under conservative
+  # undeploy; the parent rmdir below only adds the empty-parent removal
+  # on top, gated on the explicit telemetron_purge_host_dirs opt-in flag.
+  post_tasks:
+    - name: Remove the telemetron Docker bridge network
+      community.docker.docker_network:
+        name: "{{ telemetron_network }}"
+        state: absent
+      tags:
+        - always
+        - network
+
+    # D-145 + D-157 + D-159: separately-named WARN BEFORE the destructive
+    # ansible.builtin.file task so it appears as its own line in PLAY OUTPUT
+    # (not as a silent side effect). Single grep-friendly prefix.
+    - name: WARN -- /opt/telemetron host tree will be removed
+      ansible.builtin.debug:
+        msg: "WARNING: irreversible -- /opt/telemetron purge_host_dirs (parent tree)"
+      when: telemetron_purge_host_dirs | default(false) | bool
+      tags:
+        - always
+
+    - name: Remove /opt/telemetron parent host tree
+      ansible.builtin.file:
+        path: "{{ telemetron_config_root | default('/opt/telemetron') }}"
+        state: absent
+      when: telemetron_purge_host_dirs | default(false) | bool
+      tags:
+        - always
