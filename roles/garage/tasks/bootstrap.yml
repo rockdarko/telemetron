@@ -263,6 +263,33 @@
     - garage
     - garage-bootstrap
 
+# ---------- D-112 amendment (Phase 11 G-01 closure): orphan-failure branch ----------
+# Reached when two or more telemetron keys exist in the preserved
+# metadata volume. This should not happen via the playbook -- bootstrap
+# ensures at most one telemetron key per Garage instance. Two or more
+# means an operator (or a buggy prior playbook version) created a
+# duplicate manually. We refuse to guess which key to reuse and fail
+# loudly so the operator can audit + clean up.
+# The msg contains the verbatim workaround command from 11-HUMAN-UAT.md
+# G-01 so operators can copy-paste from PLAY OUTPUT.
+
+- name: FAIL -- multiple telemetron keys in Garage metadata (G-01 orphan)
+  ansible.builtin.fail:
+    msg: |
+      orphan key cleanup needed: {{ garage_existing_telemetron_keys | length }} keys named
+      "{{ garage_s3_key_name }}" exist in Garage metadata. bootstrap.yml refuses to guess
+      which key to reuse. Audit via:
+        docker exec {{ garage_container_name }} /garage key list
+      Then delete the OLD key (the one NOT recorded in /opt/telemetron/garage/s3-credentials
+      if that file existed on a prior deploy; otherwise pick the older Created timestamp):
+        docker exec {{ garage_container_name }} /garage key delete --yes <OLD_KEY_ID>
+      Re-run ansible-playbook -i <inventory> playbooks/deploy_docker.yml.
+      Detected key IDs: {{ garage_existing_telemetron_keys | join(', ') }}
+  when: garage_existing_telemetron_keys | length >= 2
+  tags:
+    - garage
+    - garage-bootstrap
+
 # ---------- Bucket create, allow, verify ----------
 
 # Step 8: create the required buckets.
