@@ -269,6 +269,127 @@ that set both `service.namespace` and `service.name` do not see them
 concatenated into the `service_name` Loki label (upstream issue #32497).
 This is on by default and requires no inventory configuration.
 
+## Removing Telemetron
+
+Undeploy is the symmetric inverse of deploy. The playbook is
+conservative by default: containers and per-role config directories are
+removed, but named Docker volumes, the `/opt/telemetron/` host tree,
+and pinned Docker images are preserved. Three opt-in irreversible flags
+handle full teardown.
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/undeploy_docker.yml \
+                 --ask-vault-pass
+```
+
+Expected PLAY OUTPUT at the start of every run (all flags false):
+
+```text
+WARNING: irreversible operations status:
+  telemetron_purge_data=False
+    (named volumes preserved)
+  telemetron_purge_host_dirs=False
+    (/opt/telemetron/ parent preserved)
+  telemetron_purge_images=False
+    (Docker images preserved)
+```
+
+To undeploy a single role, add `--tags <role>` (same pattern as
+`deploy_docker.yml`).
+
+### Opt-in purge flags
+
+Each flag is irreversible. Pass via `--extra-vars`. Every destructive
+action emits a `WARNING: irreversible -- <role> <action>: <targets>`
+line; grep `^WARNING:` against PLAY OUTPUT for an audit trail. All
+three flags may be combined in a single `--extra-vars` string.
+
+**`telemetron_purge_data`** -- all `telemetron_*` named Docker volumes
+will be removed.
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/undeploy_docker.yml \
+                 --ask-vault-pass \
+                 --extra-vars "telemetron_purge_data=true"
+```
+
+**`telemetron_purge_host_dirs`** -- the `/opt/telemetron/` parent tree
+will be removed (parent-only at orchestrator `post_tasks`; per-role
+subdirs are removed under the default conservative run).
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/undeploy_docker.yml \
+                 --ask-vault-pass \
+                 --extra-vars "telemetron_purge_host_dirs=true"
+```
+
+```text
+WARNING: irreversible -- /opt/telemetron purge_host_dirs (parent tree)
+```
+
+**`telemetron_purge_images`** -- all Telemetron-pinned Docker images
+will be removed.
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/undeploy_docker.yml \
+                 --ask-vault-pass \
+                 --extra-vars "telemetron_purge_images=true"
+```
+
+### Order of operations
+
+Containers come down before any volume or image purge. Each role's
+`uninstall.yml` removes the container first; `purge.yml` runs
+afterward when the relevant flag is set. The `/opt/telemetron/`
+parent-tree removal is `post_tasks`-level after all role tasks
+complete. The `telemetron` Docker bridge network is removed last after
+every container is gone. Operators do not need to compose any manual
+sequencing.
+
+### Garage credentials after conservative undeploy
+
+Conservative undeploy preserves the named `telemetron_garage_meta` and
+`telemetron_garage_data` volumes. The next `deploy_docker.yml` run
+discovers the existing Garage S3 key in the preserved metadata volume,
+reuses its secret, and re-grants it on the surviving buckets; no
+manual cleanup is needed. See `roles/garage/README.md` for the
+bootstrap-internal recovery detail.
+
+### Manual fallback
+
+```bash
+docker volume ls | grep telemetron_
+```
+
+Named volumes (alphabetical): `telemetron_alertmanager_data`,
+`telemetron_fluentbit_buffer`, `telemetron_garage_data`,
+`telemetron_garage_meta`, `telemetron_grafana_data`,
+`telemetron_karma_data` (if any), `telemetron_loki_data`,
+`telemetron_mimir_data`, `telemetron_prometheus_data`,
+`telemetron_tempo_data`.
+
+```bash
+docker images | grep -E 'grafana|loki|tempo|mimir|prom|otel|fluent|karma|alertmanager|garage|node-exporter'
+```
+
+```bash
+# Remove a single named volume after containers are down:
+docker volume rm telemetron_grafana_data
+# Remove all telemetron_* named volumes at once:
+docker volume ls -q --filter "name=telemetron_" | xargs -r docker volume rm
+# Remove a pinned image:
+docker image rm grafana/grafana-oss:13.0.1
+```
+
+Manual fallback is for operators forking the stack or recovering from a
+broken-playbook state; `telemetron_purge_data` and `telemetron_purge_images`
+cover the equivalent automation path. Backup before purge is the
+operator's responsibility until the v1.3.0 backup playbook lands.
+
 ## Building your own inventory
 
 The example inventory at `inventory/example-homelab/` is one worked
