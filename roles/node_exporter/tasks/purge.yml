@@ -1,0 +1,55 @@
+---
+# roles/node_exporter/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml via
+# `include_role: { name: node_exporter, tasks_from: purge }` AFTER
+# `tasks_from: uninstall` for the same role (D-152). The orchestrator's
+# include task is gated on `telemetron_purge_images | default(false) | bool`;
+# this file additionally belt-and-suspenders each task via the same
+# `when:` clause (D-153).
+#
+# IRREVERSIBLE -- once tasks here execute, the pinned Docker image is gone.
+# The pre-action `debug` WARN task (D-145 + D-157 + D-159) ensures the
+# operator sees the event in PLAY OUTPUT.
+#
+# Tag-scoped composition (D-151): every task carries ONLY the `node_exporter`
+# tag (underscore -- matches playbooks/deploy_docker.yml line 50 verbatim),
+# so --tags node_exporter + --extra-vars "telemetron_purge_images=true"
+# purges ONLY node_exporter's artifacts. No sub-tag (D-133).
+#
+# IMAGE-ONLY shape: node_exporter has no named volume (see
+# tasks/uninstall.yml header) -- this file omits the data-purge section
+# entirely. The curl image (node_exporter_curl_image) is shared across
+# multiple roles; operators run `docker image prune` for that cleanup.
+
+# ------------------ telemetron_purge_images section ------------------
+
+- name: WARN -- node_exporter purge_images is about to remove pinned image
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- node_exporter purge_images: {{ node_exporter_image }}:{{ node_exporter_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - node_exporter
+
+# D-154: failed_when:false catches "image in use by non-Telemetron container"
+# without swallowing real errors (e.g., docker daemon unreachable).
+# D-142: NO notify -- destruction paths must not fire deploy-side handlers.
+- name: Remove node_exporter pinned Docker image
+  community.docker.docker_image:
+    name: "{{ node_exporter_image }}:{{ node_exporter_image_tag }}"
+    state: absent
+  failed_when: false
+  register: node_exporter_purge_image_result
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - node_exporter
+
+- name: WARN -- node_exporter image removal skipped (in use)
+  ansible.builtin.debug:
+    msg: "WARNING: node_exporter image {{ node_exporter_image }}:{{ node_exporter_image_tag }} could not be removed (likely in use by a non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - node_exporter_purge_image_result.failed | default(false)
+  tags:
+    - node_exporter
