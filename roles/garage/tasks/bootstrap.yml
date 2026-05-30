@@ -146,6 +146,35 @@
     - garage
     - garage-bootstrap
 
+# ---------- D-112 amendment (Phase 11 G-01 closure): orphan key discovery ----------
+# Before the first-run create branch fires, query Garage's preserved
+# metadata for keys named `{{ garage_s3_key_name }}` so we can:
+#   - take the create branch only when zero exist (true first run),
+#   - take the recovery branch when exactly one exists (orphan from a
+#     conservative undeploy that wiped the host credentials file but
+#     preserved the telemetron_garage_meta volume per D-141),
+#   - fail loudly when two or more exist (operator-introduced duplicate
+#     that we will not silently reuse).
+# Closes 11-VERIFICATION.md G-01 + transitively unblocks 11-HUMAN-UAT.md
+# scenario 4b (G-02). See 11-06-PLAN.md for context.
+
+- name: List existing Garage S3 keys (G-01: detect orphan from preserved metadata)
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage key list
+  register: garage_key_list_raw
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+- name: Set garage_existing_telemetron_keys fact from key list output
+  ansible.builtin.set_fact:
+    garage_existing_telemetron_keys: "{{ garage_key_list_raw.stdout | regex_findall('(?m)^([0-9a-fA-F]+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}"
+  tags:
+    - garage
+    - garage-bootstrap
+
 # Step 7d: create a new Garage S3 key (first-run path, no host file).
 # The key secret is only shown at creation time (Pitfall 3).
 # Output is human-readable text with "Key ID:" and "Secret key:" lines.
@@ -155,7 +184,7 @@
     command: /garage key create {{ garage_s3_key_name }}
   register: garage_key_create_result
   changed_when: true
-  when: not garage_creds_file.stat.exists
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0
   tags:
     - garage
     - garage-bootstrap
@@ -166,7 +195,7 @@
   ansible.builtin.set_fact:
     garage_s3_access_key_id: "{{ garage_key_create_result.stdout | regex_search('Key ID:\\s*(\\S+)', '\\1') | first }}"
     garage_s3_secret_key: "{{ garage_key_create_result.stdout | regex_search('Secret key:\\s*(\\S+)', '\\1') | first }}"
-  when: not garage_creds_file.stat.exists
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0
   tags:
     - garage
     - garage-bootstrap
@@ -180,7 +209,83 @@
       secret={{ garage_s3_secret_key }}
     dest: "{{ garage_s3_credentials_file }}"
     mode: "0600"
-  when: not garage_creds_file.stat.exists
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0
+  tags:
+    - garage
+    - garage-bootstrap
+
+# ---------- D-112 amendment (Phase 11 G-01 closure): recovery branch ----------
+# Reached when:
+#   - the host credentials file is gone (caller: garage uninstall.yml
+#     removed it as designed per D-145), AND
+#   - exactly one telemetron key already exists in the preserved
+#     metadata volume (orphan from the prior deploy whose secret we
+#     never read out because uninstall removed the host file).
+# Recovery path: extract the EXISTING key's secret via
+# `/garage key info --show-secret <KEY_ID>`, populate the same fact
+# pair the first-run branch sets, and re-persist to the host file so
+# the NEXT run's step 7a fast-path hits.
+# This is the D-146 recovery story (roles/garage/tasks/uninstall.yml
+# header) made executable: the OLD key + secret are reused, so
+# `bucket allow --key telemetron` (step 9) sees exactly ONE key
+# named `telemetron` and the existing per-bucket ACLs remain intact.
+# Net effect: Grafana shows OLD pre-undeploy data on redeploy.
+
+- name: Read existing telemetron key info (recovery branch)
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage key info --show-secret {{ garage_existing_telemetron_keys | first }}
+  register: garage_key_info_result
+  changed_when: false
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+
+- name: Set Garage S3 credential facts from existing key info (recovery branch)
+  ansible.builtin.set_fact:
+    garage_s3_access_key_id: "{{ garage_key_info_result.stdout | regex_search('Key ID:\\s*(\\S+)', '\\1') | first }}"
+    garage_s3_secret_key: "{{ garage_key_info_result.stdout | regex_search('Secret key:\\s*(\\S+)', '\\1') | first }}"
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+
+- name: Persist recovered Garage S3 credentials to host file
+  ansible.builtin.copy:
+    content: |
+      key_id={{ garage_s3_access_key_id }}
+      secret={{ garage_s3_secret_key }}
+    dest: "{{ garage_s3_credentials_file }}"
+    mode: "0600"
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+
+# ---------- D-112 amendment (Phase 11 G-01 closure): orphan-failure branch ----------
+# Reached when two or more telemetron keys exist in the preserved
+# metadata volume. This should not happen via the playbook -- bootstrap
+# ensures at most one telemetron key per Garage instance. Two or more
+# means an operator (or a buggy prior playbook version) created a
+# duplicate manually. We refuse to guess which key to reuse and fail
+# loudly so the operator can audit + clean up.
+# The msg contains the verbatim workaround command from 11-HUMAN-UAT.md
+# G-01 so operators can copy-paste from PLAY OUTPUT.
+
+- name: FAIL -- multiple telemetron keys in Garage metadata (G-01 orphan)
+  ansible.builtin.fail:
+    msg: |
+      orphan key cleanup needed: {{ garage_existing_telemetron_keys | length }} keys named
+      "{{ garage_s3_key_name }}" exist in Garage metadata. bootstrap.yml refuses to guess
+      which key to reuse. Audit via:
+        docker exec {{ garage_container_name }} /garage key list
+      Then delete the OLD key (the one NOT recorded in /opt/telemetron/garage/s3-credentials
+      if that file existed on a prior deploy; otherwise pick the older Created timestamp):
+        docker exec {{ garage_container_name }} /garage key delete --yes <OLD_KEY_ID>
+      Re-run ansible-playbook -i <inventory> playbooks/deploy_docker.yml.
+      Detected key IDs: {{ garage_existing_telemetron_keys | join(', ') }}
+  when: garage_existing_telemetron_keys | length >= 2
   tags:
     - garage
     - garage-bootstrap
