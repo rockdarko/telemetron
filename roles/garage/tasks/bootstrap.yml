@@ -173,10 +173,16 @@
   # GK-prefixed key IDs (e.g. `GK1a2b...`). The G+K characters are not hex,
   # so the prior hex-only pattern returned [] for every real key and made
   # the discovery probe a no-op -- G-01 would not have actually closed.
-  # `\S+` is the same pattern step 7e uses to parse `Key ID:` from
-  # `garage key create` output, so the two extraction paths stay consistent.
+  #
+  # Live-UAT followup (2026-05-30): the regex must ALSO skip the `Created`
+  # column. `garage key list` v2 prints 4 columns:
+  #   ID                          Created     Name        Expiration
+  #   GK18...                     2026-05-30  telemetron  never
+  # The first \S+ captures the ID, then \s+\S+ skips the date in column 2,
+  # then \s+telemetron matches the name in column 3. The trailing (?:\s|$)
+  # protects against accidentally matching a name like `telemetron-foo`.
   ansible.builtin.set_fact:
-    garage_existing_telemetron_keys: "{{ garage_key_list_raw.stdout | regex_findall('(?m)^(\\S+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}"
+    garage_existing_telemetron_keys: "{{ garage_key_list_raw.stdout | regex_findall('(?m)^(\\S+)\\s+\\S+\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}"
   tags:
     - garage
     - garage-bootstrap
