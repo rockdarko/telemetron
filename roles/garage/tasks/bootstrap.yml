@@ -214,6 +214,55 @@
     - garage
     - garage-bootstrap
 
+# ---------- D-112 amendment (Phase 11 G-01 closure): recovery branch ----------
+# Reached when:
+#   - the host credentials file is gone (caller: garage uninstall.yml
+#     removed it as designed per D-145), AND
+#   - exactly one telemetron key already exists in the preserved
+#     metadata volume (orphan from the prior deploy whose secret we
+#     never read out because uninstall removed the host file).
+# Recovery path: extract the EXISTING key's secret via
+# `/garage key info --show-secret <KEY_ID>`, populate the same fact
+# pair the first-run branch sets, and re-persist to the host file so
+# the NEXT run's step 7a fast-path hits.
+# This is the D-146 recovery story (roles/garage/tasks/uninstall.yml
+# header) made executable: the OLD key + secret are reused, so
+# `bucket allow --key telemetron` (step 9) sees exactly ONE key
+# named `telemetron` and the existing per-bucket ACLs remain intact.
+# Net effect: Grafana shows OLD pre-undeploy data on redeploy.
+
+- name: Read existing telemetron key info (recovery branch)
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage key info --show-secret {{ garage_existing_telemetron_keys | first }}
+  register: garage_key_info_result
+  changed_when: false
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+
+- name: Set Garage S3 credential facts from existing key info (recovery branch)
+  ansible.builtin.set_fact:
+    garage_s3_access_key_id: "{{ garage_key_info_result.stdout | regex_search('Key ID:\\s*(\\S+)', '\\1') | first }}"
+    garage_s3_secret_key: "{{ garage_key_info_result.stdout | regex_search('Secret key:\\s*(\\S+)', '\\1') | first }}"
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+
+- name: Persist recovered Garage S3 credentials to host file
+  ansible.builtin.copy:
+    content: |
+      key_id={{ garage_s3_access_key_id }}
+      secret={{ garage_s3_secret_key }}
+    dest: "{{ garage_s3_credentials_file }}"
+    mode: "0600"
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+
 # ---------- Bucket create, allow, verify ----------
 
 # Step 8: create the required buckets.
