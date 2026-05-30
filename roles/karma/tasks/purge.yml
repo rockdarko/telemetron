@@ -1,0 +1,56 @@
+---
+# roles/karma/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml via
+# `include_role: { name: karma, tasks_from: purge }` AFTER `tasks_from: uninstall`
+# for the same role (D-152). The orchestrator's include task is gated on
+# `telemetron_purge_images | default(false) | bool`; this file additionally
+# belt-and-suspenders each task via the same `when:` clause (D-153).
+#
+# IRREVERSIBLE -- once tasks here execute, the pinned Docker image is gone.
+# The pre-action `debug` WARN task (D-145 + D-157 + D-159) ensures the
+# operator sees the event in PLAY OUTPUT.
+#
+# Tag-scoped composition (D-151): every task carries ONLY the `karma` tag,
+# so --tags karma + --extra-vars "telemetron_purge_images=true" purges ONLY
+# karma's artifacts. No sub-tag (D-133 -- see commit 8dd06dd Phase 10
+# garage-uninstall sub-tag lesson).
+#
+# IMAGE-ONLY shape: karma is stateless (defaults/main.yml line 29 "no volume
+# -- Karma is stateless"). This file therefore omits the data-purge section
+# entirely -- there is no named volume to remove. The curl image
+# (karma_curl_image) is shared across multiple roles; operators run
+# `docker image prune` for that cleanup -- it is NOT a karma purge concern
+# (per Phase 11 PATTERNS.md "On the curl_image auxiliaries").
+
+# ------------------ telemetron_purge_images section ------------------
+
+- name: WARN -- karma purge_images is about to remove pinned image
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- karma purge_images: {{ karma_image }}:{{ karma_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - karma
+
+# D-154: failed_when:false catches "image in use by non-Telemetron container"
+# without swallowing real errors (e.g., docker daemon unreachable).
+# D-142: NO notify -- destruction paths must not fire deploy-side handlers.
+- name: Remove karma pinned Docker image
+  community.docker.docker_image:
+    name: "{{ karma_image }}:{{ karma_image_tag }}"
+    state: absent
+  failed_when: false
+  register: karma_purge_image_result
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - karma
+
+- name: WARN -- karma image removal skipped (in use)
+  ansible.builtin.debug:
+    msg: "WARNING: karma image {{ karma_image }}:{{ karma_image_tag }} could not be removed (likely in use by a non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - karma_purge_image_result.failed | default(false)
+  tags:
+    - karma
