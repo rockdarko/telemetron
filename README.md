@@ -27,6 +27,11 @@ ansible-playbook -i inventory/example-homelab playbooks/smoke_test.yml \
 The smoke test pushes a synthetic log + metric + trace through the stack
 and confirms visibility in Grafana within 60 seconds.
 
+When you're done evaluating,
+[`docs/quickstart.md#removing-telemetron`](docs/quickstart.md#removing-telemetron)
+documents the symmetric undeploy playbook -- conservative by default
+(volumes preserved); three opt-in flags for irreversible cleanup.
+
 ## What's included
 
 | Component | Image | Purpose |
