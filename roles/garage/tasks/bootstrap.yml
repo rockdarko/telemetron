@@ -169,8 +169,14 @@
     - garage-bootstrap
 
 - name: Set garage_existing_telemetron_keys fact from key list output
+  # CR-11-06-01 fix: use \S+ instead of [0-9a-fA-F]+ to match Garage v2's
+  # GK-prefixed key IDs (e.g. `GK1a2b...`). The G+K characters are not hex,
+  # so the prior hex-only pattern returned [] for every real key and made
+  # the discovery probe a no-op -- G-01 would not have actually closed.
+  # `\S+` is the same pattern step 7e uses to parse `Key ID:` from
+  # `garage key create` output, so the two extraction paths stay consistent.
   ansible.builtin.set_fact:
-    garage_existing_telemetron_keys: "{{ garage_key_list_raw.stdout | regex_findall('(?m)^([0-9a-fA-F]+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}"
+    garage_existing_telemetron_keys: "{{ garage_key_list_raw.stdout | regex_findall('(?m)^(\\S+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}"
   tags:
     - garage
     - garage-bootstrap
@@ -237,6 +243,12 @@
     command: /garage key info --show-secret {{ garage_existing_telemetron_keys | first }}
   register: garage_key_info_result
   changed_when: false
+  # WR-11-06-01 fix: `garage key info --show-secret` returns the S3 secret in
+  # stdout. Without no_log, the secret appears in PLAY OUTPUT under -v and
+  # persists to disk if fact caching is enabled in ansible.cfg. The downstream
+  # set_fact still reads `garage_key_info_result.stdout` -- Ansible retains the
+  # register value even with no_log: true; only the output stream is muted.
+  no_log: true
   when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
   tags:
     - garage
