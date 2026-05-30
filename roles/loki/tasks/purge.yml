@@ -1,0 +1,114 @@
+---
+# roles/loki/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface for Loki (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml (Plan 11-04) via
+# `include_role: { name: loki, tasks_from: purge }` AFTER `tasks_from: uninstall`
+# for the same role (D-152). The orchestrator's include task is gated on
+# `telemetron_purge_data | default(false) | bool or telemetron_purge_images | default(false) | bool`;
+# this file additionally belt-and-suspenders each section via the same `when:`
+# clause (D-153).
+#
+# ---------------- Loki-specific layout (two-image loop) ----------------
+#
+# Single named Docker volume: {{ loki_data_volume }} -> telemetron_loki_data
+# (Loki TSDB index/cache + compactor markers live there per defaults/main.yml D-16/D-17/D-18).
+#
+# TWO pinned images, removed under a single `loop:` over docker_image state=absent:
+#   {{ loki_image }}:{{ loki_image_tag }}             -> grafana/loki:3.7.2
+#   {{ loki_curl_image }}:{{ loki_curl_image_tag }}   -> curlimages/curl:8.10.1
+#
+# Loki + Grafana are the documented two-image-loop roles per
+# .planning/phases/11-undeploy-orchestrator-safety-idempotency/11-CONTEXT.md
+# code-context per-role table + 11-PATTERNS.md section "On the curl_image
+# auxiliaries". The other 8 roles' curl images are shared and not carried in
+# their per-role purge.yml -- operator hygiene (`docker image prune`) covers
+# orphan curl images after undeploy.
+#
+# ---------------- D-154 shared-curl edge case ----------------
+#
+# curlimages/curl is shared with every other Telemetron role's verify probe.
+# If the orchestrator (Plan 11-04) traverses roles in reverse order, the
+# FIRST role to purge_images=true succeeds in removing curlimages/curl and
+# every subsequent role's purge of the SAME image becomes a no-op (or, in
+# the rare case where docker_image races a concurrent pull, reports failed).
+# `failed_when: false` on the docker_image loop catches this without
+# swallowing real errors (e.g., docker daemon unreachable). NOT a blanket
+# error-swallow -- a blanket suppression would hide docker-daemon errors too.
+#
+# ---------------- Relationship to Phase 10 loki/tasks/uninstall.yml ----------------
+#
+# Phase 10's roles/loki/tasks/uninstall.yml already removed the running
+# container + {{ loki_config_dir }} on the host under the conservative-
+# undeploy path. This purge.yml only removes the named VOLUME + the two
+# pinned IMAGES.
+#
+# Tag-scoped composition (D-151, D-133): every task carries the `loki` tag
+# ONLY -- no `loki-data`, no `loki-image`, no `loki-purge` sub-tag. Same
+# defect class as commit 8dd06dd's `garage-uninstall` strip.
+
+# ------------------ telemetron_purge_data section ------------------
+
+# D-145 + D-157 + D-159: WARN BEFORE the single-volume removal. Separately-
+# named debug task so it appears as its own line in PLAY OUTPUT.
+- name: WARN -- loki purge_data is about to remove named volume
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- loki purge_data: {{ loki_data_volume }}"
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - loki
+
+# D-141 idempotency trust -- no failed_when on volume removal (failures
+# should surface). Single named volume; no loop here.
+- name: Remove loki named Docker volume
+  community.docker.docker_volume:
+    name: "{{ loki_data_volume }}"
+    state: absent
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - loki
+
+# ------------------ telemetron_purge_images section ------------------
+
+# D-145 + D-157 + D-159: WARN BEFORE the two-image loop. Single-line
+# grep-friendly format lists BOTH images comma-separated so the operator
+# sees the full destruction scope in PLAY OUTPUT.
+- name: WARN -- loki purge_images is about to remove pinned images
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- loki purge_images: {{ loki_image }}:{{ loki_image_tag }}, {{ loki_curl_image }}:{{ loki_curl_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - loki
+
+# Two-image loop per 11-CONTEXT.md task-count table. D-154 failed_when:false
+# catches the shared-curl edge case (grafana may have already removed
+# curlimages/curl in a reverse-order orchestrator pass). register name is
+# PLURAL (loki_purge_image_results) because Ansible's loop produces a
+# results dict with .results[] entries.
+- name: Remove loki pinned Docker images
+  community.docker.docker_image:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ loki_image }}:{{ loki_image_tag }}"
+    - "{{ loki_curl_image }}:{{ loki_curl_image_tag }}"
+  failed_when: false
+  register: loki_purge_image_results
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - loki
+
+# D-154 surface: if ANY loop entry reports failed, surface a WARN so the
+# operator knows at least one image is still on disk (likely in use by
+# another role's verify probe or a non-Telemetron container). The
+# `.results | selectattr('failed', 'defined') | selectattr('failed') | list`
+# pattern walks the loop-register results and selects only entries whose
+# `failed` flag is truthy.
+- name: WARN -- loki image removal had failures (likely in use)
+  ansible.builtin.debug:
+    msg: "WARNING: one or more loki images could not be removed (check loki_purge_image_results for details -- likely in use by another role's verify probe or non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - loki_purge_image_results.results | selectattr('failed', 'defined') | selectattr('failed') | list | length > 0
+  tags:
+    - loki
