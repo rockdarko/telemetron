@@ -86,6 +86,18 @@ Single mode: stateless single-instance pointing at one Alertmanager (Phase-4 `al
 
 None. Karma is stateless (in-memory alert cache). Container restart loses cache; Karma re-pulls from Alertmanager on next refresh cycle (30s by default). No named Docker volume, no host-path bind for data.
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags karma --ask-vault-pass
+```
+
+No named volume to preserve. To also remove this role's pinned Docker
+image: `--extra-vars telemetron_purge_images=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 By default this role ships with the container-level Docker HEALTHCHECK

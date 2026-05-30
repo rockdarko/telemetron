@@ -79,6 +79,18 @@ Single mode: single-instance monolithic (`--cluster.listen-address=""`). HA clus
 | `telemetron_alertmanager_data` (named) | `/alertmanager` | Silences + notification log (nflog) + active-alert state. Persistent -- losing this volume loses silences and dedup memory across restart (Pitfall 7 replay-storm risk). |
 | `/opt/telemetron/alertmanager/alertmanager.yml` (bind, ro) | `/etc/alertmanager/alertmanager.yml` | Rendered config |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags alertmanager --ask-vault-pass
+```
+
+Named volume `telemetron_alertmanager_data` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 The `quay.io/prometheus/alertmanager:v0.32.1` image ships **no default HEALTHCHECK** (confirmed via `docker inspect`). This role provides an explicit one:

@@ -268,6 +268,18 @@ milestone.
 | `/opt/telemetron/fluentbit/fluent-bit.conf` (bind) | `/fluent-bit/etc/fluent-bit.conf` (ro) | Rendered main config |
 | `/opt/telemetron/fluentbit/parsers.conf` (bind) | `/fluent-bit/etc/parsers.conf` (ro) | Rendered parsers config |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags fluentbit --ask-vault-pass
+```
+
+Named volume `telemetron_fluentbit_buffer` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 Fluent Bit 4.2.3 is built on a distroless base by default -- no shell,

@@ -172,6 +172,18 @@ modes (federation, hierarchical) are deferred to a future milestone.
 | `/opt/telemetron/prometheus/rules/baseline.yml` (bind) | `/etc/prometheus/rules/baseline.yml` (ro) | Rendered baseline rule group |
 | `/opt/telemetron/prometheus/rules/extra.yml` (bind) | `/etc/prometheus/rules/extra.yml` (ro) | Rendered operator-extras rule group |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags prometheus --ask-vault-pass
+```
+
+Named volume `telemetron_prometheus_data` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Retention
 
 `prometheus_retention_time: 15d` (default). Sized deliberately:

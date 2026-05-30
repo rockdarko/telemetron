@@ -161,6 +161,18 @@ unix-socket bind-mount:
 | `/opt/telemetron/opentelemetry/verify-config.yaml` | `/etc/otelcol-contrib/verify-config.yaml` | ro | Verify-only config; never loaded by production container |
 | `/var/run/docker.sock` | `/var/run/docker.sock` | ro | docker_stats receiver socket (D-52) |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags opentelemetry --ask-vault-pass
+```
+
+No named volume to preserve. To also remove this role's pinned Docker
+image: `--extra-vars telemetron_purge_images=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 OTel Collector Contrib 0.152.0 is distroless. The default Docker

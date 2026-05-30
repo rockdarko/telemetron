@@ -126,6 +126,18 @@ Monolithic only (`-target=all`). Single-tenant
 | `telemetron_mimir_data` (named) | `/data` | Mimir data root -- covers tsdb/, tsdb-sync/, compactor/, alertmanager/, ruler/. Persistent across recreates. |
 | `/opt/telemetron/mimir/mimir.yaml` (bind) | `/etc/mimir/mimir.yaml` (ro) | Rendered config |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags mimir --ask-vault-pass
+```
+
+Named volume `telemetron_mimir_data` is preserved by default. To
+also remove it: `--extra-vars telemetron_purge_data=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 Mimir 3.0.6 is built on `gcr.io/distroless/static-debian12` -- no

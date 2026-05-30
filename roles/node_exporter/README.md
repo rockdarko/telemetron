@@ -85,6 +85,18 @@ Three host RO bind-mounts:
 | `/sys`  | `/host/sys`  (ro) | Required for the `diskstats`/`netdev`/`thermal_zone`/`hwmon` collectors |
 | `/`     | `/host/root` (ro, `propagation: rslave`) | Required for the `filesystem` collector; `rslave` so the container sees post-startup bind-mount table changes |
 
+## Uninstall
+
+```bash
+ansible-playbook playbooks/undeploy_docker.yml --tags node_exporter --ask-vault-pass
+```
+
+No named volume to preserve. To also remove this role's pinned Docker
+image: `--extra-vars telemetron_purge_images=true` (irreversible).
+
+See `docs/quickstart.md#removing-telemetron` for the full undeploy story
+(purge flags, manual fallback, order-of-operations).
+
 ## Healthcheck
 
 The image is built `FROM scratch` (no shell, no curl, no wget) and there is no
