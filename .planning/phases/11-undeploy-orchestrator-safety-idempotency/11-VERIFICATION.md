@@ -1,9 +1,19 @@
 ---
 phase: 11-undeploy-orchestrator-safety-idempotency
 verified: 2026-05-29T00:00:00Z
-status: human_needed
-score: 6/6 must-haves structurally verified; 6/6 require live-host UAT
+updated: 2026-05-30T03:40:00Z
+status: gaps_found
+score: 6/6 must-haves structurally verified; 5/7 live UAT scenarios pass; 1 cross-phase gap blocks D-146 recovery on conservative undeploy
 overrides_applied: 0
+gaps:
+  - id: G-01
+    summary: "Orphan Garage S3 key on conservative undeploy + redeploy (Phase 8 bootstrap.yml + Phase 10 garage uninstall.yml interaction)"
+    blocks_success_criteria: [SC-1, SC-6]
+    blocks_scenarios: [1, 4b]
+    detail: "garage uninstall.yml removes /opt/telemetron/garage/s3-credentials while telemetron_garage_meta volume is preserved (correct per D-141). On redeploy, bootstrap.yml creates a NEW telemetron key without checking for an existing one in the metadata, producing two keys with the same name. Subsequent `garage bucket allow --key telemetron` fails with `GetKeyInfo InvalidRequest (400): Bad request: 2 matching keys` on 5 buckets (loki-chunks, tempo-traces, mimir-blocks, mimir-ruler, mimir-alerts)."
+    workaround: "docker exec telemetron-garage /garage key delete --yes <OLD_KEY_ID> before retrying deploy"
+    fix-location: "Phase 8 roles/garage/tasks/bootstrap.yml -- make key creation idempotent (check `garage key list` for existing telemetron key before creating)"
+    fix-plan: "Track as Phase 11 gap-closure plan (e.g. 11-06-PLAN.md) that patches roles/garage/tasks/bootstrap.yml -- the planner will revisit Phase 8 territory but the artifact lands in this phase's directory"
 human_verification:
   - test: "Conservative undeploy on leviathan (SC-1 + SC-2 happy path + D-146 recovery)"
     expected: "`ansible-playbook -i inventory/leviathan playbooks/undeploy_docker.yml` exits with `failed=0`; `docker ps -a | grep telemetron` returns nothing; `docker network ls | grep telemetron` returns nothing; `docker volume ls | grep telemetron_` returns the same volume list as before; immediate `playbooks/deploy_docker.yml` redeploy succeeds; smoke_test.yml round-trip passes within 60s; Grafana panels show OLD pre-undeploy data (D-146 recovery proven)."
@@ -32,9 +42,23 @@ human_verification:
 
 **Phase Goal:** Operators can run a single `ansible-playbook playbooks/undeploy_docker.yml` command against their inventory to cleanly remove the Telemetron stack from a Docker host, with conservative defaults that preserve data and opt-in flags for irreversible cleanup.
 
-**Verified:** 2026-05-29
-**Status:** human_needed
-**Re-verification:** No -- initial verification
+**Verified:** 2026-05-29 (structural) + 2026-05-30 (live UAT on leviathan)
+**Status:** gaps_found
+**Re-verification:** No -- initial verification with live UAT round 1
+
+## Live UAT Results (2026-05-30, leviathan)
+
+| Scenario | Result | Detail |
+|----------|--------|--------|
+| 1. Conservative undeploy + redeploy | FAIL | Undeploy clean (ok=37 changed=23 failed=0). Redeploy hits G-01 orphan key bug. |
+| 2. Back-to-back undeploy idempotency | PASS | Run 1: changed=23. Run 2: changed=0 failed=0. |
+| 3. Partial-deploy idempotency | PASS | After manual removal of 3 containers, undeploy: changed=20 failed=0 (3 fewer = pre-removed no-ops). |
+| 4a. purge_data=true + redeploy | PASS | 8 WARN lines, 0 telemetron volumes post-purge, smoke test ok=9 failed=0. Fresh metadata = no orphan key. |
+| 4b. purge_host_dirs=true + redeploy | SKIPPED | Would hit G-01 (same metadata-preserved path as scenario 1). |
+| 4c. purge_images=true + redeploy | PASS (workaround) | 11 WARN lines, sibling-image edge case verified. Required G-01 workaround for redeploy. |
+| 5. All 3 flags + scratch deploy | PASS | Walk-in-cold proven: 0 volumes/host-dirs/images post-purge, fresh deploy ok=148, smoke ok=9. |
+
+**Tally:** 5 pass, 1 fail (G-01), 1 skip (G-01).
 
 ## Goal Achievement
 
