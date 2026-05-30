@@ -1,16 +1,17 @@
 ---
 phase: 11-undeploy-orchestrator-safety-idempotency
 verified: 2026-05-29T00:00:00Z
-updated: 2026-05-30T12:00:00Z
-status: human_needed
-score: 6/6 must-haves structurally verified; G-01 structurally closed by commit 5eb9833; 2 live-host UAT scenarios pending
+updated: 2026-05-30T12:25:00Z
+status: passed
+score: 6/6 must-haves structurally verified; 7/7 live UAT scenarios pass on leviathan; G-01 + G-02 closed end-to-end
 overrides_applied: 0
 gaps: []
 re_verification:
   previous_status: gaps_found
   previous_score: 6/6 structural (5/7 live UAT; 1 gap)
   gaps_closed:
-    - "G-01: Orphan Garage S3 key on conservative undeploy + redeploy -- roles/garage/tasks/bootstrap.yml patched in commits 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833 (CR-11-06-01 regex fix + WR-11-06-01 no_log fix)"
+    - "G-01: Orphan Garage S3 key on conservative undeploy + redeploy -- roles/garage/tasks/bootstrap.yml patched in commits 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833, 2626989, 319559f. Two regressions caught only by live UAT round 2: (a) unquoted G-01 colon in a task name broke YAML parse at include-role time (fixed 2626989); (b) regex assumed 2-column garage key list output but live v2 output is 4 columns (ID, Created, Name, Expiration), so the Created column had to be skipped (fixed 319559f). End-to-end behavioural closure proven on leviathan: orphan-failure branch (length>=2) fired with correct msg + key IDs + workaround; recovery branch (length==1) reused OLD key's secret via `garage key info --show-secret`, persisted credentials file, bucket allow succeeded on all 5 buckets; deploy ok=142 changed=28 failed=0 + smoke test ok=9 failed=0. Same key (GK18e062108528078b3e7ea4f6) recovered both times, proving D-146 buckets-ACL preservation."
+    - "G-02: Live-UAT scenario 4b -- closed via same recovery branch as G-01. purge_host_dirs=true round-trip on leviathan: undeploy ok=39 changed=24 failed=0 with /opt/telemetron gone; redeploy ok=148 changed=52 failed=0; smoke test ok=9 failed=0."
   gaps_remaining: []
   regressions: []
 human_verification:
@@ -41,8 +42,8 @@ human_verification:
 
 **Phase Goal:** Operators can run a single `ansible-playbook playbooks/undeploy_docker.yml` command against their inventory to cleanly remove the Telemetron stack from a Docker host, with conservative defaults that preserve data and opt-in flags for irreversible cleanup.
 
-**Verified:** 2026-05-29 (structural) + 2026-05-30 (live UAT round 1) + 2026-05-30 (re-verification post-gap-closure)
-**Status:** human_needed
+**Verified:** 2026-05-29 (structural) + 2026-05-30 (live UAT round 1) + 2026-05-30 (re-verification post-gap-closure round 2)
+**Status:** passed
 **Re-verification:** Yes — after G-01 gap closure (commit 5eb9833, plan 11-06)
 
 ---

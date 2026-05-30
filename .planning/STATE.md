@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: Operator Undeploy Path
-status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-05-30T08:16:43.756Z"
+status: ready_to_plan
+stopped_at: Phase 11 complete (6/6) — ready to discuss Phase 12
+last_updated: 2026-05-30T12:23:47.304Z
 last_activity: 2026-05-30 -- Phase 11 execution started
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 18
   percent: 33
 ---
 
@@ -21,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 **Core value:** A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. **Shipped in v1.0.0.**
-**Current focus:** Phase 11 — undeploy-orchestrator-safety-idempotency
+**Current focus:** Phase 12 — documentation cascade
 
 ## Current Position
 
-Phase: 11 (undeploy-orchestrator-safety-idempotency) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 11
-Last activity: 2026-05-30 -- Phase 11 execution started
+Phase: 12
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-05-30
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
+- Total plans completed: 9
 - Average duration: —
 - Total execution time: 0.0 hours
 
@@ -46,6 +46,7 @@ Last activity: 2026-05-30 -- Phase 11 execution started
 | 8     | TBD   | —     | —        |
 | 9     | TBD   | —     | —        |
 | 08 | 3 | - | - |
+| 11 | 6 | - | - |
 
 **Recent Trend:**
 

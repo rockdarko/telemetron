@@ -10,21 +10,21 @@ Requirements for the v1.2.0 patch milestone. Each maps to roadmap phases.
 
 ### Orchestrator (UNDEPLOY)
 
-- [ ] **UNDEPLOY-01**: `playbooks/undeploy_docker.yml` exists at the repo root and runs successfully against both `inventory/example-homelab` and `inventory/leviathan`. Default run with no extra-vars stops + removes the 12 deployed containers (alertmanager, fluentbit, garage, grafana, karma, loki, mimir, node_exporter, opentelemetry, prometheus, tempo, plus `nfsd` only if `enable_nfsd: true` is set) and removes the `telemetron` Docker bridge network. Roles execute in reverse dependency order from `deploy_docker.yml`. Same `--ask-vault-pass` UX. Same `--tags <role>` targeted-re-run pattern (operator can undeploy a single role).
+- [x] **UNDEPLOY-01**: `playbooks/undeploy_docker.yml` exists at the repo root and runs successfully against both `inventory/example-homelab` and `inventory/leviathan`. Default run with no extra-vars stops + removes the 12 deployed containers (alertmanager, fluentbit, garage, grafana, karma, loki, mimir, node_exporter, opentelemetry, prometheus, tempo, plus `nfsd` only if `enable_nfsd: true` is set) and removes the `telemetron` Docker bridge network. Roles execute in reverse dependency order from `deploy_docker.yml`. Same `--ask-vault-pass` UX. Same `--tags <role>` targeted-re-run pattern (operator can undeploy a single role).
 
 - [ ] **UNDEPLOY-02**: Every deploy role has a `tasks/uninstall.yml` (or equivalent removal task block) that stops + removes its container, removes any role-private files/directories it created during deploy (config dir under `/opt/telemetron/<role>/` if the role created one), and does NOT touch the named Docker volume by default. The contract is documented as a new gate in `roles/README.md` alongside the existing 8 cross-cutting gates: every deploy role MUST ship a tested uninstall path. `nfsd` follows the same contract for its host-package cleanup (only if it was installed by this role; do not auto-purge OS packages the operator may have had pre-existing).
 
 ### Safety + data preservation (PURGE)
 
-- [ ] **PURGE-01**: Conservative-by-default — the default `undeploy_docker.yml` run preserves all named Docker volumes (`telemetron_garage_data`, `telemetron_grafana_data`, `telemetron_loki_data`, `telemetron_tempo_data`, `telemetron_mimir_data`, `telemetron_alertmanager_data`, `telemetron_prometheus_data`, `telemetron_karma_data` if any, plus any other volumes the roles created), the `/opt/telemetron/` host directory tree, and the pinned Docker images. After a default undeploy, `docker volume ls | grep telemetron_` returns the same list as before.
+- [x] **PURGE-01**: Conservative-by-default — the default `undeploy_docker.yml` run preserves all named Docker volumes (`telemetron_garage_data`, `telemetron_grafana_data`, `telemetron_loki_data`, `telemetron_tempo_data`, `telemetron_mimir_data`, `telemetron_alertmanager_data`, `telemetron_prometheus_data`, `telemetron_karma_data` if any, plus any other volumes the roles created), the `/opt/telemetron/` host directory tree, and the pinned Docker images. After a default undeploy, `docker volume ls | grep telemetron_` returns the same list as before.
 
-- [ ] **PURGE-02**: Opt-in irreversible flags — `telemetron_purge_data=true` removes every named Docker volume under the `telemetron_*` prefix; `telemetron_purge_host_dirs=true` removes the `/opt/telemetron/` tree on the host; `telemetron_purge_images=true` removes the pinned Docker images (only the exact pinned tags Telemetron deployed — not other tags of the same image that an operator may have pulled separately). Each flag is opt-in via `--extra-vars`; combining them is supported. Each flag emits a one-line "WARNING: irreversible" pre-task message before acting so operators see what they're about to lose. Garage S3 credential file at `{{ garage_config_dir }}/s3-credentials` is purged when `telemetron_purge_host_dirs=true` (the file lives under `/opt/telemetron/garage/`).
+- [x] **PURGE-02**: Opt-in irreversible flags — `telemetron_purge_data=true` removes every named Docker volume under the `telemetron_*` prefix; `telemetron_purge_host_dirs=true` removes the `/opt/telemetron/` tree on the host; `telemetron_purge_images=true` removes the pinned Docker images (only the exact pinned tags Telemetron deployed — not other tags of the same image that an operator may have pulled separately). Each flag is opt-in via `--extra-vars`; combining them is supported. Each flag emits a one-line "WARNING: irreversible" pre-task message before acting so operators see what they're about to lose. Garage S3 credential file at `{{ garage_config_dir }}/s3-credentials` is purged when `telemetron_purge_host_dirs=true` (the file lives under `/opt/telemetron/garage/`).
 
 ### Idempotency + recovery (OPS)
 
-- [ ] **OPS-01**: Back-to-back undeploy of an already-clean host produces `changed=0` in the PLAY RECAP — matches the v1.0/v1.1 idempotency quality bar for the deploy side. A re-run after a partial deploy (e.g. only garage + loki are up, the rest of the playbook failed mid-way) cleanly removes whatever is present and reports `failed=0`.
+- [x] **OPS-01**: Back-to-back undeploy of an already-clean host produces `changed=0` in the PLAY RECAP — matches the v1.0/v1.1 idempotency quality bar for the deploy side. A re-run after a partial deploy (e.g. only garage + loki are up, the rest of the playbook failed mid-way) cleanly removes whatever is present and reports `failed=0`.
 
-- [ ] **OPS-02**: An undeploy followed by a fresh deploy successfully brings the stack back up — `playbook deploy_docker.yml` after `playbook undeploy_docker.yml` (default conservative purge) results in a healthy 12-container stack. If `telemetron_purge_data=true` was used, the re-deploy starts from scratch (Garage bootstrap creates a new S3 key, Loki/Tempo/Mimir start with empty buckets, Grafana SQLite is re-created, etc.).
+- [x] **OPS-02**: An undeploy followed by a fresh deploy successfully brings the stack back up — `playbook deploy_docker.yml` after `playbook undeploy_docker.yml` (default conservative purge) results in a healthy 12-container stack. If `telemetron_purge_data=true` was used, the re-deploy starts from scratch (Garage bootstrap creates a new S3 key, Loki/Tempo/Mimir start with empty buckets, Grafana SQLite is re-created, etc.).
 
 ### Documentation (DOCS)
 
@@ -82,12 +82,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UNDEPLOY-01 | Phase 11 | Pending |
+| UNDEPLOY-01 | Phase 11 | Complete |
 | UNDEPLOY-02 | Phase 10 | Pending |
-| PURGE-01 | Phase 11 | Pending |
-| PURGE-02 | Phase 11 | Pending |
-| OPS-01 | Phase 11 | Pending |
-| OPS-02 | Phase 11 | Pending |
+| PURGE-01 | Phase 11 | Complete |
+| PURGE-02 | Phase 11 | Complete |
+| OPS-01 | Phase 11 | Complete |
+| OPS-02 | Phase 11 | Complete |
 | DOCS-01 | Phase 12 | Pending |
 | DOCS-02 | Phase 12 | Pending |
 

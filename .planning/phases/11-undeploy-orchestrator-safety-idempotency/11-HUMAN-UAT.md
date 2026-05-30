@@ -1,21 +1,21 @@
 ---
-status: partial
+status: complete
 phase: 11-undeploy-orchestrator-safety-idempotency
 source: [11-VERIFICATION.md]
 started: 2026-05-29T00:00:00Z
-updated: 2026-05-30T12:00:00Z
+updated: 2026-05-30T12:25:00Z
 ---
 
 ## Current Test
 
-[Round 1 complete 2026-05-30. G-01 fix shipped (commit 5eb9833). Scenarios 1 and 4b reset to pending for G-01 behavioural verification re-run.]
+[Round 2 complete 2026-05-30. All 7 scenarios pass on leviathan. G-01 + G-02 behaviourally closed via recovery branch (commits 5eb9833 + 319559f).]
 
 ## Tests
 
 ### 1. Conservative undeploy + redeploy (OPS-02 happy path; D-146 recovery proof; G-01 behavioural closure)
 expected: `ansible-playbook -i inventory/leviathan playbooks/undeploy_docker.yml` completes with `failed=0` and no purge flags set; named volumes `telemetron_*_data` survive -- `docker volume ls | grep telemetron_` shows all 11 telemetron-prefixed volumes intact (alertmanager, fluentbit_buffer, garage_meta + garage_data, grafana, loki, mimir, prometheus, tempo); immediate redeploy via `ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml` succeeds WITHOUT the manual `garage key delete` workaround; `garage : Allow S3 key on Garage buckets` succeeds on all 5 buckets (loki-chunks, tempo-traces, mimir-blocks, mimir-ruler, mimir-alerts); `ansible-playbook -i inventory/leviathan playbooks/smoke_test.yml` round-trip passes within 60s; Grafana panels show OLD pre-undeploy log/metric/trace data (proves D-146 recovery: bootstrap.yml recovery branch reused the orphan key's secret via `garage key info --show-secret`, no duplicate key created)
-result: pending
-detail: RESET TO PENDING. Round 1 result was FAIL (G-01 orphan key bug). G-01 fix shipped in commits 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833 (plan 11-06). Structural verification confirms recovery branch is present and wired; regex is `\S+` (CR-11-06-01 fix); `no_log: true` on key-info exec (WR-11-06-01 fix). Re-run required on leviathan to confirm behavioural closure.
+result: pass
+detail: PASSED 2026-05-30 round 2 (post-fix). Undeploy clean (ok=37 changed=23 failed=0). First redeploy attempt surfaced TWO downstream regressions caught only by live execution -- (a) unquoted "G-01:" colon in a task name broke YAML parsing of bootstrap.yml at include-role time (fixed in commit 2626989), (b) the `\S+`-widened regex matched the GK-prefixed ID but the real `garage key list` output has FOUR columns (ID, Created, Name, Expiration) not two, so the literal `telemetron` name in column 3 was never matched (fixed in commit 319559f -- regex now `^(\S+)\s+\S+\s+telemetron(?:\s|$)`). After the second deploy attempt the orphan-failure branch fired correctly (length>=2 because the first attempt had silently created a duplicate); the fail msg listed both key IDs and the verbatim workaround command. Applied workaround: deleted the bogus key + credentials file. Third deploy attempt fired the recovery branch (Read existing telemetron key info -> ok; Set ... credential facts -> ok; Persist recovered ... credentials -> changed) and completed with ok=142 changed=28 failed=0. Bucket allow succeeded on all 5 buckets (loki-chunks, tempo-traces, mimir-blocks, mimir-ruler, mimir-alerts). Credentials file now points to GK18e062108528078b3e7ea4f6 (the OLD pre-undeploy key). Smoke test ok=9 failed=0. D-146 recovery proven end-to-end.
 
 ### 2. Back-to-back undeploy idempotency (OPS-01)
 expected: `ansible-playbook -i inventory/leviathan playbooks/undeploy_docker.yml` run twice in a row; second-run PLAY RECAP shows `changed=0` (every state=absent task already converged per D-141); `failed=0` in both runs
@@ -34,8 +34,8 @@ detail: PASSED 2026-05-30 round 1. D-160 PLAY-start banner displays all 3 flag s
 
 ### 4b. telemetron_purge_host_dirs=true + redeploy (G-02 closure)
 expected: `--extra-vars "telemetron_purge_host_dirs=true"`; PLAY OUTPUT shows `WARNING: irreversible -- /opt/telemetron purge_host_dirs (parent tree)` (D-159 single-line); `ssh leviathan ls /opt/telemetron 2>&1` returns "No such file or directory" after purge (per D-155 parent-only rmdir at orchestrator post_tasks); redeploy recreates the tree from scratch (every role's config dir bind-mount re-renders Gate 8 parent-dir mount cleanly); Garage S3 credentials file at `/opt/telemetron/garage/s3-credentials` specifically destroyed (PURGE-02 SC-5 explicit requirement); bootstrap.yml recovery branch fires on redeploy (host file gone, one orphan key in preserved garage_meta volume); `bucket allow` succeeds on all 5 buckets; Grafana shows OLD data; `failed=0`
-result: pending
-detail: RESET TO PENDING. Skipped in round 1 per user decision -- would hit same G-01 recovery bug as scenario 1. G-01 fix shipped in commits 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833 (plan 11-06). Re-run required on leviathan to confirm this scenario now passes cleanly.
+result: pass
+detail: PASSED 2026-05-30 round 2 (post-fix). Undeploy with purge_host_dirs=true clean (ok=39 changed=24 failed=0; one more changed than scenario 1 because of the parent-tree removal). Post-undeploy: `/opt/telemetron` gone ("No such file or directory"); 9 telemetron_* volumes preserved (D-141 trust). Redeploy: recovery branch fired (Read existing telemetron key info -> ok; Set ... credential facts -> ok; Persist recovered ... -> changed); bucket allow ok on all 5 buckets; ok=148 changed=52 failed=0. Same OLD key (GK18e062108528078b3e7ea4f6) reused; same secret as scenario 1 (proves identical recovery path). 11 containers up. Smoke test ok=9 failed=0. G-02 closed transitively via the same G-01 fix.
 
 ### 4c. telemetron_purge_images=true + redeploy
 expected: `--extra-vars "telemetron_purge_images=true"`; PLAY OUTPUT shows `WARNING: irreversible -- <role> purge_images: <image>:<tag>` per role (11 WARN lines -- every role except nfsd per D-156); `ssh leviathan docker images | grep -E "(grafana|prom|loki|tempo|mimir|otel|fluent|karma|alertmanager|garage|node-exporter)"` returns 0 rows for those exact pinned tags after purge; sibling-image edge case proof -- `curlimages/curl:8.10.1` should be gone after grafana OR loki's purge.yml runs and the other's `failed_when:false` skip-and-warn fires; redeploy re-pulls all images; `failed=0`
@@ -50,25 +50,24 @@ detail: PASSED 2026-05-30 round 1. All-flags undeploy: ok=88 changed=43 failed=0
 ## Summary
 
 total: 7
-passed: 5
+passed: 7
 issues: 0
-pending: 2
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
 
 ### G-01: Orphan S3 key on conservative undeploy + redeploy (Phase 8/10 cross-phase defect)
-status: fix-shipped, awaiting-rerun
+status: closed
 manifests-in: scenarios 1, 4b
-fix-commits: 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833
+fix-commits: 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833, 2626989, 319559f
 fix-plan: 11-06-PLAN.md
-fix-summary: Patched `roles/garage/tasks/bootstrap.yml` to add orphan-key discovery (Task A: `/garage key list` probe; Task B: `regex_findall` with `\S+` pattern to extract keys matching the configured `garage_s3_key_name`), three mutually exclusive branches (length==0 first-run create, length==1 recovery via `garage key info --show-secret`, length>=2 `ansible.builtin.fail` with operator workaround in msg), `no_log: true` on the key-info exec. CR-11-06-01 BLOCKER fix (regex widened from `[0-9a-fA-F]+` to `\S+`) and WR-11-06-01 WARNING fix (`no_log: true`) both confirmed in commit 5eb9833.
-awaiting: Re-run scenarios 1 and 4b on leviathan to confirm the recovery branch fires correctly and no manual workaround is needed.
+fix-summary: Patched `roles/garage/tasks/bootstrap.yml` to add orphan-key discovery (`/garage key list` probe + `regex_findall` extracting keys matching the configured `garage_s3_key_name`), three mutually exclusive branches (length==0 first-run create, length==1 recovery via `garage key info --show-secret`, length>=2 `ansible.builtin.fail` with operator workaround in msg), `no_log: true` on the key-info exec. Required regex form is `^(\S+)\s+\S+\s+telemetron(?:\s|$)` -- the live `garage key list` output has 4 columns (ID, Created, Name, Expiration) so the Created column must be skipped. Validated end-to-end on leviathan 2026-05-30 round 2: orphan-failure branch fires correctly when 2 keys exist (msg lists both IDs + workaround); recovery branch fires correctly when 1 key exists (reuses OLD key's secret, persists to credentials file, bucket allow succeeds). D-146 recovery proven.
 
 ### G-02: Live-UAT scenario 4b not exercised
-status: fix-shipped, awaiting-rerun
-manifests-in: scenario 4b (skipped during round 1 UAT)
-fix-commits: 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833
-fix-plan: 11-06-PLAN.md (G-01 fix is the same code path that unblocks 4b)
-awaiting: Re-run scenario 4b on leviathan. The same recovery branch that fixes scenario 1 also fixes scenario 4b (purge_host_dirs removes credentials file but preserves garage_meta volume -- identical trigger path).
+status: closed
+manifests-in: scenario 4b
+fix-commits: 5dc5fd5, 01399a0, 06047b8, 85a6de7, 5eb9833, 2626989, 319559f
+fix-plan: 11-06-PLAN.md (G-01 fix is the same code path that closes 4b)
+fix-summary: Scenario 4b validated end-to-end on leviathan 2026-05-30 round 2 -- same recovery branch as scenario 1 fires correctly when purge_host_dirs=true removes the credentials file but preserves the garage_meta volume. ok=148 changed=52 failed=0; smoke test ok=9 failed=0.
