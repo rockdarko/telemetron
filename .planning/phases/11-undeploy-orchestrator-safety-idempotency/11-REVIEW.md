@@ -186,3 +186,125 @@ The deploy side has the same `become: false` posture, so any user who could depl
 _Reviewed: 2026-05-29_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+---
+
+# Phase 11 Plan 06 (G-01 Gap Closure): Code Review Report
+
+**Reviewed:** 2026-05-30
+**Depth:** standard
+**Files Reviewed:** 1 (`roles/garage/tasks/bootstrap.yml`)
+**Scope:** Plan 11-06 changes only (commits 5dc5fd5, 01399a0, 06047b8). Prior plan output (11-01..11-05) already reviewed above; not re-reviewed here.
+**Status:** issues_found
+
+## Summary
+
+Plan 11-06 patches `roles/garage/tasks/bootstrap.yml` to add orphan-key discovery before the S3 key create branch, closing G-01. The structural approach is correct: a `garage key list` probe, a `regex_findall` fact-derivation step, three mutually exclusive branches (length 0/1/2+), and tightened `when:` clauses on steps 7d/7e/7f. All project conventions are respected — no `ignore_errors`, no `notify`, ASCII-only, correct tags on all six new tasks, and `uninstall.yml` is not touched.
+
+One BLOCKER was found: the `regex_findall` pattern used to extract matching key IDs from `garage key list` output is anchored on hex characters only (`[0-9a-fA-F]+`), but Garage v2.x key IDs carry a `GK` prefix (documented in `.planning/research/STACK.md`: "Garage auto-generates keys with a `GK` prefix (e.g., `GKabcdef...`)`"). The `G` and `K` characters fall outside the hex character class, so the regex never matches any real key ID. The fact `garage_existing_telemetron_keys` is always `[]`, all three new branches evaluate to false, and step 7d creates a duplicate key on every conservative-undeploy + redeploy cycle — meaning G-01 is structurally present in the file but behaviourally inert: the bug it was meant to fix continues to occur.
+
+One WARNING was found: `no_log: true` is absent from the recovery branch's key-info exec task (Task C), which executes `/garage key info --show-secret <KEY_ID>` and registers the S3 secret in plaintext stdout. This is a pre-existing accepted risk (the plan's threat model T-11-06-03 explicitly defers it), but the recovery branch newly surfaces a secret that did not previously appear in Ansible output at all, making the exposure window slightly larger than before.
+
+## ## REVIEW FINDINGS
+
+### CR-11-06-01: `regex_findall` pattern excludes `GK`-prefixed key IDs — discovery always returns empty list
+
+**File:** `roles/garage/tasks/bootstrap.yml:173`
+**Issue:** Task B sets `garage_existing_telemetron_keys` using:
+
+```yaml
+garage_existing_telemetron_keys: >-
+  {{ garage_key_list_raw.stdout
+     | regex_findall('(?m)^([0-9a-fA-F]+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}
+```
+
+The capture group `[0-9a-fA-F]+` matches only lowercase and uppercase hex digits (0–9, a–f, A–F). Garage v2.x key IDs begin with the literal prefix `GK` followed by a hex string (confirmed in `.planning/research/STACK.md`: "Garage auto-generates keys with a `GK` prefix (e.g., `GKabcdef...)"`). The characters `G` and `K` are not in the hex character class. Therefore every line of `garage key list` output that begins with a real Garage key ID (`GKa1b2c3...`) fails the match, `regex_findall` returns `[]`, and `garage_existing_telemetron_keys | length` is always 0.
+
+Downstream consequences:
+
+- Step 7d (`when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0`) fires on every run where the host credentials file is absent — identical behaviour to the pre-patch `when: not garage_creds_file.stat.exists` clause. A new duplicate key is created. G-01 recurs.
+- The recovery branch (length == 1) and the orphan-failure branch (length >= 2) are unreachable.
+
+The plan's interface specification says "ID column is hex-only" for `garage key list` output, but this is contradicted by the confirmed `GK` prefix and by the UAT workaround command in `11-HUMAN-UAT.md` G-01, which pipes `garage key list | awk '{print $1}'` directly into `grep -v $NEW_KEY` where `$NEW_KEY` is read from `s3-credentials` (which stores the full `GK...` ID captured by `regex_search('Key ID:\\s*(\\S+)')` from `garage key create` output). That workaround was confirmed working during UAT — the only consistent explanation is that `garage key list` column 1 also shows `GK`-prefixed IDs, and the plan's "hex-only" description is an inaccurate simplification.
+
+**Fix:** Replace the hex-only character class with a pattern that matches the actual Garage key ID format. Two options:
+
+Option A — explicit `GK` prefix (safest: matches only real Garage-format IDs):
+```yaml
+garage_existing_telemetron_keys: >-
+  {{ garage_key_list_raw.stdout
+     | regex_findall('(?m)^(GK[0-9a-fA-F]+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}
+```
+
+Option B — non-whitespace token (most robust: survives future Garage ID format changes):
+```yaml
+garage_existing_telemetron_keys: >-
+  {{ garage_key_list_raw.stdout
+     | regex_findall('(?m)^(\\S+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}
+```
+
+Option A is preferred: it is self-documenting (the `GK` literal in the pattern signals awareness of Garage's key format), and it still prevents false positives from header rows (the `ID` column header string `ID` does not start with `GK`). Option B is valid if the Garage ID format ever changes to a non-GK prefix.
+
+Before merging either fix, verify the actual `garage key list` column 1 format on leviathan:
+```bash
+ssh leviathan docker exec telemetron-garage /garage key list
+```
+If the output confirms `GK...` IDs, apply Option A. If it confirms bare hex, the plan's interface documentation is correct and the bug's root cause is elsewhere (file a separate investigation issue).
+
+---
+
+### WR-11-06-01: `no_log: true` absent from recovery key-info exec — S3 secret exposed in verbose Ansible output
+
+**File:** `roles/garage/tasks/bootstrap.yml:234-243`
+**Issue:** Task C (`Read existing telemetron key info (recovery branch)`) executes `/garage key info --show-secret <KEY_ID>` and registers the result in `garage_key_info_result`. The registered fact contains the S3 secret in plaintext in its `.stdout` field. Without `no_log: true`, this fact and its secret are visible in Ansible's PLAY OUTPUT when `-v` or `-vv` is passed, and may be captured in Ansible fact caches or CI log stores.
+
+The plan's threat model (T-11-06-03) explicitly acknowledges this and defers a comprehensive fix ("wrap step 7d + Task C with `no_log: true` and switch fact extraction to a `lookup('pipe', ...)` pattern") on the grounds that step 7d already has the same exposure and the tradeoff was accepted in Phase 8. That precedent is valid: `no_log: true` on the exec task would suppress `garage_key_info_result.stdout` from the `register:` value, breaking Task D's `regex_search` expressions.
+
+This is flagged as a WARNING rather than BLOCKER because (a) the exposure is pre-existing and accepted, (b) the plan explicitly defers the fix, and (c) the secret is only visible to operators who have already authenticated to run the playbook. However, the recovery branch newly routes a credential through Ansible output that was previously only ever written directly to the host file (the first-run branch's `key create` output is the same exposure, but the recovery branch adds a second path). If fact caching is enabled in `ansible.cfg`, `garage_key_info_result` may persist to disk.
+
+**Fix:** Add `no_log: true` to Task C and restructure Task D to use `set_fact` with `vars:` sourced from a separate `command:` invocation that filters the secret before registration, OR accept the deferral and add a comment on Task C cross-referencing T-11-06-03 so future reviewers know the exposure is tracked:
+
+```yaml
+- name: Read existing telemetron key info (recovery branch)
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage key info --show-secret {{ garage_existing_telemetron_keys | first }}
+  register: garage_key_info_result
+  changed_when: false
+  no_log: true  # T-11-06-03: secret in stdout; no_log prevents -v leakage
+                # NOTE: this suppresses stdout from PLAY OUTPUT but not from
+                # the register: value -- Task D still reads garage_key_info_result.stdout
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 1
+  tags:
+    - garage
+    - garage-bootstrap
+```
+
+Note: if `no_log: true` is added here, verify that Task D still has access to `garage_key_info_result.stdout` — Ansible does retain the registered variable when `no_log: true` suppresses its display; the `set_fact` in Task D will work correctly.
+
+## Passing Checks
+
+The following items from the review focus areas were verified clean:
+
+- **Cross-phase boundary (D-141):** `roles/garage/tasks/uninstall.yml` shows zero diff against the pre-patch commit. Not touched.
+- **Syntax check:** `ansible-playbook playbooks/deploy_docker.yml --syntax-check` exits 0.
+- **Branch count correctness:** `length == 0` gates appear exactly 3 times (steps 7d/7e/7f); `length == 1` gates appear exactly 3 times (Tasks C/D/E); `length >= 2` gate appears exactly 1 time (Task F). Mutually exclusive and exhaustive given the discovery runs unconditionally.
+- **Old `when:` clause eliminated:** Zero occurrences of the anchored-end-of-line form `when: not garage_creds_file.stat.exists$`. All three first-run tasks carry the tightened clause.
+- **Idempotency on re-run:** On the second run after the recovery branch writes the host credentials file, step 7a stat returns `exists=true`, steps 7b+7c load credentials from the file, and all three new branches evaluate to false (first-run: `not exists` is false; recovery: `not exists` is false; orphan-failure: `length >= 2` is false when exactly one key exists). No spurious `changed=true` on re-run.
+- **Orphan-failure message:** Contains the required literal `orphan key cleanup needed` and the `garage key delete --yes <OLD_KEY_ID>` workaround stub. Multi-line YAML block scalar correctly preserves newlines in PLAY OUTPUT. The `garage_existing_telemetron_keys | join(', ')` at the end lists the offending key IDs.
+- **No `ignore_errors`:** Absent from all new tasks (D-142 / D-154 respected).
+- **No `notify:`:** Absent from all new tasks.
+- **Tags:** All six new tasks carry `tags: [garage, garage-bootstrap]` matching existing steps.
+- **ASCII-only:** Confirmed by grep.
+- **No debt markers:** TBD/FIXME/XXX absent from all new content.
+- **`changed_when: false` on read-only probes:** Task A (key list) and Task C (key info) both carry `changed_when: false`. Task D (set_fact) has no `changed_when`, which is correct — Ansible's default for `set_fact` is to report changed=true, consistent with existing steps 7c and 7e.
+- **English-only content:** All new task names, comments, and fail messages are English and ASCII.
+
+---
+
+_Reviewed: 2026-05-30_
+_Reviewer: Claude (gsd-code-reviewer)_
+_Depth: standard_
+_Scope: plan 11-06 only (roles/garage/tasks/bootstrap.yml, commits 5dc5fd5 01399a0 06047b8)_

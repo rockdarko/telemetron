@@ -43,7 +43,7 @@ Tag: `v1.1.0`
 ### 📋 v1.2.0 — Operator Undeploy Path (Phases 10-12)
 
 - [x] **Phase 10: Per-Role Uninstall Surface** — every deploy role gains `tasks/uninstall.yml`; container stop + removal, role-private config dir cleanup, named volumes preserved by default; `roles/README.md` Gate 10 documents the contract (TBD plans) (completed 2026-05-29)
-- [ ] **Phase 11: Undeploy Orchestrator + Safety + Idempotency** — `playbooks/undeploy_docker.yml` reverse-order orchestrator; three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`); pre-task WARNING messages for irreversible ops; live UAT on leviathan (idempotency + full cycle); same `--ask-vault-pass` and `--tags <role>` UX as deploy (5 plans complete, gap closure pending for G-01 Garage orphan-key recovery defect)
+- [x] **Phase 11: Undeploy Orchestrator + Safety + Idempotency** — `playbooks/undeploy_docker.yml` reverse-order orchestrator; three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`); pre-task WARNING messages for irreversible ops; live UAT on leviathan (idempotency + full cycle); same `--ask-vault-pass` and `--tags <role>` UX as deploy (5 plans complete, gap closure pending for G-01 Garage orphan-key recovery defect) (completed 2026-05-30)
 - [ ] **Phase 12: Documentation Cascade** — `docs/quickstart.md` gains `## Removing Telemetron` section; root `README.md` gains "When you're done evaluating" link; all 12 deployed role READMEs + nfsd gain one-line Uninstall reference; `roles/README.md` Gate 10 wording finalized (TBD plans)
 
 ## Phase Details
@@ -88,7 +88,7 @@ Tag: `v1.1.0`
   - [x] 11-03-PLAN.md — special-case purge.yml for garage (2-volume loop) + grafana (2-image loop) + loki (2-image loop)
   - [x] 11-04-PLAN.md — playbooks/undeploy_docker.yml orchestrator (reverse-deploy order; D-160 banner; D-150 post_tasks network removal; D-155 parent host_dirs rmdir)
   - [x] 11-05-PLAN.md — 11-HUMAN-UAT.md 7-scenario checklist for live-leviathan UAT (D-161 + D-162 + D-163 + D-164)
-  - [ ] 11-06-PLAN.md — gap-closure: patch roles/garage/tasks/bootstrap.yml to be S3-key-create idempotent against preserved metadata (closes G-01 orphan-key recovery defect + unblocks G-02 scenario 4b re-run)
+  - [x] 11-06-PLAN.md — gap-closure: patch roles/garage/tasks/bootstrap.yml to be S3-key-create idempotent against preserved metadata (closes G-01 orphan-key recovery defect + unblocks G-02 scenario 4b re-run)
 
 ---
 
@@ -121,7 +121,7 @@ Tag: `v1.1.0`
 | 8     | v1.1.0    | 3/3            | Complete    | 2026-05-27 |
 | 9     | v1.1.0    | 2/2            | Complete    | 2026-05-28 |
 | 10    | v1.2.0    | 6/6 | Complete   | 2026-05-29 |
-| 11    | v1.2.0    | 5/6 | Gap closure | 2026-05-30 |
+| 11    | v1.2.0    | 6/6 | Complete   | 2026-05-30 |
 | 12    | v1.2.0    | 0/?            | Not started | -          |
 
 ## Backlog
