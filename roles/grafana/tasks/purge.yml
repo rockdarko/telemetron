@@ -1,0 +1,114 @@
+---
+# roles/grafana/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface for Grafana (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml (Plan 11-04) via
+# `include_role: { name: grafana, tasks_from: purge }` AFTER `tasks_from: uninstall`
+# for the same role (D-152). The orchestrator's include task is gated on
+# `telemetron_purge_data | default(false) | bool or telemetron_purge_images | default(false) | bool`;
+# this file additionally belt-and-suspenders each section via the same `when:`
+# clause (D-153).
+#
+# ---------------- Grafana-specific layout (two-image loop) ----------------
+#
+# Single named Docker volume: {{ grafana_data_volume }} -> telemetron_grafana_data
+# (Grafana's embedded SQLite at /var/lib/grafana/grafana.db lives there per D-04 / UI-01).
+#
+# TWO pinned images, removed under a single `loop:` over docker_image state=absent:
+#   {{ grafana_image }}:{{ grafana_image_tag }}             -> grafana/grafana-oss:13.0.1
+#   {{ grafana_curl_image }}:{{ grafana_curl_image_tag }}   -> curlimages/curl:8.10.1
+#
+# Grafana + Loki are the documented two-image-loop roles per
+# .planning/phases/11-undeploy-orchestrator-safety-idempotency/11-CONTEXT.md
+# code-context per-role table + 11-PATTERNS.md section "On the curl_image
+# auxiliaries". The other 8 roles' curl images are shared and not carried in
+# their per-role purge.yml -- operator hygiene (`docker image prune`) covers
+# orphan curl images after undeploy.
+#
+# ---------------- D-154 shared-curl edge case ----------------
+#
+# curlimages/curl is shared with every other Telemetron role's verify probe.
+# If the orchestrator (Plan 11-04) traverses roles in reverse order, the
+# FIRST role to purge_images=true succeeds in removing curlimages/curl and
+# every subsequent role's purge of the SAME image becomes a no-op (or, in
+# the rare case where docker_image races a concurrent pull, reports failed).
+# `failed_when: false` on the docker_image loop catches this without
+# swallowing real errors (e.g., docker daemon unreachable). NOT a blanket
+# error-swallow -- a blanket suppression would hide docker-daemon errors too.
+#
+# ---------------- Relationship to Phase 10 grafana/tasks/uninstall.yml ----------------
+#
+# Phase 10's roles/grafana/tasks/uninstall.yml already removed the running
+# container + {{ grafana_config_dir }} on the host under the conservative-
+# undeploy path. This purge.yml only removes the named VOLUME + the two
+# pinned IMAGES.
+#
+# Tag-scoped composition (D-151, D-133): every task carries the `grafana`
+# tag ONLY -- no `grafana-data`, no `grafana-image`, no `grafana-purge`
+# sub-tag. Same defect class as commit 8dd06dd's `garage-uninstall` strip.
+
+# ------------------ telemetron_purge_data section ------------------
+
+# D-145 + D-157 + D-159: WARN BEFORE the single-volume removal. Separately-
+# named debug task so it appears as its own line in PLAY OUTPUT.
+- name: WARN -- grafana purge_data is about to remove named volume
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- grafana purge_data: {{ grafana_data_volume }}"
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - grafana
+
+# D-141 idempotency trust -- no failed_when on volume removal (failures
+# should surface). Single named volume; no loop here.
+- name: Remove grafana named Docker volume
+  community.docker.docker_volume:
+    name: "{{ grafana_data_volume }}"
+    state: absent
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - grafana
+
+# ------------------ telemetron_purge_images section ------------------
+
+# D-145 + D-157 + D-159: WARN BEFORE the two-image loop. Single-line
+# grep-friendly format lists BOTH images comma-separated so the operator
+# sees the full destruction scope in PLAY OUTPUT.
+- name: WARN -- grafana purge_images is about to remove pinned images
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- grafana purge_images: {{ grafana_image }}:{{ grafana_image_tag }}, {{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - grafana
+
+# Two-image loop per 11-CONTEXT.md task-count table. D-154 failed_when:false
+# catches the shared-curl edge case (loki may have already removed
+# curlimages/curl in a reverse-order orchestrator pass). register name is
+# PLURAL (grafana_purge_image_results) because Ansible's loop produces a
+# results dict with .results[] entries.
+- name: Remove grafana pinned Docker images
+  community.docker.docker_image:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ grafana_image }}:{{ grafana_image_tag }}"
+    - "{{ grafana_curl_image }}:{{ grafana_curl_image_tag }}"
+  failed_when: false
+  register: grafana_purge_image_results
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - grafana
+
+# D-154 surface: if ANY loop entry reports failed, surface a WARN so the
+# operator knows at least one image is still on disk (likely in use by
+# another role's verify probe or a non-Telemetron container). The
+# `.results | selectattr('failed', 'defined') | selectattr('failed') | list`
+# pattern walks the loop-register results and selects only entries whose
+# `failed` flag is truthy.
+- name: WARN -- grafana image removal had failures (likely in use)
+  ansible.builtin.debug:
+    msg: "WARNING: one or more grafana images could not be removed (check grafana_purge_image_results for details -- likely in use by another role's verify probe or non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - grafana_purge_image_results.results | selectattr('failed', 'defined') | selectattr('failed') | list | length > 0
+  tags:
+    - grafana

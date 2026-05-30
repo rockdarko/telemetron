@@ -1,0 +1,125 @@
+---
+# roles/garage/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface for Garage (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml (Plan 11-04) via
+# `include_role: { name: garage, tasks_from: purge }` AFTER `tasks_from: uninstall`
+# for the same role (D-152). The orchestrator's include task is gated on
+# `telemetron_purge_data | default(false) | bool or telemetron_purge_images | default(false) | bool`;
+# this file additionally belt-and-suspenders each section via the same `when:`
+# clause (D-153).
+#
+# ---------------- Garage-specific layout (D-152) ----------------
+#
+# Garage requires SEPARATE named Docker volumes for metadata and object data --
+# both exposed in defaults/main.yml (lines 37-38):
+#   {{ garage_meta_volume }} -> telemetron_garage_meta
+#   {{ garage_data_volume }} -> telemetron_garage_data
+# Both are removed under a single `loop:` over docker_volume state=absent so
+# the two-volume removal lives in one task block (D-152). Loop list length = 2.
+#
+# Single PRIMARY image only: {{ garage_image }}:{{ garage_image_tag }}
+# (dxflrs/garage:v2.3.0). Garage does NOT carry its auxiliary curl image var
+# in this file -- only grafana and loki are documented two-image-loop roles
+# per .planning/phases/11-undeploy-orchestrator-safety-idempotency/11-PATTERNS.md
+# section "On the curl_image auxiliaries". For Garage the single-image scope
+# is correct; cross-role shared curl image cleanup is operator hygiene
+# (`docker image prune`).
+#
+# ---------------- Relationship to Phase 10 garage/tasks/uninstall.yml ----------------
+#
+# Phase 10's roles/garage/tasks/uninstall.yml ALREADY removed the persisted
+# S3 credentials file ({{ garage_s3_credentials_file }}) AND the rendered
+# garage config dir ({{ garage_config_dir }}) under the conservative-undeploy
+# path. This purge.yml does NOT re-touch that file path -- it only removes
+# the two NAMED VOLUMES + the pinned PRIMARY IMAGE.
+#
+# The D-146 recovery story documented in Phase 10's uninstall.yml header
+# (key regeneration, bucket allow re-grant on existing buckets) still
+# applies AFTER purge_data=true here: next deploy starts from EMPTY buckets
+# and bootstrap.yml's first-run branch creates a fresh S3 key + creates
+# buckets from scratch.
+#
+# ---------------- IRREVERSIBLE warning ----------------
+#
+# Once the docker_volume loop here executes, telemetron_garage_meta AND
+# telemetron_garage_data are gone -- which means ALL Loki chunks, Mimir
+# blocks, and Tempo traces stored in those buckets are gone. The pre-action
+# `debug` WARN task (D-145 + D-157 + D-159) lists both volume names in
+# PLAY OUTPUT so the operator sees what is about to be destroyed BEFORE the
+# loop fires.
+#
+# Tag-scoped composition (D-151, D-133): every task carries the `garage` tag
+# ONLY -- no `garage-meta`, no `garage-data`, no `garage-purge` sub-tag.
+# Commit 8dd06dd (Phase 10) had to strip a `garage-uninstall` sub-tag; do
+# not reintroduce that defect class here.
+#
+# No host_dirs section in this file -- parent /opt/telemetron rmdir lives
+# in playbooks/undeploy_docker.yml post_tasks (D-155).
+
+# ------------------ telemetron_purge_data section ------------------
+
+# D-145 + D-157 + D-159: WARN BEFORE the two-volume loop. Separately-named
+# debug task so it appears as its own line in PLAY OUTPUT, not as a silent
+# side effect of the docker_volume task. Single-line msg lists BOTH volume
+# names comma-separated so operator sees the full destruction scope.
+- name: WARN -- garage purge_data is about to remove named volumes
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- garage purge_data: {{ garage_meta_volume }}, {{ garage_data_volume }}"
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - garage
+
+# D-152: TWO-VOLUME loop. Single task removes both meta + data volumes via
+# community.docker.docker_volume state=absent. D-141 idempotency trust --
+# no failed_when on volume removal (volume removal failures should surface).
+- name: Remove garage named Docker volumes
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ garage_meta_volume }}"
+    - "{{ garage_data_volume }}"
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - garage
+
+# ------------------ telemetron_purge_images section ------------------
+
+# D-145 + D-157 + D-159: WARN BEFORE removing the pinned image. Single-line
+# grep-friendly format. Garage purges only its primary image; the shared
+# curlimages/curl auxiliary is left to operator hygiene (`docker image prune`)
+# per 11-PATTERNS.md "On the curl_image auxiliaries".
+- name: WARN -- garage purge_images is about to remove pinned image
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- garage purge_images: {{ garage_image }}:{{ garage_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - garage
+
+# D-154: failed_when:false catches the "image in use by non-Telemetron
+# container" edge case without swallowing real errors (e.g., docker daemon
+# unreachable). NOT a blanket error-swallow -- a blanket suppression would
+# hide docker-daemon errors too.
+# Register the result so the post-skip WARN below can surface a skip event.
+- name: Remove garage pinned Docker image
+  community.docker.docker_image:
+    name: "{{ garage_image }}:{{ garage_image_tag }}"
+    state: absent
+  failed_when: false
+  register: garage_purge_image_result
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - garage
+
+# D-154 surface: if docker_image returned failed, surface as a visible WARN
+# so the operator knows the image is still on disk (likely held by a
+# non-Telemetron container on the host).
+- name: WARN -- garage image removal skipped (in use)
+  ansible.builtin.debug:
+    msg: "WARNING: garage image {{ garage_image }}:{{ garage_image_tag }} could not be removed (likely in use by a non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - garage_purge_image_result.failed | default(false)
+  tags:
+    - garage
