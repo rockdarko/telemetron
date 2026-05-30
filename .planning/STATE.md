@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: Operator Undeploy Path
-status: milestone_complete
-stopped_at: Milestone complete (Phase 12 was final phase)
-last_updated: 2026-05-30T19:04:20.975Z
-last_activity: 2026-05-30 -- Phase 12 execution started
+status: Awaiting next milestone
+stopped_at: Phase 12 context gathered
+last_updated: "2026-05-30T20:25:05.859Z"
+last_activity: 2026-05-30 — Milestone v1.2.0 completed and archived
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 21
-  percent: 67
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 ## Current Position
 
-Phase: 12
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-05-30
+Phase: Milestone v1.2.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-05-30 — Milestone v1.2.0 completed and archived
 
 ## Performance Metrics
 
@@ -225,4 +225,17 @@ Resume file: .planning/phases/12-documentation-cascade/12-CONTEXT.md
 
 ## Operator Next Steps
 
-- Plan Phase 7 with `/gsd:plan-phase 7`
+- Start the next milestone with /gsd-new-milestone
+
+## Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-05-30:
+
+| Category | Item | Status | Note |
+|----------|------|--------|------|
+| verification_gap | Phase 08 (`08-VERIFICATION.md`) | human_needed | v1.1.0 Garage migration; shipped successfully on leviathan 2026-05-28 (`5700393` chain); status field never bumped from `human_needed` to `passed`. Work is complete. |
+| verification_gap | Phase 09 (`09-VERIFICATION.md`) | human_needed | v1.1.0 backlog sweep; shipped with v1.1.0; status drift only. Work is complete. |
+| uat_gap | Phase 08 (`08-HUMAN-UAT.md`) | partial | 3 scenarios marked pending; superseded by the full leviathan UAT documented in v1.1.0 close (9/9 requirements validated, archived to `milestones/v1.1.0-REQUIREMENTS.md`). |
+| quick_task | `260519-sod-remove-promlens-from-the-telemetron-stac` | missing | Orphaned quick-task descriptor from v1.0.1 patch (commit `d10005a` removed PromLens cleanly per `RETROSPECTIVE.md`). Housekeeping noise; the work shipped. |
+
+These items are pre-existing drift from already-archived milestones (v1.0 / v1.1) and do not reflect outstanding v1.2.0 work. Recorded here for traceability; resolution is optional cleanup, not blocking.

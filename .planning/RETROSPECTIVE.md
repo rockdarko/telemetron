@@ -78,6 +78,52 @@
 
 ---
 
+## Milestone: v1.2.0 — Operator Undeploy Path
+
+**Shipped:** 2026-05-30 on leviathan
+**Phases:** 3 (10, 11, 12) | **Plans:** 15 | **Commits since v1.1.0:** 76 | **LOC delta:** +5,833 / -43 across 65 files | **Timeline:** 3 days (2026-05-28 → 2026-05-30)
+
+### What Was Built
+
+A symmetric `playbooks/undeploy_docker.yml` that mirrors `deploy_docker.yml` in reverse: removes the 12 deployed containers + the `telemetron` Docker bridge network on a default run, with three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`) for irreversible cleanup. Every destructive task is preceded by a D-159 `WARNING: irreversible -- <role> <action>: <targets>` debug task; the playbook opens with a D-160 PLAY-start banner summarising what each enabled flag means. Every deploy role ships a `tasks/uninstall.yml` (Gate 10 in `roles/README.md` codifies the contract); the complete story is discoverable through a 3-concentric-layer documentation cascade (root README → `docs/quickstart.md#removing-telemetron` → 12 role README `## Uninstall` sections + nfsd's divergent "does NOT remove" block per D-172).
+
+### What Worked
+
+- **The 3-phase decomposition matched the work shape.** Phase 10 = per-role surface (a uniform mechanical pass through 13 directories), Phase 11 = orchestrator + UAT (the heavyweight phase, single playbook + 7 live scenarios), Phase 12 = pure doc cascade (16 Markdown files, no code). Each phase had a single clear axis; no inter-phase scope creep.
+- **CONTEXT.md as the spec, end to end.** Phase 12's `12-CONTEXT.md` locked verbatim wording for D-170 (per-role template) and D-174 (root README sentence). The planner translated decisions to plans; the executor translated plans to files; the verifier confirmed the files match decisions. Zero re-litigation downstream. The decision-coverage gate (which flagged `D-168` as uncovered until the planner cited it in must_haves) caught the only translation slip cheaply, before execution.
+- **Worktree-isolated parallel execution in Phase 12.** 3 plans across 15 files ran concurrently in 3 separate worktrees, merged cleanly in sequence (zero conflicts because plans touched disjoint files). Wave 1 finished in ~10 minutes wall time; sequential execution would have taken ~25 min. Re-validated the v1.0.0 pattern.
+- **Audit-then-acknowledge for stale-prior-milestone items.** The pre-close artifact audit surfaced 4 items (Phase 8/9 verification status drift, orphan PromLens quick-task) all from already-archived milestones. STATE.md `## Deferred Items` table captured them with provenance so future audits don't re-surface them as new problems.
+
+### What Was Inefficient
+
+- **UI gate substring-grep false positive on the docs-only phase.** The plan-phase UI gate uses `grep -iE "UI|interface|frontend|...|view|..."` which matches substring `ui` inside `requirements` and `build`. For Phase 12 (pure docs, zero UI), the gate fired anyway and would have blocked planning if not for explicit override. The orchestrator recognised the false positive but the gate's substring matching is the root cause — `\b(UI|interface|...)\b` with word boundaries would have been correct.
+- **`gsd-sdk query milestone.complete` auto-generated MILESTONES.md entry was unusable as written.** The "Key accomplishments" auto-extracted 10 raw plan-level one-liners verbatim including 2 `One-liner:` placeholders and 1 pre-existing-issue note. Required a complete manual rewrite to match the v1.0.0 / v1.1.0 milestone-level prose style. The CLI's accomplishment extractor should either filter `null` returns from `summary-extract` or aggregate at the phase level before the milestone level.
+- **The post-planning gap analysis reports every uncovered REQ-ID across the entire `REQUIREMENTS.md`, not just the phase's IDs.** Phase 12's report flagged OPS-01/02/PURGE-01/02/UNDEPLOY-01/02 as "Not covered" — but those belong to phases 10/11 (already shipped). Noisy false positive that requires manual interpretation. The check should be scoped to `phase_req_ids` only, or at minimum group `Covered by phase N` rather than `Not covered`.
+- **One executor's worktree CWD drifted into the agent's worktree during post-wave cleanup.** Triggered the #3174 guard and required `cd /home/darko/git/rockdarko/telemetron` before manual worktree merges could proceed. The orchestrator's `pwd` should be pinned at the start of post-wave cleanup, not left implicit; `WAVE_WORKTREE_MANIFEST` env var also evaporated between Bash calls (shells aren't persistent across tool invocations) so the SDK helper couldn't be invoked at all and the orchestrator fell back to manual `git merge` loops.
+
+### Patterns Established
+
+- **Symmetric playbook contract (`deploy_docker.yml` ↔ `undeploy_docker.yml`).** Same inventory, same `--ask-vault-pass`, same `--tags <role>` UX, reverse role order. Future operator-facing playbooks (preflight, doctor, backup, restore) inherit this UX shape — operators learn the conventions once.
+- **D-159 WARN template + D-160 PLAY-start banner as the destructive-action contract.** Any future role or playbook with destructive opt-in behaviour follows the same shape: per-action `WARNING: irreversible -- <role> <action>: <targets>` debug task + PLAY-start banner with category descriptions (not name enumeration, not counts). `^WARNING:` is grep-friendly in PLAY OUTPUT for operators auditing destruction.
+- **Three-concentric-layer documentation cascade.** Root README (first contact, one sentence) → quickstart (full reference, all sub-contracts) → per-role README (role-scoped cmd, `--tags <role>`). Predetermined anchor name (`#removing-telemetron`) lets cross-refs land in any order. Future cross-cutting operator concerns inherit this shape.
+- **Force-add convention for shipping `.planning/` artifacts.** `.planning/` is gitignored; phase-completion commits force-add VERIFICATION.md and SUMMARY.md so the artifacts ship while planning intermediates (CONTEXT.md, PLAN.md, RESEARCH.md, REVIEW.md) stay local. v1.0.0/v1.1.0/v1.2.0 phase-complete commits all follow this pattern.
+
+### Key Lessons
+
+1. **Substring-grep is a class of false-positive bug in workflow gates.** Phase 12's UI gate firing on `requirements` substring is the latest instance. Audit every workflow gate that uses `grep -iE` against keyword lists and ask: do the alternation tokens need word boundaries? For 1-2-character tokens like `ui`, the answer is unambiguously yes.
+2. **The decision-coverage gate is cheap insurance.** A single missing `D-168` citation in 12-01's `must_haves.truths` would have shipped silently if `gsd-sdk query check.decision-coverage-plan` hadn't refused to mark the phase planned. The gate cost ~30 seconds (a one-line edit to a truth) and prevented a real coverage gap.
+3. **Live UAT remains the only gate that catches output-format-assumption regressions.** Plan 11-06's two regex fixes (`\S+` widening + Created-column skipping for `garage key list` v2 output) emerged only when a human ran the playbook against a live Garage v2 container. The planner, checker, code-reviewer, and verifier all read upstream docs and assumed the output format — none of them ran the actual binary. Confirmed for the third milestone in a row.
+4. **The orchestrator's `pwd` must be pinned, not implicit, in post-wave cleanup.** Worktree subagents change `pwd` as a side effect; the orchestrator inherits the last child's cwd and ends up in a worktree when it tries to merge. The #3174 guard exists for this exact failure mode — but pinning explicitly at the start of cleanup is better than recovering after a guard fires.
+5. **Worktree force-removal needs the `--force --force` (or unlock-first) path documented.** The Claude Code agent harness locks worktrees with `pid 133875: claude agent ...`; even after the agent returns, the lock persists until manually released. `gsd-sdk query worktree.cleanup-wave` should attempt `git worktree unlock` automatically before `git worktree remove` and surface a clear error when the unlock path fails.
+
+### Cost Observations
+
+- Model mix: predominantly Sonnet for executors (default in config); Opus for planner; Sonnet for verifier and plan-checker. Mixed-model strategy worked — heavy thinking on the planner, fast wide-context on the executors and verifier.
+- Sessions: 1 long-running session covering Phase 12 + milestone close (~3 hours wall time, including 3 worktree executors + 1 verifier + 1 planner revision + 1 plan-checker revision + this milestone close).
+- Notable: docs-only phase post-merge gate was almost no-op (no test command for an Ansible project, no compiled build) — saved time appropriately. Skipping `gsd-code-review` on the 100%-Markdown diff was the right judgment call; reviewing prose for "bugs and security issues" produces zero signal. Future docs-only phases should opt out automatically.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -85,16 +131,20 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v1.0.0 | ~30-40 | 7 (+ 4 backlog) | Established 8 cross-cutting port-acceptance gates; decimal-phase pattern (04.1) for mid-milestone convention drift; live-UAT-on-leviathan as the validation surface |
+| v1.1.0 | ~10-15 | 3 | Garage migration with live-UAT-as-only-gate; three mid-UAT regex regressions caught only on the live host; introduced the principle that ansible deploy phases need a live-deploy gate beyond static verification |
+| v1.2.0 | ~5-8 | 3 | Symmetric undeploy playbook with three opt-in purge flags; D-159 WARN template + D-160 PLAY-start banner as the destructive-action contract; Gate 10 for per-role uninstall surface; 3-layer doc cascade pattern for cross-cutting operator concerns |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Coverage | Zero-Dep Additions |
 |-----------|-------|----------|-------------------|
 | v1.0.0 | "Boots on leviathan" + smoke test playbook (3 OTLP signals, 60s budget) | n/a (no unit-test surface in M1 — manual UAT) | 0 (no JS/Python runtime deps shipped; everything is upstream pinned container images + role configs) |
+| v1.1.0 | "Boots on leviathan" + smoke test + 3rd-deploy idempotency check (`ok=135, changed=0, failed=0`) | n/a (still manual UAT) | 0 (Garage replaces MinIO; same zero-runtime-dep profile) |
+| v1.2.0 | "Boots + uninstalls on leviathan" — 7-scenario UAT covering conservative undeploy, idempotency, each purge flag, all-3-flags fresh-start | n/a (still manual UAT; ansible idempotency `changed=0` on already-clean host) | 0 (no new components; same zero-runtime-dep profile) |
 
 ### Top Lessons (Verified Across Milestones)
 
-*Single-milestone retrospective; multi-milestone trends will accumulate from v2 onward.*
-
-1. Live UAT on the real homelab host catches what static gates miss — but the gap between "verifier said human_needed" and "live UAT happened on leviathan" needs a tighter feedback loop than M1 had.
-2. Decimal phase insertion (04.1) is the right pattern for atomic mid-milestone scope corrections.
+1. **Live UAT on the real homelab host catches what static gates miss** — verified in v1.0 (alertmanager auto_remove race), v1.1 (3 Garage bootstrap regressions), and v1.2 (2 `garage key list` regex regressions). The planner→checker→reviewer chain reads upstream docs; none of them run the actual binary. *Pattern: every ansible deploy/undeploy phase needs a human-UAT-on-leviathan gate as the last step.*
+2. **Decimal phase insertion (04.1) is the right pattern for atomic mid-milestone scope corrections.** Used once in v1.0.0; pattern still holds.
+3. **Force-add convention for `.planning/` artifacts at phase/milestone completion.** Consistent across all 3 milestones; planning intermediates (CONTEXT.md, PLAN.md, RESEARCH.md) stay local while shipped artifacts (SUMMARY.md, VERIFICATION.md, milestone archive files) get force-added at the completion commit.
+4. **`gsd-sdk` auto-generated content needs review-and-rewrite at milestone close.** v1.0.0 / v1.1.0 / v1.2.0 all required manual rewrites of MILESTONES.md auto-content. The extractors aren't smart enough to filter null one-liners or aggregate at the milestone level — treat the output as a draft, not a deliverable.
