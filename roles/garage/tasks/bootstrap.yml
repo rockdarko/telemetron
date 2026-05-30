@@ -158,7 +158,7 @@
 # Closes 11-VERIFICATION.md G-01 + transitively unblocks 11-HUMAN-UAT.md
 # scenario 4b (G-02). See 11-06-PLAN.md for context.
 
-- name: List existing Garage S3 keys (G-01: detect orphan from preserved metadata)
+- name: "List existing Garage S3 keys (G-01 detect orphan from preserved metadata)"
   community.docker.docker_container_exec:
     container: "{{ garage_container_name }}"
     command: /garage key list
