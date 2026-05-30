@@ -146,6 +146,35 @@
     - garage
     - garage-bootstrap
 
+# ---------- D-112 amendment (Phase 11 G-01 closure): orphan key discovery ----------
+# Before the first-run create branch fires, query Garage's preserved
+# metadata for keys named `{{ garage_s3_key_name }}` so we can:
+#   - take the create branch only when zero exist (true first run),
+#   - take the recovery branch when exactly one exists (orphan from a
+#     conservative undeploy that wiped the host credentials file but
+#     preserved the telemetron_garage_meta volume per D-141),
+#   - fail loudly when two or more exist (operator-introduced duplicate
+#     that we will not silently reuse).
+# Closes 11-VERIFICATION.md G-01 + transitively unblocks 11-HUMAN-UAT.md
+# scenario 4b (G-02). See 11-06-PLAN.md for context.
+
+- name: List existing Garage S3 keys (G-01: detect orphan from preserved metadata)
+  community.docker.docker_container_exec:
+    container: "{{ garage_container_name }}"
+    command: /garage key list
+  register: garage_key_list_raw
+  changed_when: false
+  tags:
+    - garage
+    - garage-bootstrap
+
+- name: Set garage_existing_telemetron_keys fact from key list output
+  ansible.builtin.set_fact:
+    garage_existing_telemetron_keys: "{{ garage_key_list_raw.stdout | regex_findall('(?m)^([0-9a-fA-F]+)\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)') }}"
+  tags:
+    - garage
+    - garage-bootstrap
+
 # Step 7d: create a new Garage S3 key (first-run path, no host file).
 # The key secret is only shown at creation time (Pitfall 3).
 # Output is human-readable text with "Key ID:" and "Secret key:" lines.
@@ -155,7 +184,7 @@
     command: /garage key create {{ garage_s3_key_name }}
   register: garage_key_create_result
   changed_when: true
-  when: not garage_creds_file.stat.exists
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0
   tags:
     - garage
     - garage-bootstrap
@@ -166,7 +195,7 @@
   ansible.builtin.set_fact:
     garage_s3_access_key_id: "{{ garage_key_create_result.stdout | regex_search('Key ID:\\s*(\\S+)', '\\1') | first }}"
     garage_s3_secret_key: "{{ garage_key_create_result.stdout | regex_search('Secret key:\\s*(\\S+)', '\\1') | first }}"
-  when: not garage_creds_file.stat.exists
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0
   tags:
     - garage
     - garage-bootstrap
@@ -180,7 +209,7 @@
       secret={{ garage_s3_secret_key }}
     dest: "{{ garage_s3_credentials_file }}"
     mode: "0600"
-  when: not garage_creds_file.stat.exists
+  when: not garage_creds_file.stat.exists and garage_existing_telemetron_keys | length == 0
   tags:
     - garage
     - garage-bootstrap
