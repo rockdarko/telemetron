@@ -43,7 +43,7 @@ Tag: `v1.1.0`
 ### 📋 v1.2.0 — Operator Undeploy Path (Phases 10-12)
 
 - [x] **Phase 10: Per-Role Uninstall Surface** — every deploy role gains `tasks/uninstall.yml`; container stop + removal, role-private config dir cleanup, named volumes preserved by default; `roles/README.md` Gate 10 documents the contract (TBD plans) (completed 2026-05-29)
-- [x] **Phase 11: Undeploy Orchestrator + Safety + Idempotency** — `playbooks/undeploy_docker.yml` reverse-order orchestrator; three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`); pre-task WARNING messages for irreversible ops; live UAT on leviathan (idempotency + full cycle); same `--ask-vault-pass` and `--tags <role>` UX as deploy (TBD plans) (completed 2026-05-30)
+- [ ] **Phase 11: Undeploy Orchestrator + Safety + Idempotency** — `playbooks/undeploy_docker.yml` reverse-order orchestrator; three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`); pre-task WARNING messages for irreversible ops; live UAT on leviathan (idempotency + full cycle); same `--ask-vault-pass` and `--tags <role>` UX as deploy (5 plans complete, gap closure pending for G-01 Garage orphan-key recovery defect)
 - [ ] **Phase 12: Documentation Cascade** — `docs/quickstart.md` gains `## Removing Telemetron` section; root `README.md` gains "When you're done evaluating" link; all 12 deployed role READMEs + nfsd gain one-line Uninstall reference; `roles/README.md` Gate 10 wording finalized (TBD plans)
 
 ## Phase Details
