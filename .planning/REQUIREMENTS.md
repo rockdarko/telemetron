@@ -28,9 +28,9 @@ Requirements for the v1.2.0 patch milestone. Each maps to roadmap phases.
 
 ### Documentation (DOCS)
 
-- [ ] **DOCS-01**: `docs/quickstart.md` gains a top-level `## Removing Telemetron` section placed after `## Upgrade notes` and before `## Building your own inventory`. Covers: (a) the default conservative-purge command line, (b) the three opt-in purge flags with examples, (c) order-of-operations expectation (containers come down before volumes can be purged), (d) the manual `docker volume rm` / `docker image rm` fallback for operators who'd rather not use the playbook. Tone matches existing operator-facing prose (factual, no marketing voice, no emojis).
+- [x] **DOCS-01**: `docs/quickstart.md` gains a top-level `## Removing Telemetron` section placed after `## Upgrade notes` and before `## Building your own inventory`. Covers: (a) the default conservative-purge command line, (b) the three opt-in purge flags with examples, (c) order-of-operations expectation (containers come down before volumes can be purged), (d) the manual `docker volume rm` / `docker image rm` fallback for operators who'd rather not use the playbook. Tone matches existing operator-facing prose (factual, no marketing voice, no emojis).
 
-- [ ] **DOCS-02**: Root `README.md` Quick Start section gains a "When you're done evaluating" line linking to `docs/quickstart.md#removing-telemetron`. Each deployed role's `README.md` (12 + nfsd) gains a one-line "Uninstall: see `playbooks/undeploy_docker.yml --tags <role>`" in its Operator Surface section (or equivalent). `roles/README.md` documents the new "every deploy role ships a tested uninstall path" gate alongside the existing 8 gates.
+- [x] **DOCS-02**: Root `README.md` Quick Start section gains a "When you're done evaluating" line linking to `docs/quickstart.md#removing-telemetron`. Each deployed role's `README.md` (12 + nfsd) gains a one-line "Uninstall: see `playbooks/undeploy_docker.yml --tags <role>`" in its Operator Surface section (or equivalent). `roles/README.md` documents the new "every deploy role ships a tested uninstall path" gate alongside the existing 8 gates.
 
 ## Future Requirements
 
@@ -88,8 +88,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PURGE-02 | Phase 11 | Complete |
 | OPS-01 | Phase 11 | Complete |
 | OPS-02 | Phase 11 | Complete |
-| DOCS-01 | Phase 12 | Pending |
-| DOCS-02 | Phase 12 | Pending |
+| DOCS-01 | Phase 12 | Complete |
+| DOCS-02 | Phase 12 | Complete |
 
 **Coverage:**
 - v1.2.0 requirements: 8 total

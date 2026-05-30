@@ -44,7 +44,7 @@ Tag: `v1.1.0`
 
 - [x] **Phase 10: Per-Role Uninstall Surface** — every deploy role gains `tasks/uninstall.yml`; container stop + removal, role-private config dir cleanup, named volumes preserved by default; `roles/README.md` Gate 10 documents the contract (TBD plans) (completed 2026-05-29)
 - [x] **Phase 11: Undeploy Orchestrator + Safety + Idempotency** — `playbooks/undeploy_docker.yml` reverse-order orchestrator; three opt-in purge flags (`telemetron_purge_data`, `telemetron_purge_host_dirs`, `telemetron_purge_images`); pre-task WARNING messages for irreversible ops; live UAT on leviathan (idempotency + full cycle); same `--ask-vault-pass` and `--tags <role>` UX as deploy (5 plans complete, gap closure pending for G-01 Garage orphan-key recovery defect) (completed 2026-05-30)
-- [ ] **Phase 12: Documentation Cascade** — `docs/quickstart.md` gains `## Removing Telemetron` section; root `README.md` gains "When you're done evaluating" link; all 12 deployed role READMEs + nfsd gain one-line Uninstall reference; `roles/README.md` Gate 10 wording finalized (3 plans)
+- [x] **Phase 12: Documentation Cascade** — `docs/quickstart.md` gains `## Removing Telemetron` section; root `README.md` gains "When you're done evaluating" link; all 12 deployed role READMEs + nfsd gain one-line Uninstall reference; `roles/README.md` Gate 10 wording finalized (3 plans) (completed 2026-05-30)
 
 ## Phase Details
 
@@ -103,9 +103,9 @@ Tag: `v1.1.0`
   3. Every deployed role README (12 roles + nfsd) contains a one-line "Uninstall:" entry in its Operator Surface section pointing to `playbooks/undeploy_docker.yml --tags <role>`
   4. `roles/README.md` documents Gate 10 ("every deploy role ships a tested uninstall path") in the per-role port-acceptance gates section, in the same style and detail level as Gates 1-9
 **Plans**: 3 plans
-  - [ ] 12-01-PLAN.md — `docs/quickstart.md` `## Removing Telemetron` section (DOCS-01; D-165..D-168 + D-174 anchor)
-  - [ ] 12-02-PLAN.md — 13 role README `## Uninstall` sections (DOCS-02 second clause; 12 uniform per D-169..D-171 + nfsd divergent per D-172)
-  - [ ] 12-03-PLAN.md — Root README "When you're done evaluating" sentence + `roles/README.md` Gate 10 closing-paragraph rewrite (DOCS-02 first + third clauses; D-173..D-176)
+  - [x] 12-01-PLAN.md — `docs/quickstart.md` `## Removing Telemetron` section (DOCS-01; D-165..D-168 + D-174 anchor)
+  - [x] 12-02-PLAN.md — 13 role README `## Uninstall` sections (DOCS-02 second clause; 12 uniform per D-169..D-171 + nfsd divergent per D-172)
+  - [x] 12-03-PLAN.md — Root README "When you're done evaluating" sentence + `roles/README.md` Gate 10 closing-paragraph rewrite (DOCS-02 first + third clauses; D-173..D-176)
 
 ---
 
@@ -125,7 +125,7 @@ Tag: `v1.1.0`
 | 9     | v1.1.0    | 2/2            | Complete    | 2026-05-28 |
 | 10    | v1.2.0    | 6/6 | Complete   | 2026-05-29 |
 | 11    | v1.2.0    | 6/6 | Complete    | 2026-05-30 |
-| 12    | v1.2.0    | 0/3            | Not started | -          |
+| 12    | v1.2.0    | 3/3 | Complete    | 2026-05-30 |
 
 ## Backlog
 
