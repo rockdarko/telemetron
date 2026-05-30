@@ -82,12 +82,13 @@ Tag: `v1.1.0`
   4. Running with `--extra-vars "telemetron_purge_data=true"` removes all `telemetron_*` named Docker volumes; each irreversible flag emits a "WARNING: irreversible" pre-task message before acting
   5. Running `--extra-vars "telemetron_purge_host_dirs=true"` removes the `/opt/telemetron/` tree (including the Garage S3 credential file at `/opt/telemetron/garage/s3-credentials`); running `--extra-vars "telemetron_purge_images=true"` removes the exact pinned image tags Telemetron deployed without touching other tags on the host
   6. After a default undeploy, running `ansible-playbook playbooks/deploy_docker.yml` brings the full 12-container stack back up to healthy; after a purge-data undeploy, the re-deploy starts from scratch with new Garage S3 credentials and empty Loki/Tempo/Mimir buckets
-**Plans**: 5 plans
+**Plans**: 6 plans
   - [x] 11-01-PLAN.md — image-only purge.yml for karma + node_exporter + opentelemetry (3 roles, no volumes; D-154 failed_when:false; D-159 WARN template)
   - [x] 11-02-PLAN.md — single-volume + single-image purge.yml for alertmanager + fluentbit (buffer-volume) + mimir + prometheus + tempo (5 roles)
   - [x] 11-03-PLAN.md — special-case purge.yml for garage (2-volume loop) + grafana (2-image loop) + loki (2-image loop)
   - [x] 11-04-PLAN.md — playbooks/undeploy_docker.yml orchestrator (reverse-deploy order; D-160 banner; D-150 post_tasks network removal; D-155 parent host_dirs rmdir)
   - [x] 11-05-PLAN.md — 11-HUMAN-UAT.md 7-scenario checklist for live-leviathan UAT (D-161 + D-162 + D-163 + D-164)
+  - [ ] 11-06-PLAN.md — gap-closure: patch roles/garage/tasks/bootstrap.yml to be S3-key-create idempotent against preserved metadata (closes G-01 orphan-key recovery defect + unblocks G-02 scenario 4b re-run)
 
 ---
 
@@ -120,7 +121,7 @@ Tag: `v1.1.0`
 | 8     | v1.1.0    | 3/3            | Complete    | 2026-05-27 |
 | 9     | v1.1.0    | 2/2            | Complete    | 2026-05-28 |
 | 10    | v1.2.0    | 6/6 | Complete   | 2026-05-29 |
-| 11    | v1.2.0    | 5/5 | Complete   | 2026-05-30 |
+| 11    | v1.2.0    | 5/6 | Gap closure | 2026-05-30 |
 | 12    | v1.2.0    | 0/?            | Not started | -          |
 
 ## Backlog
