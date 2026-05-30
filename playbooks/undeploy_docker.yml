@@ -279,7 +279,6 @@
         name: "{{ telemetron_network }}"
         state: absent
       tags:
-        - always
         - network
 
     # D-145 + D-157 + D-159: separately-named WARN BEFORE the destructive
