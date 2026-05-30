@@ -1,0 +1,58 @@
+---
+# roles/opentelemetry/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml via
+# `include_role: { name: opentelemetry, tasks_from: purge }` AFTER
+# `tasks_from: uninstall` for the same role (D-152). The orchestrator's
+# include task is gated on `telemetron_purge_images | default(false) | bool`;
+# this file additionally belt-and-suspenders each task via the same
+# `when:` clause (D-153).
+#
+# IRREVERSIBLE -- once tasks here execute, the pinned Docker image is gone.
+# The pre-action `debug` WARN task (D-145 + D-157 + D-159) ensures the
+# operator sees the event in PLAY OUTPUT.
+#
+# Tag-scoped composition (D-151): every task carries ONLY the `opentelemetry`
+# tag, so --tags opentelemetry + --extra-vars "telemetron_purge_images=true"
+# purges ONLY OTel Collector's artifacts. No sub-tag (D-133).
+#
+# IMAGE-ONLY shape: OTel Collector is stateless -- no named volume exists
+# (see tasks/uninstall.yml header). This file omits the data-purge section
+# entirely. The host Docker socket bind-mount used by the docker_stats
+# receiver (D-52) is host-managed -- this file MUST NOT touch it; once the
+# container is removed (by tasks/uninstall.yml ahead of this file), the
+# bind reference vanishes with it. The curl image
+# (opentelemetry_curl_image) is shared across multiple roles; operators
+# run `docker image prune` for that cleanup.
+
+# ------------------ telemetron_purge_images section ------------------
+
+- name: WARN -- opentelemetry purge_images is about to remove pinned image
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- opentelemetry purge_images: {{ opentelemetry_image }}:{{ opentelemetry_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - opentelemetry
+
+# D-154: failed_when:false catches "image in use by non-Telemetron container"
+# without swallowing real errors (e.g., docker daemon unreachable).
+# D-142: NO notify -- destruction paths must not fire deploy-side handlers.
+- name: Remove opentelemetry pinned Docker image
+  community.docker.docker_image:
+    name: "{{ opentelemetry_image }}:{{ opentelemetry_image_tag }}"
+    state: absent
+  failed_when: false
+  register: opentelemetry_purge_image_result
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - opentelemetry
+
+- name: WARN -- opentelemetry image removal skipped (in use)
+  ansible.builtin.debug:
+    msg: "WARNING: opentelemetry image {{ opentelemetry_image }}:{{ opentelemetry_image_tag }} could not be removed (likely in use by a non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - opentelemetry_purge_image_result.failed | default(false)
+  tags:
+    - opentelemetry
