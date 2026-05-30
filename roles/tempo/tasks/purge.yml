@@ -1,0 +1,78 @@
+---
+# roles/tempo/tasks/purge.yml
+# Phase 11 per-role irreversible purge surface (PURGE-01 + PURGE-02).
+#
+# Invoked by playbooks/undeploy_docker.yml (Plan 11-04) via
+# `include_role: { name: tempo, tasks_from: purge }` AFTER the same
+# role's `tasks_from: uninstall` (D-152). The orchestrator gates the
+# include on `telemetron_purge_data=true OR telemetron_purge_images=true`;
+# every task below additionally belt-and-suspenders the same `when:` clause
+# (D-153) so this file is safe to include unconditionally.
+#
+# IRREVERSIBLE -- once tasks here execute the named volume and/or pinned
+# Docker image are gone. The pre-action `debug` WARN tasks (D-145 + D-157
+# + D-159) ensure the operator sees the event in PLAY OUTPUT.
+#
+# Tag-scoped composition (D-151): every task carries ONLY the `tempo`
+# tag (D-133 -- no `tempo-purge`, no `tempo-data`, no `tempo-image`
+# sub-tags). `--tags tempo` + the purge flags scopes the purge to ONLY
+# this role's artifacts.
+#
+# Trust contract:
+#   - docker_volume state=absent has NO failed_when guard -- a failure here
+#     means a container is still attached, which means the uninstall.yml
+#     ordering is broken; surface loudly (D-141 trust state=absent).
+#   - docker_image state=absent uses failed_when:false (D-154 -- NOT the
+#     broader error-suppression toggle) so docker-daemon-unreachable
+#     errors still surface; only the image-in-use-by-non-Telemetron-
+#     container error gets swallowed and followed by a post-skip WARN.
+#   - No handler-notify clauses (D-142).
+#   - No host-dirs section -- parent /opt/telemetron/ rmdir lives in
+#     undeploy_docker.yml post_tasks (D-155), NOT per-role.
+
+# ------------------ telemetron_purge_data section ------------------
+
+- name: WARN -- tempo purge_data is about to remove named volume
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- tempo purge_data: {{ tempo_data_volume }}"
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - tempo
+
+- name: Remove tempo named Docker volume
+  community.docker.docker_volume:
+    name: "{{ tempo_data_volume }}"
+    state: absent
+  when: telemetron_purge_data | default(false) | bool
+  tags:
+    - tempo
+
+# ------------------ telemetron_purge_images section ------------------
+
+- name: WARN -- tempo purge_images is about to remove pinned image
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- tempo purge_images: {{ tempo_image }}:{{ tempo_image_tag }}"
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - tempo
+
+# D-154: failed_when:false catches "image in use by non-Telemetron container"
+# without swallowing real errors (e.g., docker daemon unreachable).
+- name: Remove tempo pinned Docker image
+  community.docker.docker_image:
+    name: "{{ tempo_image }}:{{ tempo_image_tag }}"
+    state: absent
+  failed_when: false
+  register: tempo_purge_image_result
+  when: telemetron_purge_images | default(false) | bool
+  tags:
+    - tempo
+
+- name: WARN -- tempo image removal skipped (in use)
+  ansible.builtin.debug:
+    msg: "WARNING: tempo image {{ tempo_image }}:{{ tempo_image_tag }} could not be removed (likely in use by a non-Telemetron container)"
+  when:
+    - telemetron_purge_images | default(false) | bool
+    - tempo_purge_image_result.failed | default(false)
+  tags:
+    - tempo
