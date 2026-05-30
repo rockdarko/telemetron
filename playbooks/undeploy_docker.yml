@@ -288,13 +288,9 @@
       ansible.builtin.debug:
         msg: "WARNING: irreversible -- /opt/telemetron purge_host_dirs (parent tree)"
       when: telemetron_purge_host_dirs | default(false) | bool
-      tags:
-        - always
 
     - name: Remove /opt/telemetron parent host tree
       ansible.builtin.file:
         path: "{{ telemetron_config_root | default('/opt/telemetron') }}"
         state: absent
       when: telemetron_purge_host_dirs | default(false) | bool
-      tags:
-        - always
