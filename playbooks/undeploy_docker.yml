@@ -1,0 +1,67 @@
+---
+# Telemetron -- M1 undeploy orchestrator (Docker target)
+#
+# Removes the Telemetron observability plane from a single Docker host.
+# Invokes 12 per-role tasks/uninstall.yml files in REVERSE of
+# deploy_docker.yml's roles: block order (D-149); the `telemetron` Docker
+# bridge network is removed in post_tasks below (D-150). nfsd's uninstall
+# is gated by enable_nfsd (D-156), symmetric with the deploy-side guard.
+#
+# Default-conservative: this playbook removes containers + role-private
+# /opt/telemetron/<role>/ trees only. Named Docker volumes, host
+# /opt/telemetron/ parent, and pulled Docker images are PRESERVED unless
+# the operator opts in to one of:
+#   --extra-vars "telemetron_purge_data=true"        -> removes telemetron_* named volumes (D-153)
+#   --extra-vars "telemetron_purge_host_dirs=true"   -> removes /opt/telemetron/ parent tree (D-155)
+#   --extra-vars "telemetron_purge_images=true"      -> removes Telemetron-pinned Docker images (D-154)
+# All three flags are irreversible. See WARN banner in pre_tasks (D-157, D-160).
+#
+# Per-role targeted re-runs use --tags <role>:
+#   ansible-playbook -i inventory/example-homelab playbooks/undeploy_docker.yml --tags garage
+#
+# Tag-scoped purge composition (D-151): --tags <role> + purge flags scopes
+# the purge to ONLY the tagged role's artifacts (because every per-role
+# uninstall + purge task carries the single role tag, never a sub-tag -- D-133).
+#
+# D-159 grep-friendly WARN prefix: each destructive action emits a
+# `WARNING: irreversible -- ...` line in PLAY OUTPUT (audit trail).
+#
+# Usage:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/undeploy_docker.yml \
+#                    --ask-vault-pass
+
+- name: Telemetron -- undeploy from Docker host
+  hosts: telemetron
+  gather_facts: true
+  become: false
+
+  collections:
+    - community.docker
+
+  vars:
+    # Opt-in irreversible purge flags. Default false; set via --extra-vars. (D-153)
+    telemetron_purge_data: false
+    telemetron_purge_host_dirs: false
+    telemetron_purge_images: false
+
+  pre_tasks:
+    # D-157 + D-160: PLAY-start WARN banner. Category descriptions (no counts/names)
+    # so the banner is stable across role additions. Tagged `always` (Pattern 8)
+    # so the banner displays even on --tags <role> targeted runs.
+    - name: WARN -- irreversible purge flags status
+      ansible.builtin.debug:
+        msg: |
+          WARNING: irreversible operations status:
+            telemetron_purge_data={{ telemetron_purge_data | default(false) }}
+              {{ 'all telemetron_* named Docker volumes will be removed' if telemetron_purge_data | default(false) | bool else '(named volumes preserved)' }}
+            telemetron_purge_host_dirs={{ telemetron_purge_host_dirs | default(false) }}
+              {{ '/opt/telemetron/ parent tree will be removed' if telemetron_purge_host_dirs | default(false) | bool else '(/opt/telemetron/ parent preserved)' }}
+            telemetron_purge_images={{ telemetron_purge_images | default(false) }}
+              {{ 'all Telemetron-pinned Docker images will be removed' if telemetron_purge_images | default(false) | bool else '(Docker images preserved)' }}
+      tags:
+        - always
+
+  tasks: []
+
+  post_tasks: []
