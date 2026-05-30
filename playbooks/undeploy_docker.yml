@@ -22,6 +22,13 @@
 # Tag-scoped purge composition (D-151): --tags <role> + purge flags scopes
 # the purge to ONLY the tagged role's artifacts (because every per-role
 # uninstall + purge task carries the single role tag, never a sub-tag -- D-133).
+# Caveat: --tags <role> does NOT remove the shared telemetron Docker bridge
+# network (that task is tagged `network`, not `always`), and the
+# telemetron_purge_host_dirs=true /opt/telemetron parent-tree removal is
+# untagged -- both run only on a full unscoped undeploy. Use
+# telemetron_purge_host_dirs=true only on a full-stack undeploy; combining it
+# with --tags <role> will not nuke other roles' bind-mounts, but the parent
+# tree also won't be removed.
 #
 # D-159 grep-friendly WARN prefix: each destructive action emits a
 # `WARNING: irreversible -- ...` line in PLAY OUTPUT (audit trail).
