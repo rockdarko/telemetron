@@ -62,6 +62,209 @@
       tags:
         - always
 
-  tasks: []
+  # D-149: 23 include_role calls in literal reverse of deploy_docker.yml's
+  # roles: block. Deploy order is garage -> loki -> tempo -> mimir ->
+  # node_exporter -> opentelemetry -> prometheus -> fluentbit ->
+  # alertmanager -> grafana -> karma -> nfsd; this block reverses that.
+  # nfsd has uninstall-only (NO purge.yml per D-156). Every other role
+  # gets an uninstall + purge pair where the purge include is OR-gated
+  # on the two flag-types (data + images); purge.yml internally gates
+  # each section on its specific flag (D-153 belt-and-suspenders).
+  tasks:
+    # nfsd FIRST (reverse of deploy where it's LAST). NO purge.yml (D-156).
+    - name: Invoke nfsd uninstall (host-package; opt-in via enable_nfsd)
+      ansible.builtin.include_role:
+        name: nfsd
+        tasks_from: uninstall
+      when: enable_nfsd | default(false) | bool
+      tags:
+        - nfsd
+
+    - name: Invoke karma uninstall
+      ansible.builtin.include_role:
+        name: karma
+        tasks_from: uninstall
+      tags:
+        - karma
+
+    - name: Invoke karma purge (gated)
+      ansible.builtin.include_role:
+        name: karma
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - karma
+
+    - name: Invoke grafana uninstall
+      ansible.builtin.include_role:
+        name: grafana
+        tasks_from: uninstall
+      tags:
+        - grafana
+
+    - name: Invoke grafana purge (gated)
+      ansible.builtin.include_role:
+        name: grafana
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - grafana
+
+    - name: Invoke alertmanager uninstall
+      ansible.builtin.include_role:
+        name: alertmanager
+        tasks_from: uninstall
+      tags:
+        - alertmanager
+
+    - name: Invoke alertmanager purge (gated)
+      ansible.builtin.include_role:
+        name: alertmanager
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - alertmanager
+
+    - name: Invoke fluentbit uninstall
+      ansible.builtin.include_role:
+        name: fluentbit
+        tasks_from: uninstall
+      tags:
+        - fluentbit
+
+    - name: Invoke fluentbit purge (gated)
+      ansible.builtin.include_role:
+        name: fluentbit
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - fluentbit
+
+    - name: Invoke prometheus uninstall
+      ansible.builtin.include_role:
+        name: prometheus
+        tasks_from: uninstall
+      tags:
+        - prometheus
+
+    - name: Invoke prometheus purge (gated)
+      ansible.builtin.include_role:
+        name: prometheus
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - prometheus
+
+    - name: Invoke opentelemetry uninstall
+      ansible.builtin.include_role:
+        name: opentelemetry
+        tasks_from: uninstall
+      tags:
+        - opentelemetry
+
+    - name: Invoke opentelemetry purge (gated)
+      ansible.builtin.include_role:
+        name: opentelemetry
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - opentelemetry
+
+    - name: Invoke node_exporter uninstall
+      ansible.builtin.include_role:
+        name: node_exporter
+        tasks_from: uninstall
+      tags:
+        - node_exporter
+
+    - name: Invoke node_exporter purge (gated)
+      ansible.builtin.include_role:
+        name: node_exporter
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - node_exporter
+
+    - name: Invoke mimir uninstall
+      ansible.builtin.include_role:
+        name: mimir
+        tasks_from: uninstall
+      tags:
+        - mimir
+
+    - name: Invoke mimir purge (gated)
+      ansible.builtin.include_role:
+        name: mimir
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - mimir
+
+    - name: Invoke tempo uninstall
+      ansible.builtin.include_role:
+        name: tempo
+        tasks_from: uninstall
+      tags:
+        - tempo
+
+    - name: Invoke tempo purge (gated)
+      ansible.builtin.include_role:
+        name: tempo
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - tempo
+
+    - name: Invoke loki uninstall
+      ansible.builtin.include_role:
+        name: loki
+        tasks_from: uninstall
+      tags:
+        - loki
+
+    - name: Invoke loki purge (gated)
+      ansible.builtin.include_role:
+        name: loki
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - loki
+
+    - name: Invoke garage uninstall
+      ansible.builtin.include_role:
+        name: garage
+        tasks_from: uninstall
+      tags:
+        - garage
+
+    - name: Invoke garage purge (gated)
+      ansible.builtin.include_role:
+        name: garage
+        tasks_from: purge
+      when: >-
+        telemetron_purge_data | default(false) | bool
+        or telemetron_purge_images | default(false) | bool
+      tags:
+        - garage
 
   post_tasks: []
