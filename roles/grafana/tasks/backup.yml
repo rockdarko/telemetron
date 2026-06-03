@@ -79,6 +79,16 @@
     - grafana
     - backup
 
+# CR-02: resolve host-side mountpoint via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
+- name: Resolve Grafana data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ grafana_data_volume }}"
+  register: grafana_data_volume_info
+  tags:
+    - grafana
+    - backup
+
 - name: Cold-quiesce Grafana backup -- block wraps stop + tar (AN-2 restart guarantee)
   block:
     # XP-1: docker stop, NOT community.docker state=stopped.
@@ -117,7 +127,7 @@
           umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/grafana/grafana-{{ backup_timestamp.stdout }}.tar.zst
-          -C /var/lib/docker/volumes/{{ grafana_data_volume }}/_data
+          -C {{ grafana_data_volume_info.volume.Mountpoint }}
           .
       become: true
       changed_when: true

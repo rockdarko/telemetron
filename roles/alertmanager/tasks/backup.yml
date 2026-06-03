@@ -67,13 +67,24 @@
     - alertmanager
     - backup
 
+# CR-02: resolve host-side mountpoint via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
+# Must run BEFORE the AP-1 stat (which probes a path inside the mountpoint).
+- name: Resolve Alertmanager data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ alertmanager_data_volume }}"
+  register: alertmanager_data_volume_info
+  tags:
+    - alertmanager
+    - backup
+
 # AP-1 stat-then-debug guard for empty `data/` subdir on fresh deploys
 # (CONTEXT.md Claude's-Discretion: stat-then-debug pattern chosen as
 # the recommended default; 13-PATTERNS.md lines 585-602 verbatim).
 # Informational only -- the tar step below runs unconditionally.
 - name: Check whether Alertmanager has any persisted state
   ansible.builtin.stat:
-    path: "/var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data/data"
+    path: "{{ alertmanager_data_volume_info.volume.Mountpoint }}/data"
   register: am_data_dir_stat
   become: true
   tags:
@@ -138,7 +149,7 @@
           umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp.stdout }}.tar.zst
-          -C /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data
+          -C {{ alertmanager_data_volume_info.volume.Mountpoint }}
           .
       become: true
       changed_when: true

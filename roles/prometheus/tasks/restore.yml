@@ -104,6 +104,16 @@
     - prometheus
     - restore
 
+# CR-02: resolve host-side mountpoint via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
+- name: Resolve Prometheus data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ prometheus_data_volume }}"
+  register: prometheus_data_volume_info
+  tags:
+    - prometheus
+    - restore
+
 # D-159 WARN -- names identifiers only (volume name + source path).
 # Per CONTEXT.md "WARN names identifiers only, NOT contents" -- the
 # tarball listing belongs in the `tar tf` integrity check below, not here.
@@ -154,7 +164,7 @@
     # research). The container is stopped so no FD races.
     - name: Wipe existing Prometheus _data contents (STACK.md sec.3)
       ansible.builtin.command:
-        cmd: "find /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data -mindepth 1 -delete"
+        cmd: "find {{ prometheus_data_volume_info.volume.Mountpoint }} -mindepth 1 -delete"
       become: true
       changed_when: true
 
@@ -162,7 +172,7 @@
     # `-C _data` + `.`), so `-xpf -C _data` lands them back exactly.
     - name: Restore Prometheus _data from backup tarball
       ansible.builtin.command:
-        cmd: "tar --zstd -xpf {{ backup_src_path }} -C /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data"
+        cmd: "tar --zstd -xpf {{ backup_src_path }} -C {{ prometheus_data_volume_info.volume.Mountpoint }}"
       become: true
       changed_when: true
 
@@ -179,7 +189,7 @@
     # that prefers loud-failure over silent-broken-startup.
     - name: Delete Prometheus lock file after restore (PITFALLS PP-1)
       ansible.builtin.file:
-        path: "/var/lib/docker/volumes/{{ prometheus_data_volume }}/_data/lock"
+        path: "{{ prometheus_data_volume_info.volume.Mountpoint }}/lock"
         state: absent
       become: true
 
@@ -188,7 +198,7 @@
     # file. state: absent is idempotent (no-op if file absent).
     - name: Delete Prometheus queries.active after restore (PP-3 log noise)
       ansible.builtin.file:
-        path: "/var/lib/docker/volumes/{{ prometheus_data_volume }}/_data/queries.active"
+        path: "{{ prometheus_data_volume_info.volume.Mountpoint }}/queries.active"
         state: absent
       become: true
 

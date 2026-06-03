@@ -70,6 +70,16 @@
     - prometheus
     - backup
 
+# CR-02: resolve host-side mountpoint via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
+- name: Resolve Prometheus data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ prometheus_data_volume }}"
+  register: prometheus_data_volume_info
+  tags:
+    - prometheus
+    - backup
+
 - name: Cold-quiesce Prometheus backup -- block (PITFALLS AN-2 always-restart)
   block:
     # XP-1: `ansible.builtin.command: docker stop` shells out, NOT
@@ -110,7 +120,7 @@
           umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp.stdout }}.tar.zst
-          -C /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data
+          -C {{ prometheus_data_volume_info.volume.Mountpoint }}
           .
       become: true
       changed_when: true

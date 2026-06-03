@@ -84,6 +84,29 @@
     - garage
     - backup
 
+# CR-02: resolve host-side mountpoints via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data. Hosts whose Docker daemon
+# is configured with a non-default data-root (e.g. /etc/docker/daemon.json
+# data-root: /data/docker) silently broke under the hardcoded path -- the
+# rest of the Telemetron deploy is data-root-agnostic via the named-volume
+# abstraction, so this brings backup/restore into line. The .volume.Mountpoint
+# field is the absolute path the Docker daemon resolves to.
+- name: Resolve Garage meta volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ garage_meta_volume }}"
+  register: garage_meta_volume_info
+  tags:
+    - garage
+    - backup
+
+- name: Resolve Garage data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ garage_data_volume }}"
+  register: garage_data_volume_info
+  tags:
+    - garage
+    - backup
+
 # AN-2: the stop + tar sequence is wrapped in a block/always so the
 # Garage container ALWAYS restarts -- even if tar fails (full disk,
 # zstd missing, etc.). The always: clause is the operational guarantee;
@@ -148,11 +171,11 @@
           umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/garage/garage-{{ backup_timestamp.stdout }}.tar.zst
-          --transform 's,^var/lib/docker/volumes/{{ garage_meta_volume }}/_data,meta,'
-          --transform 's,^var/lib/docker/volumes/{{ garage_data_volume }}/_data,data,'
+          --transform 's,^{{ garage_meta_volume_info.volume.Mountpoint | regex_replace("^/", "") }},meta,'
+          --transform 's,^{{ garage_data_volume_info.volume.Mountpoint | regex_replace("^/", "") }},data,'
           --transform 's,^{{ garage_s3_credentials_file | regex_replace("^/", "") }}$,s3-credentials,'
-          /var/lib/docker/volumes/{{ garage_meta_volume }}/_data
-          /var/lib/docker/volumes/{{ garage_data_volume }}/_data
+          {{ garage_meta_volume_info.volume.Mountpoint }}
+          {{ garage_data_volume_info.volume.Mountpoint }}
           {{ garage_s3_credentials_file }}
       become: true
       changed_when: true

@@ -120,6 +120,28 @@
     - garage
     - restore
 
+# CR-02: resolve host-side mountpoints via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
+# Both volumes are pre-created by the deploy (community.docker.docker_volume);
+# this resolve relies on them existing. On a true bare-metal restore-to-fresh-
+# host scenario, deploy_docker.yml must run before restore_docker.yml -- the
+# Phase 14 orchestrator enforces that ordering.
+- name: Resolve Garage meta volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ garage_meta_volume }}"
+  register: garage_meta_volume_info
+  tags:
+    - garage
+    - restore
+
+- name: Resolve Garage data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ garage_data_volume }}"
+  register: garage_data_volume_info
+  tags:
+    - garage
+    - restore
+
 # Pattern E (D-159 destructive WARN): names ONLY the destination
 # identifiers (volume names + host file path) and the source tarball
 # path. Does NOT echo tarball contents or existing volume contents
@@ -181,13 +203,13 @@
     # `_data` root directory intact while removing every child entry.
     - name: Wipe existing Garage meta volume contents (XP-5 host _data path)
       ansible.builtin.command:
-        cmd: "find /var/lib/docker/volumes/{{ garage_meta_volume }}/_data -mindepth 1 -delete"
+        cmd: "find {{ garage_meta_volume_info.volume.Mountpoint }} -mindepth 1 -delete"
       become: true
       changed_when: true
 
     - name: Wipe existing Garage data volume contents
       ansible.builtin.command:
-        cmd: "find /var/lib/docker/volumes/{{ garage_data_volume }}/_data -mindepth 1 -delete"
+        cmd: "find {{ garage_data_volume_info.volume.Mountpoint }} -mindepth 1 -delete"
       become: true
       changed_when: true
 
@@ -209,7 +231,7 @@
         cmd: >-
           tar --zstd -xpf {{ backup_src_path }}
           --strip-components=1
-          -C /var/lib/docker/volumes/{{ garage_meta_volume }}/_data
+          -C {{ garage_meta_volume_info.volume.Mountpoint }}
           meta
       become: true
       changed_when: true
@@ -220,7 +242,7 @@
         cmd: >-
           tar --zstd -xpf {{ backup_src_path }}
           --strip-components=1
-          -C /var/lib/docker/volumes/{{ garage_data_volume }}/_data
+          -C {{ garage_data_volume_info.volume.Mountpoint }}
           data
       become: true
       changed_when: true

@@ -99,6 +99,16 @@
     - alertmanager
     - restore
 
+# CR-02: resolve host-side mountpoint via docker_volume_info instead of
+# hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
+- name: Resolve Alertmanager data volume mountpoint (CR-02 data-root-agnostic)
+  community.docker.docker_volume_info:
+    name: "{{ alertmanager_data_volume }}"
+  register: alertmanager_data_volume_info
+  tags:
+    - alertmanager
+    - restore
+
 # D-159 WARN: identifiers only -- volume name + tarball path. No
 # `tar tf` content listing (information-disclosure mitigation per
 # threat model T-13-05-04).
@@ -150,7 +160,7 @@
     # all children.
     - name: Wipe existing Alertmanager volume contents
       ansible.builtin.command:
-        cmd: "find /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data -mindepth 1 -delete"
+        cmd: "find {{ alertmanager_data_volume_info.volume.Mountpoint }} -mindepth 1 -delete"
       become: true
       changed_when: true
 
@@ -161,7 +171,7 @@
       ansible.builtin.command:
         cmd: >-
           tar --zstd -xpf {{ backup_src_path }}
-          -C /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data
+          -C {{ alertmanager_data_volume_info.volume.Mountpoint }}
       become: true
       changed_when: true
 
