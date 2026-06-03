@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: — Backup & Restore
-status: completed
-stopped_at: Phase 13 context gathered
-last_updated: "2026-06-03T12:06:32.342Z"
+status: ready_to_plan
+stopped_at: Phase 13 complete (5/5) — ready to discuss Phase 14
+last_updated: 2026-06-03T13:08:13.885Z
 last_activity: 2026-06-03 -- Phase 13 marked complete
 progress:
   total_phases: 3
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02 after v1.3.0 milestone scoped)
 
 **Core value:** A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. **Shipped in v1.0.0. Extended in v1.3.0: when something goes wrong, the operator has a tested path to restore from a backup.**
-**Current focus:** Phase 13 — per-role-backup-restore-tasks
+**Current focus:** Phase 14 — orchestrators + leviathan human uat
 
 ## Current Position
 
-Phase: 13 — COMPLETE
-Plan: 1 of 5
-Status: Phase 13 complete
-Last activity: 2026-06-03 -- Phase 13 marked complete
+Phase: 14
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-03
 
 ```
 [Phase 13] [ ] Per-Role Backup & Restore Tasks   (0/? plans)
@@ -42,7 +42,7 @@ Progress: 0/3 phases complete (0%)
 
 **Velocity:**
 
-- Total plans completed: 12
+- Total plans completed: 17
 - Average duration: —
 - Total execution time: 0.0 hours
 
@@ -56,6 +56,7 @@ Progress: 0/3 phases complete (0%)
 | 08 | 3 | - | - |
 | 11 | 6 | - | - |
 | 12 | 3 | - | - |
+| 13 | 5 | - | - |
 
 **Recent Trend:**
 
