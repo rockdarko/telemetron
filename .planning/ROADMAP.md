@@ -74,7 +74,12 @@ Tag: `v1.2.0`
   4. Each `tasks/restore.yml` asserts `backup_restore_confirm == true` (fail-fast gate), runs `tar tf` integrity check on the source tarball, wipes volume `_data/` contents, untars, restarts, and runs verify. The Prometheus `tasks/restore.yml` also deletes the `/prometheus/lock` file after untar and before container start.
   5. Each `tasks/backup.yml` and `tasks/restore.yml` begins with an `ansible.builtin.package: name: zstd state: present` pre-task; a second run on a host that already has `zstd` produces `changed=0` for that task.
   6. Running `ansible-playbook playbooks/backup_docker.yml --tags garage --ask-vault-pass` (substituting any of the 4 role names) on leviathan completes with `failed=0` and the role's container is in a running/healthy state afterward.
-**Plans**: TBD
+**Plans**: 5 plans
+- [x] 13-01-PLAN.md — Shared backup vars file + 4 role defaults additions (foundation; wave 1)
+- [ ] 13-02-PLAN.md — Garage backup.yml + restore.yml (3-entry tarball: meta + data + s3-credentials per D-176)
+- [ ] 13-03-PLAN.md — Prometheus backup.yml + restore.yml (PP-1 lock-file deletion on restore)
+- [ ] 13-04-PLAN.md — Grafana backup.yml + restore.yml (entire-volume tar per GR-2; GR-4 password rotation documented)
+- [ ] 13-05-PLAN.md — Alertmanager backup.yml + restore.yml (empty-data stat-guard per AP-1)
 
 ### Phase 14: Orchestrators + Leviathan HUMAN-UAT
 **Goal**: Operators have two symmetric orchestrator playbooks (`backup_docker.yml` and `restore_docker.yml`) with the same `--tags <role>`, `--ask-vault-pass`, and UX conventions as `deploy_docker.yml` and `undeploy_docker.yml`, proven end-to-end on leviathan via the full backup → purge-data undeploy → redeploy → restore → re-smoke round-trip.
@@ -117,7 +122,7 @@ Tag: `v1.2.0`
 | 10    | v1.2.0    | 6/6            | Complete    | 2026-05-29 |
 | 11    | v1.2.0    | 6/6            | Complete    | 2026-05-30 |
 | 12    | v1.2.0    | 3/3            | Complete    | 2026-05-30 |
-| 13    | v1.3.0    | 0/?            | Not started | -          |
+| 13    | v1.3.0    | 1/5 | In Progress|  |
 | 14    | v1.3.0    | 0/?            | Not started | -          |
 | 15    | v1.3.0    | 0/?            | Not started | -          |
 
