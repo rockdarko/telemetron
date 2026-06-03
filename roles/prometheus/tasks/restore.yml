@@ -1,0 +1,208 @@
+---
+# roles/prometheus/tasks/restore.yml
+# Confirm-gated, integrity-checked restore for Prometheus TSDB
+# (RESTORE-V13-02).
+#
+# IRREVERSIBLE -- this file wipes the contents of the named volume
+# {{ prometheus_data_volume }} (default telemetron_prometheus_data) and
+# replaces them with the contents of a previously-captured tarball
+# produced by tasks/backup.yml. Gated TWICE before any destructive step:
+#   1. Role-level fail-fast unless backup_restore_confirm=true (Pattern I
+#      from PATTERNS.md; mirrors v1.2.0 D-159 telemetron_purge_data
+#      contract). The gate fires inside this file so a standalone
+#      `include_role: tasks_from=restore` from an operator's own playbook
+#      is also safe (OPS-V13-01).
+#   2. `tar --zstd -tf` integrity check BEFORE any wipe -- a corrupt
+#      tarball must surface as a tar error, not as a half-restored TSDB.
+#
+# Source selection:
+#   - backup_restore_from="" (default) -> latest-discovery via
+#     `find {{ backup_dest_root }}/prometheus/ -name 'prometheus-*.tar.zst'
+#     -printf '%f\n' | sort -r | head -1` (D-179: ISO 8601 basic UTC
+#     timestamps sort chronologically by lex order).
+#   - backup_restore_from="<YYYYMMDDTHHMMSSZ>" -> pinned to that exact
+#     tarball; no discovery shell-out.
+#
+# Cold-quiesce path: stop -> poll Running == false -> wipe -> untar ->
+#   PP-1 lock-file delete -> PP-3 queries.active delete -> always-restart.
+#
+# PITFALLS PP-1 (CRITICAL -- UNIQUE TO PROMETHEUS):
+#   The restored tarball carries a stale lock file (PID-based) from the
+#   backup-time Prometheus process. On a host whose PID namespace allocates
+#   the same PID to an unrelated process, Prometheus 3.x can refuse to
+#   start with "Locked by other process" instead of replacing the stale
+#   lock. The fix is unconditional `ansible.builtin.file: state: absent`
+#   on `_data/lock` AFTER untar AND BEFORE `docker start`. state: absent
+#   is already idempotent -- no ignore_errors needed.
+#
+# PITFALLS PP-3 (optional, recommended): the restored tarball also carries
+#   queries.active, which generates harmless but noisy "queries didn't
+#   finish" startup log lines. Delete it for clean restart logs. Same
+#   idempotent state: absent shape.
+#
+# AN-2: container ALWAYS restarts (always-clause owns `docker start` +
+#   verify.yml include) even if the wipe/untar/lock-delete fails -- so the
+#   operator gets back to a (possibly broken) running state for diagnostic
+#   `docker logs` access rather than a stopped container with no
+#   observability surface.
+#
+# D-178 verify: roles/prometheus/tasks/verify.yml is re-used unchanged via
+#   `include_tasks: verify.yml` inside `always:`.
+#
+# Tags: [prometheus, restore] (D-133 + cross-cutting --tags restore).
+
+# OPS-V13-04: ensure zstd is installed before any tar operation.
+- name: Ensure zstd is installed for Prometheus restore (OPS-V13-04)
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - prometheus
+    - restore
+
+# Pattern I confirm-gate -- must precede every other task in this file.
+# Mirrors v1.2.0 telemetron_purge_data idiom (roles/garage/tasks/purge.yml
+# line 69). Placed BEFORE the D-159 WARN so a no-confirm invocation fails
+# loud-and-early WITHOUT echoing the destructive WARN.
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - prometheus
+    - restore
+
+# Latest-tarball discovery (D-179). Only runs when the operator did not
+# pin a specific timestamp via backup_restore_from.
+- name: Discover latest Prometheus backup tarball (when backup_restore_from empty)
+  ansible.builtin.shell:
+    cmd: >-
+      find {{ backup_dest_root }}/prometheus/ -name 'prometheus-*.tar.zst' -type f -printf '%f\n'
+      | sort -r | head -1
+  register: prometheus_latest_tarball
+  changed_when: false
+  failed_when: prometheus_latest_tarball.stdout == ""
+  when: backup_restore_from | default("") == ""
+  become: true
+  tags:
+    - prometheus
+    - restore
+
+# Resolve the source path -- either the discovered latest tarball or the
+# explicit backup_restore_from timestamp. set_fact runs unconditionally so
+# the downstream wipe/untar tasks have a single variable to reference.
+- name: Resolve Prometheus restore source path
+  ansible.builtin.set_fact:
+    backup_src_path: >-
+      {% if backup_restore_from | default('') | length > 0 -%}
+      {{ backup_dest_root }}/prometheus/prometheus-{{ backup_restore_from }}.tar.zst
+      {%- else -%}
+      {{ backup_dest_root }}/prometheus/{{ prometheus_latest_tarball.stdout }}
+      {%- endif %}
+  tags:
+    - prometheus
+    - restore
+
+# D-159 WARN -- names identifiers only (volume name + source path).
+# Per CONTEXT.md "WARN names identifiers only, NOT contents" -- the
+# tarball listing belongs in the `tar tf` integrity check below, not here.
+- name: WARN -- prometheus restore will overwrite existing volume contents
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- prometheus restore: {{ prometheus_data_volume }} from {{ backup_src_path }}"
+  tags:
+    - prometheus
+    - restore
+
+# Integrity check -- MUST run before any wipe step. A corrupt or
+# unreadable tarball will fail this task and the play aborts BEFORE
+# touching _data/.
+- name: Integrity-check Prometheus backup tarball (must precede wipe)
+  ansible.builtin.command:
+    cmd: "tar --zstd -tf {{ backup_src_path }}"
+  changed_when: false
+  become: true
+  tags:
+    - prometheus
+    - restore
+
+- name: Cold-quiesce Prometheus restore -- block (AN-2 always-restart)
+  block:
+    # XP-1 docker stop (not the stopped state value on community.docker
+    # docker_container, which strips volume specs). Honours
+    # prometheus_backup_stop_timeout for SIGTERM->SIGKILL budget (D-177).
+    - name: Stop Prometheus container for cold-quiesce restore (XP-1)
+      ansible.builtin.command: "docker stop -t {{ prometheus_backup_stop_timeout }} {{ prometheus_container_name }}"
+      changed_when: true
+      become: true
+
+    - name: Wait for Prometheus container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ prometheus_container_name }}"
+      register: prometheus_stopped_check
+      until: >-
+        prometheus_stopped_check.container is defined
+        and prometheus_stopped_check.container.State is defined
+        and prometheus_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # Wipe -- `find -mindepth 1 -delete` deletes everything inside _data
+    # without touching the _data/ mountpoint itself (STACK.md sec.3;
+    # docker_volume state=absent is the WRONG primitive here per
+    # research). The container is stopped so no FD races.
+    - name: Wipe existing Prometheus _data contents (STACK.md sec.3)
+      ansible.builtin.command:
+        cmd: "find /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data -mindepth 1 -delete"
+      become: true
+      changed_when: true
+
+    # Untar -- entries are relative to _data root (backup used
+    # `-C _data` + `.`), so `-xpf -C _data` lands them back exactly.
+    - name: Restore Prometheus _data from backup tarball
+      ansible.builtin.command:
+        cmd: "tar --zstd -xpf {{ backup_src_path }} -C /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data"
+      become: true
+      changed_when: true
+
+    # PP-1 CRITICAL -- delete stale lock file UNIQUE TO PROMETHEUS.
+    # Placement reasoning (per PATTERNS.md lines 487-494 + plan
+    # acceptance criterion): MUST be AFTER the untar (otherwise nothing
+    # to delete) AND BEFORE the docker start in `always:`. Placed inside
+    # `block:` so the lock-delete failure (e.g. permission error) is
+    # surfaced as a block failure -- the operator wants to know the
+    # restore tarball ended up with an unreadable lock file. The
+    # always-clause still runs `docker start` even if this task fails,
+    # so the container will come up and Prometheus 3.x will then attempt
+    # its own stale-lock-replacement path -- a defence-in-depth posture
+    # that prefers loud-failure over silent-broken-startup.
+    - name: Delete Prometheus lock file after restore (PITFALLS PP-1)
+      ansible.builtin.file:
+        path: "/var/lib/docker/volumes/{{ prometheus_data_volume }}/_data/lock"
+        state: absent
+      become: true
+
+    # PP-3 optional but recommended -- suppresses harmless "queries
+    # didn't finish" startup log noise from the restored queries.active
+    # file. state: absent is idempotent (no-op if file absent).
+    - name: Delete Prometheus queries.active after restore (PP-3 log noise)
+      ansible.builtin.file:
+        path: "/var/lib/docker/volumes/{{ prometheus_data_volume }}/_data/queries.active"
+        state: absent
+      become: true
+
+  always:
+    # AN-2: ALWAYS restart, even if wipe/untar/lock-delete failed.
+    - name: Restart Prometheus container after restore (AN-2)
+      ansible.builtin.command: "docker start {{ prometheus_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: re-use roles/prometheus/tasks/verify.yml unchanged. No
+    # sub-tags here -- block-level [prometheus, restore] tags carry down.
+    - name: Verify Prometheus post-restore (D-178 reuse verify.yml)
+      ansible.builtin.include_tasks: verify.yml
+  tags:
+    - prometheus
+    - restore
