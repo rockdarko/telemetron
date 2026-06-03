@@ -63,23 +63,28 @@
 # Tags: [alertmanager, restore] on block: parent (D-133 + ARCHITECTURE
 # sec.5).
 
+# Confirm gate -- fires BEFORE any destructive step (and before tarball
+# discovery, so a misconfigured run fails fast without touching disk).
+# Mirrors v1.2.0 D-159 telemetron_purge_data gate idiom.
+#
+# WR-02: this gate runs FIRST -- BEFORE the zstd package install -- so a
+# no-confirm invocation fails fast WITHOUT mutating system state on the
+# target host. Previously the zstd install ran first, contradicting the
+# spirit of the safety contract documented in the header above.
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - alertmanager
+    - restore
+
 # OPS-V13-04: zstd ensure-present (idempotent; no-op once installed).
 - name: Ensure zstd is installed for tar --zstd decompression
   ansible.builtin.package:
     name: zstd
     state: present
   become: true
-  tags:
-    - alertmanager
-    - restore
-
-# Confirm gate -- fires BEFORE any destructive step (and before tarball
-# discovery, so a misconfigured run fails fast without touching disk).
-# Mirrors v1.2.0 D-159 telemetron_purge_data gate idiom.
-- name: Fail unless backup_restore_confirm is set
-  ansible.builtin.fail:
-    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
-  when: not (backup_restore_confirm | default(false) | bool)
   tags:
     - alertmanager
     - restore

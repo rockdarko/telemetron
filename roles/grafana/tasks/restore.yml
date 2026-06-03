@@ -73,22 +73,27 @@
 #
 # Tags: [grafana, restore].
 
+# Per-role hard gate. Mirrors v1.2.0 D-159 telemetron_purge_data=true shape
+# (roles/garage/tasks/purge.yml line 69) but uses `fail:` to abort instead
+# of skipping -- restore must be EXPLICITLY confirmed, never silently skipped.
+#
+# WR-02: this gate runs FIRST -- BEFORE the zstd package install -- so a
+# no-confirm invocation fails fast WITHOUT mutating system state on the
+# target host. Previously the zstd install ran first, contradicting the
+# spirit of the safety contract.
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - grafana
+    - restore
+
 - name: Ensure zstd is installed for tar --zstd compression
   ansible.builtin.package:
     name: zstd
     state: present
   become: true
-  tags:
-    - grafana
-    - restore
-
-# Per-role hard gate. Mirrors v1.2.0 D-159 telemetron_purge_data=true shape
-# (roles/garage/tasks/purge.yml line 69) but uses `fail:` to abort instead
-# of skipping -- restore must be EXPLICITLY confirmed, never silently skipped.
-- name: Fail unless backup_restore_confirm is set
-  ansible.builtin.fail:
-    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
-  when: not (backup_restore_confirm | default(false) | bool)
   tags:
     - grafana
     - restore

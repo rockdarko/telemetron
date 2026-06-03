@@ -67,24 +67,29 @@
 #
 # Tags: [prometheus, restore] (D-133 + cross-cutting --tags restore).
 
+# Pattern I confirm-gate -- must precede every other task in this file.
+# Mirrors v1.2.0 telemetron_purge_data idiom (roles/garage/tasks/purge.yml
+# line 69). Placed BEFORE the D-159 WARN so a no-confirm invocation fails
+# loud-and-early WITHOUT echoing the destructive WARN.
+#
+# WR-02: this gate runs FIRST -- BEFORE the zstd package install -- so a
+# no-confirm invocation fails fast WITHOUT mutating system state on the
+# target host. Previously the zstd install ran first, contradicting the
+# spirit of the safety contract.
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - prometheus
+    - restore
+
 # OPS-V13-04: ensure zstd is installed before any tar operation.
 - name: Ensure zstd is installed for Prometheus restore (OPS-V13-04)
   ansible.builtin.package:
     name: zstd
     state: present
   become: true
-  tags:
-    - prometheus
-    - restore
-
-# Pattern I confirm-gate -- must precede every other task in this file.
-# Mirrors v1.2.0 telemetron_purge_data idiom (roles/garage/tasks/purge.yml
-# line 69). Placed BEFORE the D-159 WARN so a no-confirm invocation fails
-# loud-and-early WITHOUT echoing the destructive WARN.
-- name: Fail unless backup_restore_confirm is set
-  ansible.builtin.fail:
-    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
-  when: not (backup_restore_confirm | default(false) | bool)
   tags:
     - prometheus
     - restore
