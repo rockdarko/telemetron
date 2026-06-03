@@ -1,0 +1,163 @@
+---
+# roles/alertmanager/tasks/backup.yml
+# Cold-quiesce backup for Alertmanager silences + nflog state (BACKUP-V13-04).
+#
+# Stops the Alertmanager container (cold-quiesce via `docker stop` + poll --
+# NOT community.docker state: stopped per XP-1), then tars the named volume
+# {{ alertmanager_data_volume }} into a single zstd tarball at:
+#   {{ backup_dest_root }}/alertmanager/alertmanager-<UTC>.tar.zst   (mode 0600)
+#
+# Tarball contents: full _data/ tree of telemetron_alertmanager_data --
+# typically `data/silences` and `data/nflog` (length-prefixed protobuf
+# files; NOT BoltDB; no WAL; no lock file -- AP-1). SIGTERM triggers a
+# final maintenance flush before exit, so cold-quiesce captures the
+# current on-disk state cleanly.
+#
+# Empty-data edge case (AP-1; CONTEXT.md Claude's-Discretion lock):
+# A fresh deploy that has NEVER fired or silenced an alert will not have
+# a `data/` subdirectory inside _data/ yet -- Alertmanager creates it
+# only on the first persisted state-write. We `stat` the path and emit
+# an informational debug if missing, but the tar step ALWAYS runs --
+# tarring an "empty" _data/ root produces a valid (small) tarball with
+# whatever bookkeeping files exist. Restore symmetrically tolerates an
+# empty tarball; Alertmanager creates `data/` on first state-write.
+#
+# AP-2 (stale nflog re-fires -- docs only): A restored nflog may re-enable
+# old dedup memory, so operators wired to REAL receivers (Slack/email/etc.)
+# may see re-notification for ongoing alerts after a restore. Telemetron's
+# default config uses the `null` receiver so there is no re-notification
+# surface. Operator education for real-receiver setups lives in the
+# Phase 15 per-role README + quickstart.md doc cascade.
+#
+# AP-3 (no cluster state): Single-instance Alertmanager runs with
+# --cluster.listen-address="" -- no gossip ring, no peer-merge pitfalls.
+#
+# Block/rescue/always: container ALWAYS restarts even on tar failure (AN-2).
+# Verify post-restart includes tasks/verify.yml (D-178; the same 202-line
+# file tasks/main.yml uses post-deploy -- /-/ready, /-/healthy, /api/v2/*).
+#
+# Tags: [alertmanager, backup] (D-133 + ARCHITECTURE.md sec.5). Both tags
+# carried on the block: parent so --tags backup and --tags alertmanager
+# partial runs both reach this file.
+
+# OPS-V13-04: zstd is NOT pre-installed on Ubuntu 22 / Debian 12 / RHEL 9.
+# Idempotent ensure-present pre-task; runs on every backup invocation
+# but is a no-op once installed.
+- name: Ensure zstd is installed for tar --zstd compression
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - alertmanager
+    - backup
+
+# Dest dir is lazy-created by each per-role backup task (CONTEXT.md
+# "Carrying forward"). Mode 0700 per XP-4 -- silences + nflog protobuf
+# files may carry recipient addresses for operators with real receivers.
+- name: Ensure Alertmanager backup destination directory exists
+  ansible.builtin.file:
+    path: "{{ backup_dest_root }}/alertmanager"
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+  become: true
+  tags:
+    - alertmanager
+    - backup
+
+# AP-1 stat-then-debug guard for empty `data/` subdir on fresh deploys
+# (CONTEXT.md Claude's-Discretion: stat-then-debug pattern chosen as
+# the recommended default; 13-PATTERNS.md lines 585-602 verbatim).
+# Informational only -- the tar step below runs unconditionally.
+- name: Check whether Alertmanager has any persisted state
+  ansible.builtin.stat:
+    path: "/var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data/data"
+  register: am_data_dir_stat
+  become: true
+  tags:
+    - alertmanager
+    - backup
+
+- name: Note empty Alertmanager data directory (fresh-deploy state)
+  ansible.builtin.debug:
+    msg: "Alertmanager data directory does not exist yet (no silences or nflog persisted). Backup will still tar the volume (empty payload)."
+  when: not (am_data_dir_stat.stat.exists and am_data_dir_stat.stat.isdir)
+  tags:
+    - alertmanager
+    - backup
+
+# D-179: ISO 8601 basic UTC timestamp (YYYYMMDDTHHMMSSZ). Generated once
+# per backup invocation; lexicographic sort is chronological because the
+# format is monotonic.
+- name: Generate UTC backup timestamp (D-179)
+  ansible.builtin.command: date -u +%Y%m%dT%H%M%SZ
+  register: backup_timestamp
+  changed_when: false
+  tags:
+    - alertmanager
+    - backup
+
+# Cold-quiesce block: stop -> wait-stopped -> tar -> perms.
+# always: clause restarts the container + runs verify.yml whether or
+# not the tar succeeded (AN-2 + D-178).
+- name: Cold-quiesce Alertmanager backup -- block (AN-2)
+  block:
+    - name: Stop Alertmanager container for cold-quiesce backup (XP-1)
+      ansible.builtin.command: "docker stop -t {{ alertmanager_backup_stop_timeout }} {{ alertmanager_container_name }}"
+      changed_when: true
+      become: true
+
+    - name: Wait for Alertmanager container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ alertmanager_container_name }}"
+      register: alertmanager_stopped_check
+      until: >-
+        alertmanager_stopped_check.container is defined
+        and alertmanager_stopped_check.container.State is defined
+        and alertmanager_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # Tar the entire _data/ tree -- captures `data/silences` + `data/nflog`
+    # if present, or an effectively-empty payload on a fresh deploy
+    # (AP-1; tar still produces a valid small tarball with whatever
+    # bookkeeping is at _data/ root). The stat-guard above is informational
+    # only; this tar invocation is unconditional by design lock.
+    - name: Create Alertmanager state backup tarball
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -cpf
+          {{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp.stdout }}.tar.zst
+          -C /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data
+          .
+      become: true
+      changed_when: true
+
+    - name: Set Alertmanager tarball permissions (XP-4)
+      ansible.builtin.file:
+        path: "{{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp.stdout }}.tar.zst"
+        mode: "0600"
+        owner: root
+        group: root
+      become: true
+
+  always:
+    # AN-2: container ALWAYS restarts even if tar failed. No state: started
+    # via community.docker.docker_container -- XP-1 strips volume specs.
+    - name: Restart Alertmanager container after backup (AN-2)
+      ansible.builtin.command: "docker start {{ alertmanager_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: verify.yml is reused as-is. The 202-line file pre-polls the
+    # HEALTHCHECK, then exercises /-/ready, /-/healthy, /api/v2/receivers,
+    # /api/v2/status plus the Prom->AM round-trip and amtool synthetics --
+    # the same correctness contract deploy_docker.yml uses post-deploy.
+    - name: Verify Alertmanager post-backup
+      ansible.builtin.include_tasks: verify.yml
+  tags:
+    - alertmanager
+    - backup
