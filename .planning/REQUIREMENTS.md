@@ -87,21 +87,23 @@ Explicit exclusions with reasoning so they're not re-added.
 
 ## Traceability
 
-(Filled by roadmapper — `gsd-roadmapper` populates this section when ROADMAP.md is generated. Each REQ-ID maps to exactly one phase. Coverage table will look like:)
-
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| BACKUP-V13-01..04 | 13 | Pending |
+| BACKUP-V13-01 | 13 | Pending |
+| BACKUP-V13-02 | 13 | Pending |
+| BACKUP-V13-03 | 13 | Pending |
+| BACKUP-V13-04 | 13 | Pending |
 | BACKUP-V13-05 | 14 | Pending |
-| RESTORE-V13-01..04 | 13 | Pending |
+| RESTORE-V13-01 | 13 | Pending |
+| RESTORE-V13-02 | 13 | Pending |
+| RESTORE-V13-03 | 13 | Pending |
+| RESTORE-V13-04 | 13 | Pending |
 | RESTORE-V13-05 | 14 | Pending |
 | OPS-V13-01 | 14 | Pending |
-| OPS-V13-02 | 13 + 14 | Pending |
-| OPS-V13-03 | 13 + 14 | Pending |
+| OPS-V13-02 | 14 | Pending |
+| OPS-V13-03 | 14 | Pending |
 | OPS-V13-04 | 13 | Pending |
 | UAT-V13-01 | 14 | Pending |
 | DOCS-V13-01 | 15 | Pending |
 | DOCS-V13-02 | 15 | Pending |
 | DOCS-V13-03 | 15 | Pending |
-
-(Roadmapper overwrites this table with the authoritative version.)
