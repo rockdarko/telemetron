@@ -135,6 +135,12 @@
 # task fails with the misleading "stdout was empty" rather than the
 # actual root cause from find's stderr. executable: /bin/bash is required
 # because pipefail is a bash-ism not in POSIX sh.
+# WR-06: become: true is required because backup_dest_root/<role>/ was
+# created at mode 0700 + owner root by backup.yml (XP-4). A non-root
+# ansible user (the common case for SSH-keyed homelab inventories) cannot
+# chdir into the 0700-root-owned directory; find would fail with permission
+# denied stderr and an empty stdout pipeline. Matches the grafana and
+# prometheus latest-discovery pattern.
 - name: Discover latest Garage backup tarball (when backup_restore_from empty)
   ansible.builtin.shell:
     cmd: >-
@@ -147,6 +153,7 @@
   changed_when: false
   failed_when: garage_latest_tarball.rc != 0 or garage_latest_tarball.stdout == ""
   when: backup_restore_from | default("") == ""
+  become: true
   tags:
     - garage
     - restore
