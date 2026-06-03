@@ -1,404 +1,958 @@
-# Pitfalls Research — v1.1.0 Supplement
+# Pitfalls Research — v1.3.0 Backup & Restore
 
-**Domain:** Garage migration + backlog config fixes in an existing Ansible-Docker LGTM stack (Telemetron v1.0.1)
-**Researched:** 2026-05-26
-**Confidence:** HIGH for Garage S3 compatibility gaps (verified against official Garage docs + Mimir/Loki/Tempo GitHub issues). HIGH for Mimir retention field location (official docs + KnownFields strict parsing confirmed). MEDIUM for FB timestamp_fallback fix (no authoritative upstream issue found; analysis from FB docs + UAT evidence). HIGH for OTel→Loki service_name transformation (official Loki docs, upstream OTel collector-contrib issue #32497).
+**Domain:** Cold-quiesce backup + restore for 4 stateful Telemetron roles on Docker via Ansible
+**Researched:** 2026-06-02
+**Confidence:** HIGH for Garage LMDB, Prometheus TSDB lock/WAL, Grafana SQLite WAL default,
+Alertmanager protobuf snapshot, and `state: stopped` community.docker defect. MEDIUM for
+Prometheus sparse-file behavior (no definitive upstream source found; LOW risk in practice at
+homelab scale). LOW for Prometheus clean-SIGTERM WAL-flush guarantee (upstream docs ambiguous;
+behavioral evidence is HIGH but no explicit contract in official docs).
 
-This file supplements the base PITFALLS.md from 2026-05-17. That file covers M1 pitfalls (bucket bootstrap race, Grafana UID provisioning, cardinality, idempotency, etc.). This file covers only the v1.1.0 migration-specific pitfalls — Garage replacement of MinIO, four M1 backlog config items, and integration hazards that surface when you change the object storage backend on a live stack.
+This file covers **backup/restore-specific pitfalls only**. For prior-milestone pitfalls
+(Garage migration, MinIO, Mimir retention, OTel label split), see
+`.planning/research/v1.1.0/PITFALLS.md`.
 
 ---
 
-## Critical Pitfalls — Garage Migration
+## Component Pitfalls: Garage v2.3.0
 
-### Pitfall G-1: Garage requires a layout assignment before S3 API calls work
+### GP-1 (CRITICAL): LMDB cold-copy is safe only when Garage is fully stopped — no filesystem snapshot shortcut
 
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** NO — detectable from official docs; static-verifiable
 **What goes wrong:**
-The Garage bootstrap sequence is four steps, not one. Operators who come from MinIO assume "container up → `mc mb` → done" will translate to "container up → `garage bucket create` → done." It does not. Without a `garage layout assign` + `garage layout apply` cycle, S3 API calls — including bucket creation and `PutObject` — fail or silently return no data because no node in the cluster has been assigned a storage role. The S3 endpoint responds (the API port is open) but requests fail with opaque errors or 500s.
-
-**Why it happens:**
-Garage is designed as a distributed system first; even single-node deployments must go through the layout-assignment dance. The layout defines which node stores which data and at what capacity. MinIO doesn't have this concept — the server owns its own directory unconditionally. The Garage docs bury this step under "Setting up the cluster," which reads like a distributed-mode concern; single-node operators skip it and hit a wall.
-
-**Consequences:**
-- Loki/Tempo/Mimir start, connect to Garage's S3 endpoint, fail to `PutObject` blocks, and crash-loop or degrade silently without the layout step
-- The `garage bucket create` command itself succeeds (it's an admin-API call, not S3), but writes to the bucket via S3 fail
-- The `garage status` output shows the node as "NO ROLE ASSIGNED" — if bootstrap automation doesn't inspect this, it will report success
+The Garage docs explicitly warn: "filesystem-level snapshots of your metadata_dir, although
+much faster, do not ensure the snapshot will be consistent. If the snapshot is taken during a
+metadata write, the snapshot itself might be corrupted and thus not usable as a rollback
+point." LMDB's `db.lmdb/` directory (containing `data.mdb` + `lock.mdb`) is an active
+write-ahead log environment. Tarring it while Garage is running produces a silently corrupted
+backup that appears complete but will fail on restore with an LMDB environment error.
 
 **Prevention:**
-The Garage Ansible role must run this exact sequence before any S3 client (Loki/Tempo/Mimir) can use it:
-1. Start Garage container
-2. Poll admin API readiness (not just S3 port — different port, different health signal)
-3. `garage layout assign -z garage1 -c <capacity> <node_id>` — capacity in bytes or SI units
-4. `garage layout apply --version 1`
-5. `garage key create <key-name>` — note the returned `access_key_id` / `secret_access_key`
-6. `garage bucket create <bucket-name>` — once per bucket (5 for Telemetron: loki-chunks, tempo-traces, mimir-blocks, mimir-ruler, mimir-alerts)
-7. `garage bucket allow --read --write --owner <bucket-name> --key <key-name>` — once per bucket per key
+The backup task MUST stop the Garage container (send SIGTERM, wait for `State.Running == false`)
+before tarring `telemetron_garage_meta` volume contents. This is the one place in the stack
+where the cold-quiesce model is not just a convenience — it is required for correctness.
+After Garage stops cleanly, `db.lmdb/data.mdb` is safe to tar. The `lock.mdb` file is
+small (8 KB) and gets recreated on next Garage startup; it is safe to include in the tar
+(harmless) or exclude (slightly cleaner). Including it is the simpler policy.
 
-The `community.docker.docker_container_exec` polling pattern from M1 (gate from RETROSPECTIVE.md) applies here: do not assume the Garage container is ready just because Docker reports "started." Poll the admin API endpoint (`http://garage:3903/health`) before running layout steps.
-
-**Alternative — `garage-single-node` image:**
-The `bikeshedder/garage-single-node` wrapper image handles steps 2–7 automatically on startup via env vars (`GARAGE_ACCESS_KEY_ID`, `GARAGE_SECRET_ACCESS_KEY`, `GARAGE_BUCKETS`). This is the recommended approach for Telemetron's single-host homelab target. The Garage role bootstrap task becomes: start container → poll healthcheck → done. Bucket creation is declarative via env var.
+**Garage's own snapshot alternative (not used in v1.3.0):**
+`metadata_auto_snapshot_interval` in `garage.toml` causes Garage to write clean snapshots
+under `<metadata_dir>/snapshots/` at regular intervals. These are safe to copy even while
+Garage is running. Telemetron v1.3.0 uses the cold-quiesce model instead (per locked design
+decision), but the restore task should verify the backup came from a stopped-Garage state
+(i.e. that the tarball includes `db.lmdb/data.mdb` and not partial write frames). No
+in-tar verification is practical — the cold-quiesce gate is the only real guard.
 
 **Detection:**
-- `garage status` shows node with empty capacity or "NO ROLE ASSIGNED" after container start
-- Loki/Tempo/Mimir logs show `S3 API error: 500` or `NoSuchBucket` immediately after start (even though bucket was created via admin API)
-- `garage bucket list` shows buckets but `mc ls garage/bucket/` returns empty or errors
+- Restore fails with: `LMDB: MDB_CORRUPTED: Located page was wrong type` or
+  `LMDB: MDB_PAGE_NOTFOUND` on Garage container start post-restore.
+- Garage logs `db error: LMDB: ...` in first seconds after start.
 
-**Phase to address:** Garage role port — first task after container start is the layout/key/bucket sequence (or hand it to garage-single-node). This is the **exact analog of Pitfall 1 (bucket bootstrap race)** from M1, but with more steps.
+**Source:** [Garage HQ recovering from failures](https://garagehq.deuxfleurs.fr/documentation/operations/recovering/)
+— "filesystem-level snapshots ... may also be corrupted" — HIGH confidence.
 
 ---
 
-### Pitfall G-2: Endpoint format mismatch — Loki uses `http://` prefix, Mimir/Tempo do not
+### GP-2 (CRITICAL): LMDB volume contains `db.lmdb/`, `snapshots/` (if configured), plus layout state — all in meta volume
 
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** YES — tar path selection is only verified by running restore
 **What goes wrong:**
-Loki's S3 storage_config requires the endpoint WITH the `http://` prefix (e.g., `http://garage:3900`). Mimir's `common.storage.s3.endpoint` and Tempo's `storage.trace.s3.endpoint` require the endpoint WITHOUT the scheme prefix (e.g., `garage:3900`), signaling HTTP vs HTTPS via an `insecure: true` flag. This is already the case in M1 with MinIO — the pattern is identical with Garage. Swapping `minio:9000` for `garage:3900` in all three templates is mechanical but asymmetric. Any copy-paste between the role templates will produce a broken config that fails silently with TLS errors or connection-refused at the wrong port.
+The Garage metadata Docker volume (`telemetron_garage_meta`, mounted at
+`/var/lib/garage/meta/`) contains everything Garage needs to reconstruct its cluster identity:
+- `db.lmdb/` — the LMDB metadata database (buckets, objects, keys, cluster layout)
+- `snapshots/` — auto-snapshot dir (empty if `metadata_auto_snapshot_interval` not set)
 
-**Consequences:**
-- Loki with `endpoint: garage:3900` (missing `http://`) fails SSL handshake against an HTTP-only endpoint, logs TLS errors, and cannot persist chunks
-- Mimir/Tempo with `endpoint: http://garage:3900` fail at config parsing because the scheme is embedded in the endpoint string AND `insecure: true` — the combination is treated as an https URL, then a TLS handshake fails
+**Crucially, the cluster layout (which nodes exist, their zone assignments, their storage
+capacity) is stored INSIDE the LMDB database — not in a separate `cluster_layout` text file.**
+The Garage v2 migration guide references a conceptual `cluster_layout` but this is the
+database content, not a stand-alone file on disk. After restore, no `garage layout assign` +
+`garage layout apply` re-run is needed — the layout self-loads from the restored LMDB
+database on next Garage start.
+
+**Bucket and key reattachment:**
+Garage bucket names, bucket-to-key permissions (`garage bucket allow`), and the key's
+`access_key_id` / `secret_key` are all stored in the LMDB database. After restoring the
+`telemetron_garage_meta` volume (LMDB), all bucket names, key IDs, and permissions are
+restored verbatim. The S3 credentials host file (`{{ garage_config_dir }}/s3-credentials`)
+and the LMDB metadata agree on the same key ID — no re-derivation or re-grant needed.
+
+**What about data volume?**
+The `telemetron_garage_data` volume (`/var/lib/garage/data/`) holds the actual S3 object
+blocks (Loki chunk files, Tempo trace blocks, Mimir metric blocks). This volume must ALSO
+be backed up if the operator wants to restore observability history. The meta volume alone
+restores Garage's identity (keys, buckets, layout) but an empty data volume means Loki,
+Tempo, and Mimir start fresh. For v1.3.0's round-trip UAT (backup → purge_data → redeploy
+→ restore), BOTH volumes must be included in the Garage tarball.
+
+**Tar scope (per v1.3.0 design):**
+The Garage backup task should tar the entire meta volume (`/var/lib/garage/meta/`) plus the
+entire data volume (`/var/lib/garage/data/`). These are two separate Docker volumes; two
+separate tarballs or one combined tarball are both acceptable — document the choice in the
+role's backup.yml header comment.
 
 **Prevention:**
-- Loki template: `endpoint: "http://{{ garage_s3_host }}:{{ garage_s3_port }}"` (scheme required, same as current Loki template for MinIO)
-- Mimir template: `endpoint: "{{ garage_s3_host }}:{{ garage_s3_port }}"` (no scheme, same as current Mimir template)
-- Tempo template: `endpoint: "{{ garage_s3_host }}:{{ garage_s3_port }}"` (no scheme, same as current Tempo template)
-- The existing vars can stay scheme-aware if the role owns the scheme prefix (Loki adds it in template; Mimir/Tempo get the bare host:port)
-- Add a comment next to each endpoint var noting the scheme expectation
+- Tar the full meta volume path (not just `db.lmdb/` — include the `snapshots/` subdir
+  if present, to avoid confusion on restore about what the snapshot files mean).
+- Tar the full data volume path.
+- Restore both volumes before restarting Garage.
+- Do NOT re-run `garage layout assign` / `garage layout apply` after restore; those steps
+  are first-run-only and are gated in `bootstrap.yml` by the `NO ROLE ASSIGNED` check.
 
-**Detection:**
-- Loki logs: `msg="failed to put object" err="Put \"garage:3900/loki-chunks/...\": unsupported protocol scheme"` (missing http://)
-- Mimir/Tempo logs: TLS errors or connection reset against port 3900 if scheme is accidentally included
-
-**Phase to address:** Garage role port + all three backend role template updates. A single inventory var `garage_s3_endpoint_base` (scheme-free) plus role-specific templating that adds the scheme only where required is the cleanest approach.
+**Source:** [Garage recovery docs](https://garagehq.deuxfleurs.fr/documentation/operations/recovering/) + bootstrap.yml code review — HIGH confidence.
 
 ---
 
-### Pitfall G-3: Garage does not support object tagging — Loki compactor delete path may break
+### GP-3 (CRITICAL): S3-credentials host file must be restored in sync with LMDB — partial restore breaks bootstrap idempotency
 
+**Phase:** Phase 13 (per-role backup task) + Phase 14 (restore orchestrator)
+**Live-UAT-only catchable:** YES — the orphan-key detection code path is only exercised live
 **What goes wrong:**
-Garage's S3 API does not implement `PutObjectTagging` or `GetObjectTagging` (both listed as "❌ Missing" in the official Garage S3 compatibility matrix). Loki's TSDB compactor marks chunks for deletion by writing marker files; it does NOT use S3 tagging for this. However, some Loki configurations or third-party tooling attempt to use object tags for lifecycle management. More importantly: if any future Loki, Tempo, or Mimir version adds tagging to their compaction/deletion workflow, Garage will return a 501 Not Implemented, which may silently drop the request and leave objects undeleted.
+The `garage_s3_credentials_file` (`/opt/telemetron/garage/s3-credentials`) holds the auto-
+generated key ID and secret in plain text (two-line `key_id=...\nsecret=...` format, mode 0600).
+This host file must match the `access_key_id` stored in the LMDB metadata volume. If the
+LMDB is restored (with key GKxxx) but the host credentials file is absent or stale (pointing
+to GKyyy), the next `deploy_docker.yml` run triggers the D-146 recovery branch: `not
+garage_creds_file.stat.exists AND length == 1`. The recovery branch correctly detects one
+existing key in the LMDB and re-reads its secret via `garage key info --show-secret`, then
+re-persists the credentials file. **This means the host-credentials restore is not strictly
+required for basic recovery** — the D-146 recovery branch handles it automatically.
 
-**Current risk for v1.1.0:** LOW. Loki 3.7.2, Tempo 2.10.5, and Mimir 3.0.6 do NOT use S3 object tagging in their standard compaction flows. The risk is forward-looking, not immediate.
+However, there is a subtle timing risk: the recovery branch runs `garage key info --show-secret
+<KEY_ID>` inside the running Garage container. If Garage hasn't finished starting yet (e.g.
+the bootstrap is running before the HEALTHCHECK poll completes), this exec fails. The existing
+pre-bootstrap HEALTHCHECK poll gate prevents this, but the recovery path is still more fragile
+than a clean restore where the host file is present.
+
+**Recommendation:**
+Include the host credentials file in the Garage backup (as a separate file or as part of
+the config-dir tar). Restore it before running `deploy_docker.yml`. This makes the restore
+path the clean first-run path (no recovery branch fires) instead of the D-146 recovery path.
+
+**What NOT to restore:**
+Do NOT restore `garage.toml` from backup if `garage_admin_token` or `garage_rpc_secret`
+have changed in `secrets.yml` between backup time and restore time. The rendered `garage.toml`
+embeds these values; the deploy-time template render writes the correct values. Let
+`deploy_docker.yml` render a fresh `garage.toml` from current inventory — only restore the
+data volumes and the s3-credentials file.
+
+**Source:** `roles/garage/tasks/bootstrap.yml` lines 107-276 (D-112 credential persistence,
+D-146 recovery branch) — HIGH confidence (direct code review).
+
+---
+
+### GP-4 (MODERATE): Phase 11's regex regression class recurs in any backup `garage key list` parse
+
+**Phase:** Phase 13 (per-role backup task) — specifically any backup verify step that
+re-reads key list to confirm identity
+**Live-UAT-only catchable:** YES — confirmed by Phase 11 UAT history
+**What goes wrong:**
+Phase 11 UAT proved the planner→checker→reviewer chain all assumed `garage key list` output
+format from docs and all got it wrong. The live v2 output has 4 columns (ID, Created, Name,
+Expiration), not 2. Any backup or restore task that needs to parse `garage key list` output
+(e.g. a verify step that checks the key still exists after restore) will hit the same class
+of bug if it uses a regex that doesn't skip the Created column.
+
+**Existing fix (bootstrap.yml line 179):**
+`regex_findall('(?m)^(\\S+)\\s+\\S+\\s+' ~ garage_s3_key_name ~ '(?:\\s|$)')`
+This pattern skips the Created column by consuming `\S+` before the key name. Any backup/
+restore task that parses `garage key list` must use this same regex, not a re-invented one.
 
 **Prevention:**
-- Do not set any MinIO lifecycle policies on Garage buckets (lifecycle = versioning/tagging dependency)
-- When upgrading Loki/Tempo/Mimir beyond v1.1.0 pinned versions, scan changelogs for any mention of S3 tagging or lifecycle policy integration before bumping
-- Do not use the Garage bucket's built-in expiry (if supported) — let Loki/Tempo/Mimir compactors own deletion exclusively
+If Phase 13 backup.yml or restore.yml adds a `garage key list` parse step (e.g. to verify
+the key is present after metadata restore), copy the regex verbatim from `bootstrap.yml`
+line 179 — do not re-derive it from documentation. Write a comment citing the Phase 11 bug.
 
-**Phase to address:** Document in Garage role README + note in the post-upgrade checklist. Not a blocker for v1.1.0 given pinned versions.
+**Source:** Phase 11 VERIFICATION.md G-01 gap closure; `bootstrap.yml` lines 161-183;
+commits 2626989 + 319559f — HIGH confidence (empirical, live UAT).
 
 ---
 
-### Pitfall G-4: Garage port numbers differ from MinIO — three ports, not two
+## Component Pitfalls: Prometheus 3.11.3
 
+### PP-1 (CRITICAL): Lock file left on SIGTERM — cold restore blocks Prometheus startup
+
+**Phase:** Phase 13 (per-role restore task) + Phase 14 (restore orchestrator)
+**Live-UAT-only catchable:** YES (intermittent; only manifests when the exact lock/PID state
+matches an occupied PID on the restoring host)
 **What goes wrong:**
-MinIO exposes two ports: API (9000) and console (9001). Garage exposes three: S3 API (3900 by default), admin API (3903), and web console (optional, 3902). The bootstrap logic — specifically the "wait for S3 to be ready" health poll — must target port 3900, not 3903 (admin) or 3902 (console). The Garage admin API has its own healthcheck path (`/health`); the S3 port has no `/minio/health/ready` analog — S3 readiness must be inferred from a successful S3 ListBuckets call or from the admin health endpoint.
+Prometheus TSDB writes a PID-based lock file to `/prometheus/lock` when it opens the storage
+directory. Under a clean SIGTERM (Docker `stop`), modern Prometheus (3.x) replaces the lock
+on startup if the PID from the prior run is no longer active — it logs "A lockfile from a
+previous execution already existed. It was replaced" as a warning and continues. However, the
+TSDB lock uses a PID-file mechanism (not `flock()`). If the restored backup contains the old
+lock file, and after restore the container starts with the same PID as the old lock file
+(unlikely but non-zero probability), Prometheus refuses to start with:
+`Opening storage failed: Locked by other process`.
 
-**Why it matters for Telemetron's existing bootstrap pattern:**
-The MinIO bootstrap.yml polls `minio_healthcheck_test` via `docker_container_info` (which reads Docker's own HEALTHCHECK status, not a port check). Garage's container HEALTHCHECK must be configured to probe a meaningful port. The `dxflrs/garage` official image does not ship a built-in HEALTHCHECK. It must be added in the Ansible role's `container:` definition.
+The more common failure: backup is taken, then restored on a different host or after a system
+reboot where PID namespace is fresh. The lock file references a PID that is now reused by an
+unrelated process. Prometheus considers the DB locked and aborts.
+
+**Prevention (two complementary options):**
+
+Option A (recommended for v1.3.0 restore task): Delete the lock file after untarring and
+before starting the container:
+```
+rm -f /prometheus/lock
+```
+This is safe because the container is stopped at this point and no Prometheus process holds
+the lock. Add an explicit `ansible.builtin.file: path=/prometheus/lock state=absent` task
+in `tasks/restore.yml` after volume contents are extracted.
+
+Option B: Add `--storage.tsdb.no-lockfile` to the Prometheus container args. This
+permanently disables lock-file creation. Acceptable for single-instance Docker; risky if
+two Prometheus containers ever mount the same volume (not a concern in Telemetron's
+single-host model).
+
+Option A is cleaner for the restore path — it deletes the lock unconditionally (the container
+is stopped, the lock is stale by definition) and doesn't require a permanent flags change.
+
+**Source:** [prometheus/prometheus#2689](https://github.com/prometheus/prometheus/issues/2689),
+[prometheus-community/helm-charts#2872](https://github.com/prometheus-community/helm-charts/issues/2872),
+[Red Hat KB](https://access.redhat.com/solutions/6976141) — HIGH confidence.
+
+---
+
+### PP-2 (MODERATE): WAL is NOT guaranteed flushed on SIGTERM — in-flight samples (up to 2h) may be absent from cold backup
+
+**Phase:** Phase 13 (per-role backup task) + operator education (Phase 15 docs)
+**Live-UAT-only catchable:** NO — data loss window is expected and documented, not a bug
+**What goes wrong:**
+The Prometheus TSDB architecture is: in-memory head block → WAL → compacted on-disk blocks.
+The in-memory HEAD holds recent samples (up to `prometheus_retention_time` or 2h of data,
+whichever is shorter). At cold-quiesce backup time, the WAL on disk represents the durable
+portion of what's in the head, but the WAL segments are typically **not** aligned to a clean
+checkpoint boundary. Even after a clean SIGTERM, some samples from the last ~2-hour head
+window may be in WAL segments that are correctly persisted to disk but reference in-memory
+series information that is lost.
+
+The official Prometheus docs state: "Backups made without snapshots run the risk of losing
+data recorded since the last TSDB block was created" (block compaction runs every ~2h).
+
+**For Telemetron's use case:** Prometheus is the SHORT-TERM metrics store (15d retention) and
+remote_writes to Mimir (long-term store). Data visible in Prometheus but not yet compacted
+to blocks may be absent from a restored Prometheus backup. However, this data was also
+remote_written to Mimir BEFORE the backup (because the remote_write happens per scrape, not
+per compaction). So Prometheus data loss from cold backup is: recent head data (up to ~2h)
+visible in Prometheus but recoverable from Mimir. The restored Prometheus will simply show
+a gap for the most recent 0-2h window before backup time, while Mimir shows continuous data.
+
+**What to include in the backup:**
+Tar the entire `/prometheus/` volume: WAL (`wal/`), compacted blocks
+(`<ULID>/`), head chunks (`chunks_head/`), queries.active, and the lock file (to be deleted
+on restore per PP-1). Excluding the WAL makes the gap worse. Including it makes the gap
+as small as possible.
+
+**Do NOT exclude `wal/`**: Prometheus docs note that excluding WAL "ensures a coherent backup
+but may result in losing data covered by the WAL" — i.e., excluding it makes the cold backup
+LESS accurate, not more. Include WAL in the tar.
+
+**Source:** [Prometheus storage docs](https://prometheus.io/docs/prometheus/latest/storage/),
+[TSDB WAL+checkpoint deep-dive](https://ganeshvernekar.com/blog/prometheus-tsdb-wal-and-checkpoint/) — HIGH confidence on architecture; LOW confidence on exact flush guarantee at SIGTERM.
+
+---
+
+### PP-3 (MODERATE): `queries.active` is stale-on-disk — harmless but logged on startup
+
+**Phase:** Phase 13 (per-role backup task) + operator education
+**Live-UAT-only catchable:** NO — static documentation verifiable
+**What goes wrong:**
+Prometheus tracks in-flight PromQL queries in `/prometheus/queries.active`. After a clean
+shutdown, this file may be non-empty (recording queries that were in flight when SIGTERM
+arrived). When Prometheus restarts with this file present, it logs: "These queries didn't
+finish in prometheus' last run: ..." at startup. This is informational only — not an error,
+not a data integrity concern. The queries are gone; the log is archaeology.
+
+For the RESTORE path specifically: a backup tar includes `queries.active` from backup time.
+After restore, Prometheus will log the stale queries from backup time at startup. This is
+harmless and expected. The operator may see confusing log output on first post-restore start;
+document this in the per-role README `## Backup` section.
+
+**Optional cleanup:**
+The restore task CAN delete `queries.active` after untarring (alongside the lock file per
+PP-1). This suppresses the startup log noise. Whether this is worth the extra task line is
+a judgment call; document the tradeoff.
+
+**Source:** [ProMLabs training: active queries log](https://training.promlabs.com/training/monitoring-and-debugging-prometheus/logs/active-queries-log/) — HIGH confidence.
+
+---
+
+### PP-4 (LOW): `.tmp` directories from interrupted compaction — cold quiesce handles this
+
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** NO — cold quiesce prevents the problem by definition
+**What goes wrong:**
+Prometheus TSDB creates `.tmp` subdirectories inside `/prometheus/` during compaction
+(writing the new merged block before atomically renaming it). If Prometheus is killed mid-
+compaction (SIGKILL), the `.tmp` directory is left on disk. On a clean SIGTERM, Prometheus
+completes or aborts in-progress compactions before exiting, so `.tmp` dirs should not be
+present. However, if a backup is taken from a volume left over after a SIGKILL (e.g. from
+host crash recovery), the restored Prometheus will scan for and clean up `.tmp` dirs
+on startup. Prometheus does not refuse to start; it removes orphan `.tmp` blocks.
+
+**For Telemetron's cold-quiesce model:** the `stop container → tar volume` sequence sends
+SIGTERM (Docker's `docker stop` default). Prometheus 3.x handles SIGTERM gracefully and does
+not leave `.tmp` dirs on a successful clean stop. This is low risk.
+
+**What to do:** Include `.tmp` dirs in the tar if they exist (do not filter them out with
+`--exclude='*.tmp'`). On restore, let Prometheus clean up on startup. Do not add logic to
+detect or remove `.tmp` dirs in the backup/restore tasks.
+
+**Source:** [prometheus/prometheus#8180](https://github.com/prometheus/prometheus/issues/8180) — MEDIUM confidence.
+
+---
+
+## Component Pitfalls: Grafana OSS 13.0.1
+
+### GR-1 (CRITICAL): SQLite WAL mode is OFF by default — no `-wal`/`-shm` sidecar files to worry about, but shutdown still required
+
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** NO — default configuration is statically verifiable
+**What goes wrong (the concern that turns out not to apply):**
+SQLite WAL mode produces two sidecar files alongside the main database: `grafana.db-wal`
+(write-ahead log) and `grafana.db-shm` (shared memory header). A common backup mistake is
+to copy `grafana.db` while WAL mode is active but WITHOUT checkpointing the WAL first.
+The result is an inconsistent backup: the main db file is from before the WAL writes, the
+WAL captures newer writes, but only `grafana.db` was copied. On restore, the database looks
+valid but is missing recent write transactions.
+
+**Grafana's actual default (verified):**
+Grafana 13.x ships with `wal = false` in `conf/defaults.ini` (confirmed via GitHub source).
+WAL mode is off unless the operator explicitly sets `wal = true` in `grafana.ini`. Telemetron's
+`roles/grafana/templates/grafana.ini.j2` does NOT set `wal = true`. Therefore:
+- `grafana.db-wal` and `grafana.db-shm` do NOT exist under normal Telemetron operation.
+- The sidecar checkpoint concern does NOT apply to the default Telemetron configuration.
+
+**What this means for backup:**
+The backup task only needs to tar `grafana.db` (and the plugins directory; see GR-2). The
+container must still be stopped before tarring — Grafana documentation explicitly requires
+shutdown before SQLite backup to ensure data integrity. A live `grafana.db` with open file
+descriptors and fsync-in-progress writes is still unsafe to copy even without WAL mode.
+
+**If the operator ever enables WAL mode:**
+If `wal = true` appears in `grafana.ini`, the backup task must also include `grafana.db-wal`
+and `grafana.db-shm` (or run a `PRAGMA wal_checkpoint(FULL)` SQL statement inside the
+stopped-container volume before tarring). Add a comment in `tasks/backup.yml` flagging this
+operator extension risk.
+
+**Source:**
+[grafana/grafana defaults.ini (GitHub)](https://github.com/grafana/grafana/blob/main/conf/defaults.ini) — `wal = false` — HIGH confidence.
+[Grafana backup docs](https://grafana.com/docs/grafana/latest/administration/back-up-grafana/) — "Shut down your Grafana service before backing up" — HIGH confidence.
+
+---
+
+### GR-2 (MODERATE): Plugin files live in `telemetron_grafana_data` volume — include them in backup
+
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** NO — directory structure is static
+**What goes wrong:**
+Grafana stores operator-installed plugins in `/var/lib/grafana/plugins/` inside the named
+volume. Telemetron v1.0.0 dropped the `grafana_plugins` install task from the upstream INSPQ
+role (noted in the role README "Deviations" section). However, if an operator manually
+installed plugins post-deploy (via `docker exec grafana grafana-cli plugins install ...`),
+those plugins live in the volume. A backup that only captures `grafana.db` and misses
+`plugins/` will restore Grafana to a state where operator-installed plugins are referenced
+in the SQLite database but their binaries are absent.
+
+**What Grafana does with missing plugins on startup:**
+Grafana logs a warning for each missing plugin but starts normally. Dashboards that use
+a missing plugin's panel type show a "Plugin not found" error in the UI. This is recoverable
+by reinstalling the plugins, but the operator has to notice and act.
 
 **Prevention:**
-- In the Garage role's `docker_container` task, declare an explicit `healthcheck:` that probes the admin health endpoint: `test: ["CMD", "/usr/bin/garage", "status"]` — or an HTTP probe against `http://127.0.0.1:3903/health` if curl is available in the image
-- Set `loki_s3_endpoint`, `tempo_s3_endpoint`, and `mimir_s3_endpoint` to `:3900` (not 9000)
-- Keep port 3900 on the Docker bridge network only (D-13 pattern: no host publish by default); admin port 3903 on bridge-only too
-- Update the port snapshot in `CLAUDE.md` (and `docs/architecture.md`) to reflect the three Garage ports
+The backup task should tar the entire `/var/lib/grafana/` volume, not just `grafana.db`.
+This captures: `grafana.db`, `plugins/`, `csv/` (if CSV data source is used), session
+state files. The volume is typically small (tens of MB for a homelab install) — no need
+to cherry-pick files.
 
-**Detection:**
-- Health poll times out waiting for `healthy` if the HEALTHCHECK probes the wrong port
-- Loki/Tempo/Mimir logs show `connection refused` against port 9000 (old MinIO port not updated in vars)
-
-**Phase to address:** Garage role port. Port update is mechanical but touches the inventory var defaults for all three backend roles.
+**Source:** [Grafana backup docs](https://grafana.com/docs/grafana/latest/administration/back-up-grafana/) — "Copy ... plugin files" — HIGH confidence.
 
 ---
 
-### Pitfall G-5: Data migration from MinIO to Garage — stopping services is mandatory; rclone sync alone is not enough
+### GR-3 (LOW): Provisioned dashboards vs operator-edited dashboard interaction on restore
 
+**Phase:** Phase 15 (docs cascade) — operator education
+**Live-UAT-only catchable:** YES — provisioning behavior only observable in running Grafana
 **What goes wrong:**
-The appealing migration path is: start Garage alongside MinIO, `rclone sync minio:bucket garage:bucket`, update configs, restart backends. The risk: Loki/Tempo/Mimir are still writing to MinIO during the rclone sync. Any block that is partially written (WAL flush in progress, multipart upload not yet completed) and then synced to Garage may arrive in a corrupt or incomplete state. Worse: Loki's TSDB index and chunk objects have referential integrity — if the index is synced first and references chunks that haven't been synced yet, queries against the migrated store will fail or panic.
+Telemetron provisions 7 curated dashboards via the provisioning filesystem path
+(`/etc/grafana/provisioning/dashboards/telemetron/`). These are read from the bind-mount
+config directory (`/opt/telemetron/grafana/provisioning/dashboards/telemetron/`) which is
+part of the DEPLOY-TIME state, not the backup. The SQLite database also contains records for
+provisioned dashboards (their UID, folder assignment, starred status, panel layout overrides).
 
-**Additional rclone gotcha:** Rclone signed-request encoding mismatch. When syncing from MinIO to Garage, adding `--s3-sign-accept-encoding=false` to the rclone command avoids `SignatureDoesNotMatch` errors caused by different content-encoding header expectations between MinIO and Garage.
+When Grafana restarts after a restore, it re-reads the provisioning files and reconciles
+them against SQLite. If the provisioning files have NOT changed (normal restore scenario),
+the reconciliation is a no-op and the dashboards look exactly as before backup. If the
+operator somehow DELETED a provisioned dashboard via the UI, the SQLite database records
+its deletion, but the provisioning file still exists — Grafana re-provisions it on next
+startup, overriding the operator's deletion. This is documented Grafana provisioning behavior.
 
-**What the actual safe procedure looks like:**
-1. Stop Fluent Bit (no new log ingest)
-2. Stop Prometheus remote_write to Mimir (or pause scraping)
-3. Let Loki/Tempo/Mimir flush their WALs (wait for their health endpoints to stabilize)
-4. Stop Loki, Tempo, Mimir
-5. `rclone sync` each bucket from MinIO to Garage (per-bucket, with `--progress`)
-6. Start Garage, verify bucket contents
-7. Update inventory vars to point at Garage endpoint
-8. Start Loki, Tempo, Mimir, Fluent Bit, Prometheus
+**What this means for v1.3.0:**
+Not a backup defect — it is the expected behavior of Grafana's provisioning system. Document
+it in the per-role README `## Backup` section: "operator-deleted provisioned dashboards
+will be re-added by Grafana on restart from provisioning files (this is Grafana's standard
+provisioning behavior, not a restore defect)."
 
-**Acceptable-loss alternative for homelab:** Accept that historical data is not migrated. Start Garage with empty buckets. Existing MinIO data becomes inaccessible (old dashboards show gaps before migration date). For a homelab this is often acceptable and eliminates the entire migration risk surface.
+**Datasource UIDs after restore:**
+Grafana's four hardcoded-UID datasources (`prometheus`, `loki`, `tempo`, `mimir`) are in the
+provisioning files (deploy state), not in SQLite. They survive a full purge-data+redeploy
+cycle without any backup. The restore of SQLite preserves only the operator state (org
+settings, user accounts, custom dashboards, starred items). The datasource bindings from
+the provisioning files re-apply correctly on Grafana start.
 
-**Silent failure mode:** If you run `rclone sync` while Loki is still writing, the Loki TSDB index objects will reference chunks that may not yet be in Garage after the sync (if the chunk write landed after the corresponding index entry was synced). Loki will query against Garage, see the index entry, fetch the chunk URL, get a 404 from Garage, and log an error but not crash. The user sees gaps in Grafana log queries with no obvious error surfaced at the dashboard level — the error is buried in Loki's own logs.
-
-**Phase to address:** Garage role port — the role README must document both paths (full migration with downtime vs fresh-start). The playbook migration path must be stop-sync-start, not live-sync.
+**Source:** Grafana provisioning docs; `roles/grafana/README.md` Datasources section — HIGH confidence.
 
 ---
 
-### Pitfall G-6: Loki `object_store: aws` versus `object_store: s3` — Garage requires the `aws` provider
+### GR-4 (LOW): Grafana admin password is stored in SQLite on first boot only
 
+**Phase:** Phase 15 (docs cascade) — operator education
+**Live-UAT-only catchable:** NO — documented Grafana behavior
 **What goes wrong:**
-Telemetron's current `loki.yaml.j2` uses `object_store: s3` in the `schema_config`. Community forum posts and at least one reproducible issue report (Grafana community forums, 2025) describe Loki making only GET requests to Garage — no writes — when `object_store: s3` is used. Switching to `object_store: aws` (which causes Loki to use the `storage_config.aws` stanza for the S3 backend) resolved the issue. The `s3` value in `object_store` is a shorthand that may resolve to a different code path than the explicit `aws` S3 storage driver.
-
-**Confidence:** MEDIUM. The community forum thread did not confirm whether the `aws` change alone was the fix, and the thread is unresolved. However, the safe default is `aws` — it is what all Grafana example configs for S3-compatible storage use, and the MinIO integration in M1 may have worked by accident because MinIO is more permissive about S3 wire format.
+Grafana reads `GF_SECURITY_ADMIN_PASSWORD` at FIRST boot and writes the password hash to
+SQLite. On subsequent restarts, it ignores the env var (the password is in the DB). After
+a restore of SQLite from a backup, the admin password is whatever it was at backup time.
+If the operator changed the password between backup time and restore time (via
+`grafana-cli admin reset-admin-password`), the restore will silently revert to the old
+password. The `GF_SECURITY_ADMIN_PASSWORD` env var (from `secrets.yml`) will NOT override
+the SQLite-stored hash on restart.
 
 **Prevention:**
-- In `loki.yaml.j2` `schema_config.configs[].object_store`: use `aws` not `s3`
-- In `storage_config`: ensure the `aws:` stanza is present and populated
-- After deploying Loki against Garage, immediately verify with a `curl -s http://loki:3100/metrics | grep loki_boltdb_shipper_compact` — if chunks are landing in Garage, this counter moves; if they are not, it stays at 0 while Loki appears healthy
+Document in Phase 15 per-role README `## Backup` section: "After restore, the Grafana admin
+password reverts to the value at backup time. If you rotated the password between backup and
+restore, re-rotate it post-restore via `docker exec telemetron-grafana grafana-cli admin
+reset-admin-password '<password>'`."
 
-**Phase to address:** Loki role template update alongside the Garage migration.
+**Source:** `roles/grafana/README.md` Secrets section (existing doc) — HIGH confidence.
 
 ---
 
-## Critical Pitfalls — Mimir Retention Config
+## Component Pitfalls: Alertmanager v0.32.1
 
-### Pitfall M-1: `limits.compactor_blocks_retention_period` vs the orphan `mimir_compactor_blocks_retention_period` default var
+### AP-1 (MODERATE): Alertmanager writes protobuf snapshot files, not BoltDB — both `silences` and `nflog` are plain files
 
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** NO — file format is statically verifiable from source
 **What goes wrong:**
-The v1.0.1 `mimir.yaml.j2` template removed `compactor.blocks_retention_period` (which was the wrong location — caught in Phase 2 UAT, noted in the template comment "Removed: blocks_retention_period -- field is not on compactor.Config in Mimir 3.0"). However, `roles/mimir/defaults/main.yml` STILL defines `mimir_compactor_blocks_retention_period: "{{ telemetron_default_metric_retention | default('30d') }}"`. This var is set, has a sensible value, but is **never rendered into `mimir.yaml.j2`** because the template's `compactor:` block doesn't reference it and the var has not yet been wired into the `limits:` block. The net effect: Mimir runs with the built-in default retention (0 = no retention / keep forever) rather than the 30d the operator configured.
+Community documentation (including some search results and older blog posts) incorrectly
+describes Alertmanager as using BoltDB for its state files. **As of Alertmanager v0.22+
+(and certainly v0.32.1), Alertmanager stores state in plain protobuf-encoded snapshot files**,
+not BoltDB. The `/alertmanager/` volume at runtime typically contains:
+- `silences` — protobuf-encoded silence state; written periodically by the maintenance loop
+  (default interval: 15 minutes) and on graceful shutdown
+- `nflog` — protobuf-encoded notification log; same write cadence
 
-**Why it happens:**
-The Phase 2 UAT correctly removed the field from the wrong location but did not wire it into the right location. The task was recorded as a config-parse fix ("Mimir refused to start"), not a retention-behavior fix. No one verified that 30d retention was actually being applied post-fix — only that Mimir started successfully.
+There is NO BoltDB `.db` file. There is NO WAL. There is NO lock file. The files are binary
+(not human-readable) but are straightforward to copy with tar.
 
-**Consequences:**
-The `mimir-blocks` bucket grows without bound. The compactor runs, compacts blocks, but never deletes them because `compactor_blocks_retention_period` is either 0 (unlimited) or absent from `limits:`. This is silent: Mimir logs nothing unusual; dashboards show data normally; MinIO (and after migration, Garage) silently accumulates blocks forever. The only observable signal is the bucket size metric from MinIO/Garage.
+**Cold backup implication:**
+Since Alertmanager writes these files on a PERIODIC schedule (every 15 min by default) and
+on graceful SIGTERM shutdown, the cold-quiesce model (stop container → tar volume) ensures
+the most recent snapshot is on disk. The snapshot at container stop time is the definitive
+state. After SIGTERM, the maintenance code calls a final snapshot write before exit, so
+the stop → tar sequence captures current state.
 
-**The correct config (Mimir 3.x):**
+**What a "consistent backup" means for Alertmanager:**
+It means stopping the container first (cold quiesce). The snapshot files are already
+consistent because Alertmanager writes them atomically. Unlike LMDB (GP-1), there is no
+partial-write corruption risk if the file is copied while the process is running — BUT the
+content might be up to 15 minutes stale. Cold quiesce eliminates that 15-minute window.
+
+**Source:**
+[alertmanager/silence/silence.go](https://github.com/prometheus/alertmanager/blob/main/silence/silence.go) — protobuf + protodelim — HIGH confidence.
+[alertmanager/nflog/nflog.go](https://github.com/prometheus/alertmanager/blob/main/nflog/nflog.go) — periodic maintenance + final snapshot on shutdown — HIGH confidence.
+
+---
+
+### AP-2 (LOW): Restoring stale nflog re-enables deduplication memory from backup time
+
+**Phase:** Phase 15 (docs cascade) — operator education
+**Live-UAT-only catchable:** NO — behavioral implication, documented
+**What goes wrong:**
+Alertmanager's notification log (nflog) tracks which alerts have been sent to which receivers.
+This is the mechanism that prevents repeated notifications for the same ongoing alert (the
+`repeat_interval: 4h` in Telemetron's config). After restoring a backup of the nflog, the
+deduplication memory reverts to backup time. This means:
+- Alerts that fired and were notified AFTER the backup time will fire and notify AGAIN
+  on the restored Alertmanager (their nflog entry is absent from the restored state).
+- Alerts that were silenced between backup time and restore time will become un-silenced
+  (the silence state reverts to backup time).
+
+**For Telemetron's current config (null receiver):**
+Since Telemetron ships with a `null` receiver (no notification dispatch), the nflog is
+functionally empty by default. The "re-firing" concern only applies to operators who have
+wired a real receiver (Slack, email, PagerDuty) via `alertmanager_extra_receivers`. For
+those operators, document this tradeoff in the per-role README `## Backup` section.
+
+**Acceptable tradeoff:**
+The alternatives — maintaining a consistent nflog that is continuously up-to-date — require
+hot snapshots or streaming replication. Both are out of v1.3.0 scope. The cold-quiesce
+tarball captures nflog state at backup time; that is the documented and expected behavior.
+
+**Source:** Alertmanager architecture docs; `roles/alertmanager/README.md` Volumes section
+"Pitfall 7 replay-storm risk" — HIGH confidence.
+
+---
+
+### AP-3 (LOW): Single-instance gossip-disabled — no cluster state pitfalls
+
+**Phase:** Phase 13 (per-role backup task)
+**Live-UAT-only catchable:** NO — configuration is static
+**What goes wrong:**
+HA Alertmanager clusters use gossip to synchronize state (silences, nflog) across replicas.
+Restoring one replica from a backup without coordinating with other replicas can cause
+split-brain silence state. **Telemetron runs with `--cluster.listen-address=""`**, which
+disables gossip entirely. There is no cluster state, no mesh protocol, and no split-brain
+risk. Backup and restore are single-node operations.
+
+**Prevention:**
+None needed. Document in per-role README that the single-instance model makes backup/restore
+straightforward.
+
+**Source:** `roles/alertmanager/README.md` Modes section — HIGH confidence.
+
+---
+
+## Cross-Component and Orchestrator Pitfalls
+
+### XP-1 (CRITICAL): `community.docker state=stopped` strips container metadata — use `docker stop` command instead
+
+**Phase:** Phase 13 (per-role backup tasks) + Phase 14 (orchestrator)
+**Live-UAT-only catchable:** YES — the broken restart after backup is only observable with
+a running Docker daemon
+**What goes wrong:**
+A known defect in `community.docker.docker_container` with `state: stopped` (GitHub issue
+#791) strips container metadata: **volumes, bind mounts, restart policy, and network
+configuration are removed from the stopped container**. When the backup task subsequently
+does `state: started` to restart the container, Docker starts it without the original volume
+mounts — the container runs but writes to nothing, and re-deploy is required to recover.
+
+The native `docker stop <name>` command preserves all container configuration. Only the
+Ansible module's `state: stopped` parameter triggers this defect.
+
+**Community.docker version context:**
+Issue #791 was filed against an older version. The operator's current install is v5.2.0.
+The issue was marked closed, but the recommended safe practice remains to use
+`command: docker stop` via `ansible.builtin.command` (or `community.docker.docker_container_exec`)
+for quiescing rather than relying on `state: stopped` for containers that will be restarted
+in the same run.
+
+**Established Telemetron pattern:**
+The v1.2.0 `undeploy_docker.yml` uses `state: absent` (not stopped) for permanent removal.
+The `v1.2.0` per-role `uninstall.yml` files use `state: absent` too. Backup is the first
+Telemetron use case where a container needs to be STOPPED (not removed) and then RESTARTED.
+This is new territory; use `ansible.builtin.command: docker stop <name>` + explicit wait
+instead of `state: stopped`.
+
+**Prevention:**
 ```yaml
-limits:
-  compactor_blocks_retention_period: "{{ mimir_compactor_blocks_retention_period }}"
-```
-NOT under `compactor:`. The `limits:` placement is the only documented location in the official Grafana Mimir docs. CLI flag: `-compactor.blocks-retention-period`.
+# Quiesce pattern for backup tasks -- use docker stop, NOT state: stopped
+- name: Stop {{ role }}_container_name for cold-quiesce backup
+  ansible.builtin.command: docker stop {{ role_container_name }}
+  changed_when: true   # stopping is always a change
 
-**Important: Mimir uses `KnownFields(true)` — unknown fields fail startup.** If `blocks_retention_period` appears under `compactor:` in the rendered YAML, Mimir will refuse to start with a field-not-found error (this is why Phase 2 UAT caught it). If it appears nowhere, Mimir starts normally but retention silently does nothing. Both are bugs; only the second is silent.
+- name: Wait for {{ role }} container to be fully stopped
+  community.docker.docker_container_info:
+    name: "{{ role_container_name }}"
+  register: container_state
+  until: container_state.container.State.Running == false
+  retries: 30
+  delay: 2
+  changed_when: false
+```
+
+After backup, restart with:
+```yaml
+- name: Restart {{ role }} container after backup
+  ansible.builtin.command: docker start {{ role_container_name }}
+```
+
+**Do NOT use `state: started` with `force_kill: false` as an alternative restart**:
+`state: started` on a container that was stopped with `docker stop` works correctly.
+`state: started` on a container that was stopped with `state: stopped` is where the
+configuration gets regenerated (sometimes losing the original bind mounts).
+
+**Source:** [community.docker#791](https://github.com/ansible-collections/community.docker/issues/791) — MEDIUM confidence (issue closed, fix not confirmed in v5.x; native `docker stop` approach is the safe hedge regardless).
+
+---
+
+### XP-2 (CRITICAL): Restore order matters — Garage must be running before Loki/Tempo/Mimir restart
+
+**Phase:** Phase 14 (restore orchestrator)
+**Live-UAT-only catchable:** YES — ordering bugs only manifest with a live Docker stack
+**What goes wrong:**
+If `restore_docker.yml` restores Prometheus before Garage, the Prometheus container restarts
+before Garage is healthy. This is fine — Prometheus doesn't depend on Garage. However, if
+Loki, Tempo, or Mimir are RUNNING during restore (they are stateless from a backup
+perspective — their DATA is in Garage), they are writing to Garage while Garage is being
+stopped for restore. That write-during-restore corrupts the Garage data volume being restored.
+
+**v1.3.0 design decision:** Only the 4 stateful roles have `tasks/backup.yml` and
+`tasks/restore.yml`. Loki/Tempo/Mimir data is in Garage. The restore_docker.yml orchestrator
+must:
+1. Stop ALL containers that write to Garage (Loki, Tempo, Mimir — and the OTel Collector
+   which may be writing OTLP to Loki/Tempo) before restoring the Garage volumes.
+2. Restore Garage volumes.
+3. Start Garage and wait for healthy.
+4. Only then restart Loki, Tempo, Mimir, OTel Collector.
+
+The backup_docker.yml does not have this concern (it only backs up the 4 stateful roles —
+Garage backup stops Garage but does NOT stop Loki/Tempo/Mimir since they are only READING
+from Garage during backup time, and the data being backed up is the volume contents while
+Garage is stopped). Wait — this IS a concern: if Loki is writing to Garage at the moment
+Garage is stopped for backup, Loki will crash-loop. The backup task should stop Garage last
+(or stop all writers before stopping Garage).
+
+**Revised backup order:**
+1. Stop Alertmanager (no Garage dependency)
+2. Stop Prometheus (no Garage dependency, but Prometheus data backed up separately)
+3. Stop Grafana (SQLite backup; no Garage dependency)
+4. Stop Loki, Tempo, Mimir, Fluent Bit, OTel Collector (Garage writers)
+5. Stop Garage
+6. Tar Garage volumes
+7. Restart Garage
+8. Wait for Garage healthy
+9. Restart Loki, Tempo, Mimir, OTel Collector, Fluent Bit
+10. Restart Prometheus, Grafana, Alertmanager
+
+For v1.3.0 (4-role backup model), the backup_docker.yml can adopt the simpler model:
+stop Garage for its own backup, but stop ALL Garage-writing containers (Loki, Tempo, Mimir)
+before stopping Garage, to avoid Loki/Tempo/Mimir crash-loops during the Garage stop window.
+This is a 30-60s extra stop window per Garage backup cycle.
+
+**Source:** Telemetron architecture (Garage is the shared storage dependency) + Garage
+monolithic mode documentation — HIGH confidence (architectural implication, not empirical).
+
+---
+
+### XP-3 (MODERATE): Partial restore consistency — restoring Garage without restoring Prometheus breaks TSDB→Mimir historical query
+
+**Phase:** Phase 14 (restore orchestrator) + Phase 15 (docs)
+**Live-UAT-only catchable:** NO — predictable from architecture
+**What goes wrong:**
+The 4-role backup model backs up Garage, Prometheus, Grafana, Alertmanager as independent
+tarballs. The `restore_docker.yml` playbook accepts `--tags <role>` for partial restore
+(per v1.3.0 design). Partial restores have consequences:
+
+- Restore Garage only (without Prometheus): Prometheus TSDB has post-backup data that
+  references Mimir blocks in Garage's `mimir-blocks` bucket. If Garage's data volume is
+  from a DIFFERENT backup timestamp than Prometheus's current TSDB, the remote_read path
+  (Prometheus → Mimir remote_read URL) may return gaps or errors for blocks that exist
+  in Prometheus's query cache but not in the restored Garage.
+
+- Restore Prometheus only (without Garage): Prometheus's local TSDB may have post-backup
+  WAL entries that were remote_written to Mimir (pre-backup). The TSDB → Mimir remote_write
+  queue will attempt to send them again on restart. Mimir deduplicates by timestamp+labels,
+  so this is usually harmless.
+
+- Restore Grafana only: SQLite reverts to backup state. Operator-edited dashboards after
+  backup time are lost. Provisioned dashboards re-appear from provisioning files (GR-3).
 
 **Prevention:**
-- Add `limits.compactor_blocks_retention_period: {{ mimir_compactor_blocks_retention_period }}` to `mimir.yaml.j2`
-- Keep `mimir_compactor_blocks_retention_period` in defaults/main.yml as-is (already defined correctly)
-- After deploy, verify: `mimir_compactor_blocks_deletion_marks_total` metric must be non-zero after one compaction cycle (typically within 2× the block duration, ~4h on homelab ingest rates)
-- Ship a "Mimir retention is working" section in the smoke test: check bucket size stabilizes after 30d of data is present
-
-**Phase to address:** First task in v1.1.0. This is existing behavior regression, not a new feature.
+Document the partial-restore consistency risk in Phase 15 docs (quickstart.md `## Backup and
+restore` section). Recommend full 4-role backup + full 4-role restore as the standard
+round-trip path. Tag-scoped partial restore is for recovery of a single component where
+the other components are unaffected (e.g. Grafana SQLite corruption with healthy Garage).
 
 ---
 
-## Moderate Pitfalls — Tempo Compactor Orphan Var
+### XP-4 (MODERATE): Backup destination permissions — `/opt/telemetron/backups/` must be root-writable
 
-### Pitfall T-1: `block_ranges_period` is not a field in Tempo 2.x — it was never silently applied
-
+**Phase:** Phase 13 (per-role backup tasks) + Phase 14 (orchestrator)
+**Live-UAT-only catchable:** YES — only observable with actual filesystem permissions on leviathan
 **What goes wrong:**
-The current `tempo.yaml.j2` correctly removes `block_ranges_period` with the comment "field does not exist in tempodb.CompactorConfig in Tempo 2.10." The M1 backlog item is to "clean up or re-wire" this orphan. The cleanup is: the field simply does not exist. The closest equivalent in Tempo 2.x is `compaction_window` (the time window for grouping blocks in compaction, default 1h). It is not the same concept as what `block_ranges_period` was in earlier versions.
+The tarball destination is `/opt/telemetron/backups/<role>/<role>-<UTC-timestamp>.tar.zst`
+(mode 0600 directory). Docker volume contents are owned by the container process UID:
+- Garage: runs as root in the `dxflrs/garage` image
+- Prometheus: runs as `nobody` (UID 65534)
+- Grafana: runs as `grafana` (UID 472)
+- Alertmanager: runs as user from quay.io image (check empirically on leviathan)
 
-**Risk of blindly adding `compaction_window`:** Setting `compaction_window` too large (e.g., 24h) means blocks that arrive within that window are compacted together into very large blocks, increasing compaction I/O. On a homelab with low trace volume, the default 1h is fine. Setting it too small (e.g., 5m) causes too many small blocks and excessive compaction cycles.
+When the Ansible `become: true` (root) task tars the volume (via a one-shot tar container
+or direct host filesystem access), root can read all UIDs — this is safe. The tarball is
+then written to `/opt/telemetron/backups/<role>/` which is owned by root (mode 0600).
+The `ansible-playbook` run uses `become: true` per Telemetron convention — this works.
 
-**What the backlog item actually needs:**
-1. Confirm `compaction_window` is intentionally absent (default 1h is fine for homelab Tempo)
-2. Delete the var `tempo_block_ranges_period` from `roles/tempo/defaults/main.yml` if it exists there
-3. Add `compaction_window` to `roles/tempo/defaults/main.yml` with a comment if the operator wants to tune it (optional)
-4. Update the comment in `tempo.yaml.j2` from "Removed: block_ranges_period" to note what the equivalent is
+**SELinux risk (RHEL 9 / Rocky 9 hosts):**
+On SELinux-enforcing hosts, tar of Docker volumes may fail with `permission denied` on
+files with unexpected SELinux contexts. Telemetron's primary UAT host (leviathan) runs
+Ubuntu 24.04 (no SELinux by default — AppArmor only). **This pitfall is low priority for
+the v1.3.0 UAT milestone but must be flagged in docs** for operators on RHEL 9.
 
-**Silent failure mode:** There is none for this specific item — the field was removed from the template in M1, so Tempo is already running without it. The backlog item is a hygiene/documentation task, not a behavior fix.
+If SELinux is a concern, the tar command should include `--selinux` flag on GNU tar to
+preserve SELinux contexts.
 
-**Phase to address:** v1.1.0 backlog sweep. Low-risk, small scope.
+**Source:** Telemetron role README volume sections (UIDs); SELinux tar docs — MEDIUM confidence.
 
 ---
 
-## Moderate Pitfalls — Fluent Bit Timestamp Fallback
+### XP-5 (MODERATE): Docker volume path direct-access pattern vs helper container
 
-### Pitfall F-1: `@timestamp` key with env-var value in `[FILTER] modify` — two distinct bugs conflated
-
+**Phase:** Phase 13 (per-role backup tasks)
+**Live-UAT-only catchable:** YES — Docker daemon implementation detail
 **What goes wrong:**
-The disabled `timestamp_fallback` block in `fluent-bit.conf.j2` has this comment: "DISABLED: Fluent Bit 4.x rejects `Add @timestamp ${ingest_time}` as 'Invalid operation add : @timestamp'. Likely cause: `${ingest_time}` is not a defined env var..." This conflates two separate bugs:
+Docker named volumes are stored at `/var/lib/docker/volumes/<name>/_data/` on a cgroup v2
+Linux host. Reading this path directly from the Ansible host (with `become: true`) works on
+Ubuntu 24.04 (leviathan's OS). However, this path is Docker implementation-internal and
+is NOT guaranteed by the Docker API contract. The portable pattern for tarring a named volume
+is to run a one-shot helper container:
 
-**Bug 1: `${ingest_time}` is not an FB built-in variable.** Fluent Bit's `[FILTER] modify` supports `${ENV_VAR}` substitution for OS environment variables. `ingest_time` is not an environment variable and is never populated by Fluent Bit automatically. This means the substituted value is always empty string, which causes the key to be set to an empty string — not the current time.
-
-**Bug 2: `@` prefix in key names in `[FILTER] modify`.** The `@` character in key names is valid in Fluent Bit's INI-format config (the docs use emoji as evidence of special-character flexibility), but the Modify filter's `Add` operation may reject empty-string values even if the key name is valid. The rejection message "Invalid operation add : @timestamp" is most likely triggered by the empty value (from the failed `${ingest_time}` substitution) rather than the `@` character itself.
-
-**The correct solution for FB 4.2.3:** Use a Lua filter, not Modify, to inject a fallback timestamp:
-```lua
-function add_timestamp_fallback(tag, timestamp, record)
-    if record["time"] == nil or record["time"] == "" then
-        record["@timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    end
-    return 1, timestamp, record
-end
+```yaml
+- name: Tar {{ role }} volume via helper container
+  community.docker.docker_container:
+    name: telemetron-backup-helper
+    image: busybox:1.36
+    volumes:
+      - "{{ role_data_volume }}:/backup-source:ro"
+      - "{{ backup_dest_dir }}:/backup-dest"
+    command: "tar -czf /backup-dest/{{ tarball_name }} -C /backup-source ."
+    state: started
+    detach: false
+    auto_remove: true
 ```
-Lua filters have direct access to the event timestamp (`timestamp`) and can set any key (including `@timestamp`) without the restriction that Modify filter imposes on values derived from undefined env vars.
 
-**What is NOT broken:** Docker logs already include their own timestamp in the JSON log line (`time` field from Docker's json-file driver). The `docker` parser in FB extracts this. The `timestamp_fallback` was defensive code for log sources without embedded timestamps (custom apps, some NFS logs). For the main Docker container tail path, it is rarely triggered.
+The helper container approach has its own pitfall: `auto_remove: true` + `detach: false` is
+the same ansible/ansible#45272 auto_remove race that was banned by Gate 8 in Telemetron
+(Phase 4 UAT finding). Use `auto_remove: false` and remove explicitly after status check.
 
-**Risk of leaving it disabled:** Logs from services that emit no timestamp (or emit unparseable timestamps) will inherit Fluent Bit's "agent start time" as the event time. These arrive in Loki with a stale timestamp; Loki may reject them with "entry too far behind." For the homelab default (all sources are Docker containers with json-file timestamps), this is low-risk. The opt-in NFS tail path is higher risk.
+**Recommendation for v1.3.0:**
+For leviathan (Ubuntu 24.04), direct `/var/lib/docker/volumes/` path access is acceptable
+and simpler. Use `ansible.builtin.archive` or `ansible.builtin.command: tar` with
+`chdir: /var/lib/docker/volumes/<name>/_data`. Add a comment noting this is Docker-internal
+path. For future portability, flag as "replace with helper container if mounting the path
+fails on non-Ubuntu hosts."
 
-**Phase to address:** v1.1.0 backlog. Replace the disabled Modify block with a Lua `timestamp_fallback` function in `enrich.lua` (already mounted). Do not try to fix the Modify syntax — the Lua path is cleaner and sidesteps both bugs.
-
----
-
-## Moderate Pitfalls — OTel→Loki Label Mapping
-
-### Pitfall O-1: `service.name` becomes `service_name` in Loki — the spec vs the label allowlist are misaligned
-
-**What goes wrong:**
-The Telemetron label spec (established in Phase 3, coded in the FB Lua `enrich.lua` filter) produces a Loki stream label named `service` (from `org.telemetron.service` Docker label). OTel Collector sends logs to Loki via OTLP/HTTP; Loki's OTLP receiver converts the OTel resource attribute `service.name` → `service_name` (dot-to-underscore, documented in Loki 3.x OTLP ingestion docs). The result is that Telemetron has **two different label names for the same concept** depending on the ingest path:
-
-- Docker logs via Fluent Bit → OTel → Loki: stream label is `service` (set by enrich.lua)
-- App-instrumented OTLP logs sent directly to OTel Collector → Loki: stream label is `service_name` (set by Loki's OTLP receiver from `service.name` resource attribute)
-
-This means a LogQL query like `{service="my-app"}` misses all OTLP-originated logs; `{service_name="my-app"}` misses all FB-originated logs. Cross-signal correlation in Grafana (trace → logs) is broken for the OTLP ingest path because Tempo's service graph uses `service.name` and the Loki derivedFields `trace_id` lookup assumes the user knows which label to filter on.
-
-**Why it happens:**
-Loki's OTLP receiver applies dot-to-underscore transformation to ALL resource attribute names, then maps 17 selected attributes (including `service.name` → `service_name`) to index labels. This happens inside Loki, not the OTel Collector. The OTel Collector's `otlphttp/loki` exporter passes the OTLP payload through verbatim; the transformation is entirely on Loki's side.
-
-**Available resolutions:**
-Option A — Accept `service_name` as the canonical label. Rename the FB Lua `service` output to `service_name` in `enrich.lua`. All queries use `service_name`. OTel path and FB path are aligned.
-Option B — Override Loki's OTLP default label set. Under `distributor.otlp_config.default_resource_attributes_as_index_labels`, remove `service.name` from the default list, then add a transform that emits it as `service` instead. Requires per-tenant config.
-Option C — Transform at OTel Collector. Add a `transform` processor in the OTel logs pipeline that renames `service.name` resource attribute to `service` before sending to Loki. Loki's OTLP receiver will then convert `service` → `service` (no dots, no transformation). Downstream: `{service="my-app"}` works for OTLP-originated logs.
-
-**Recommended for v1.1.0:** Option A — rename `service` to `service_name` in `enrich.lua`. It is the smallest change and aligns Telemetron with the OTel semantic convention. Update Loki derivedFields in the Grafana role to use `service_name`, and update any alert rules that filter on `{service="..."}`.
-
-**Secondary issue: `service.namespace` corruption.** OTel Collector Contrib issue #32497 (open as of 2026-05): when both `service.name` and `service.namespace` are present in a resource, Loki's OTLP receiver generates `service_name = "namespace/service"` (slash-concatenated) instead of just the service name. This produces malformed `service_name` labels that break LogQL equality filters. Mitigation: strip `service.namespace` at the OTel Collector using a `transform` processor before sending to Loki, or ensure instrumented apps do not set `service.namespace`.
-
-**Phase to address:** v1.1.0 backlog sweep. Label rename in `enrich.lua` + update Grafana datasource derivedFields + update any alert rule that references `{service=...}`. Small but touches multiple roles.
+**Source:** Docker volume internals; Phase 4 Gate 8 pattern; ansible/ansible#45272 — MEDIUM confidence.
 
 ---
 
-## Integration Pitfalls Specific to the MinIO→Garage Switch
+### XP-6 (LOW): Symlinks inside volumes — tar default `--dereference` consideration
 
-### Pitfall I-1: Backend roles reference `minio` as DNS hostname — six places to update
-
+**Phase:** Phase 13 (per-role backup tasks)
+**Live-UAT-only catchable:** NO — static analysis
 **What goes wrong:**
-Every backend role's S3 endpoint var defaults to `minio:9000` (or `http://minio:9000` for Loki). This hostname resolves to the MinIO container via Docker bridge DNS using the container alias set in the MinIO role (`aliases: [minio]`). After replacing the MinIO role with a Garage role, the DNS alias changes. If the three backend roles still reference `minio:9000` and the Garage role does not provide a `minio` alias, all three backends fail to connect to object storage on first boot after migration.
+Prometheus TSDB creates symlinks inside `/prometheus/` — specifically the `wal/` directory
+may contain hardlink chains in checkpoint files, and compacted blocks may have symlinked
+`chunks` directories in edge cases. GNU tar's default behavior is to PRESERVE symlinks (not
+dereference). For backup/restore this is correct: tar preserves the symlink; tar x restores
+the symlink. The only problem arises if the symlink target is outside the tar root (absolute
+path symlinks). Prometheus TSDB uses only RELATIVE symlinks within the volume.
 
-**Specific locations in the current codebase:**
-- `roles/loki/defaults/main.yml`: `loki_s3_endpoint` → `http://minio:9000`
-- `roles/mimir/defaults/main.yml`: `mimir_s3_endpoint` → `minio:9000`
-- `roles/tempo/defaults/main.yml` (not read but assumed same pattern): `tempo_s3_endpoint` → `minio:9000`
-- `playbooks/deploy_docker.yml`: role ordering references `minio` before `loki`, `tempo`, `mimir`
+Garage's data volume contains object block files with a structured directory layout — no
+symlinks.
+
+Grafana's SQLite volume has no symlinks.
+
+**Conclusion:** Default `tar -czf` behavior (preserve symlinks) is correct for all 4 volumes.
+No special `--dereference` flag needed.
+
+**Source:** Prometheus TSDB block layout documentation; empirical analysis — MEDIUM confidence.
+
+---
+
+### XP-7 (LOW): Sparse files — Prometheus blocks are NOT sparse on typical homelab storage
+
+**Phase:** Phase 13 (per-role backup tasks)
+**Live-UAT-only catchable:** NO
+**What goes wrong (the concern that is unlikely to apply):**
+Prometheus TSDB block files (chunks, index) COULD theoretically be sparse if written by a
+filesystem that supports sparse files and the TSDB writer leaves large zero-filled regions.
+In practice, Prometheus writes chunks densely (the chunk format is variable-length packed
+records). On homelab storage (ext4 or xfs on a single host), TSDB files are not sparse.
+The tar `--sparse` flag would have no effect on non-sparse files.
+
+**When it could matter:**
+Very large Prometheus deployments with many series that have gaps (all-zero chunks) might
+produce sparse files. For a homelab with tens of thousands of series and `15d` retention,
+this is not observed in practice.
+
+**Recommendation:**
+Omit `--sparse` from the tar invocation for simplicity. If a future operator reports
+inflated backup tarballs for Prometheus, add `--sparse` as a diagnostic step.
+
+**Source:** Prometheus TSDB chunk format docs; no empirical source found — LOW confidence.
+
+---
+
+## Ansible-Specific Pitfalls
+
+### AN-1 (CRITICAL): Backup playbook stop-restart cycle must not use `state: absent` — volumes are preserved, containers are not removed
+
+**Phase:** Phase 13 (per-role backup tasks) + Phase 14 (orchestrator)
+**Live-UAT-only catchable:** YES — only observable in PLAY OUTPUT with a running Docker daemon
+**What goes wrong:**
+The v1.2.0 undeploy pattern uses `state: absent` (removes container). If the backup task
+mistakenly uses `state: absent` instead of `docker stop`, the named volumes are preserved
+(because Ansible's `state: absent` does not remove volumes unless `keep_volumes: false` is
+set) but the CONTAINER is gone. The subsequent backup tar of the volume still works. However,
+the "restart container after backup" step then fails because the container no longer exists —
+it would need a full `deploy_docker.yml` re-run to come back. This is a half-state that
+requires operator intervention.
 
 **Prevention:**
-- Use an abstract inventory var `telemetron_s3_host` (default `garage` after migration) that all three backend roles reference. Default it to `garage` in the inventory after migration
-- The Garage role's container aliases should include `garage` (matches the new var)
-- Do NOT add a `minio` alias to the Garage container — it would paper over the config and prevent detecting broken references
+- Backup task must use the stop/start pattern (XP-1 quiesce pattern) — NOT `state: absent`.
+- Code review checklist for Phase 13: verify that no per-role `backup.yml` file contains
+  `state: absent`.
+- The playbook-level PLAY-start banner (D-160 pattern from v1.2.0) should display the
+  stop/start model explicitly so operators understand backups do not remove containers.
 
-**Detection:**
-- Loki/Tempo/Mimir logs immediately show `connection refused` or `DNS lookup failed` against `minio:9000` if the alias wasn't updated
-
-**Phase to address:** Garage role port. Update all three backend role defaults at the same time.
+**Source:** v1.2.0 `undeploy_docker.yml` pattern; `community.docker.docker_container`
+`keep_volumes` default behavior — HIGH confidence.
 
 ---
 
-### Pitfall I-2: Five buckets must exist before Loki/Tempo/Mimir start — same race as M1, different CLI
+### AN-2 (MODERATE): Failure half-state — bail-out default leaves partial-backup directory
 
+**Phase:** Phase 14 (orchestrator design)
+**Live-UAT-only catchable:** NO — design-time consideration
 **What goes wrong:**
-M1's Pitfall 1 (bucket bootstrap race) is fully solved for MinIO: `tasks/bootstrap.yml` uses `minio/mc` to create all 5 buckets and verify they exist before the playbook continues. With Garage, `minio/mc` still works against Garage's S3 API, but the layout must be applied first (Pitfall G-1). Using `mc` against Garage requires an `mc alias set` pointing at `garage:3900`. This adds a dependency: the `mc` bootstrap container (or equivalent) cannot run until after Garage's layout is applied AND its S3 port is ready.
+The v1.3.0 design specifies bail-out on first failure as the default. If the Prometheus
+backup (role 3 of 4) fails (e.g. tar runs out of disk space), the `/opt/telemetron/backups/`
+directory has:
+- `garage/garage-<timestamp>.tar.zst` — valid
+- `alertmanager/alertmanager-<timestamp>.tar.zst` — valid (if backup order is Garage, AM, Prometheus, Grafana)
+- No Prometheus tarball
+- No Grafana tarball
 
-**Risk of re-using the `mc` approach against Garage:** Functional, but `minio/mc` is an archived project. If Telemetron ships Garage as a replacement for archived MinIO, using `minio/mc` for bucket bootstrap sends a mixed signal. Prefer the `garage` CLI or `awscli` for bucket management.
+**The stopped containers:**
+With the `docker stop` quiesce pattern (XP-1), a bail-out may leave a container in the
+STOPPED state if the failure occurs after stop but before the restart step. The orchestrator
+must either:
+a) Always include an explicit "restart container on failure" rescue block in each role's
+   backup.yml, or
+b) Document that a failed backup may require `ansible-playbook deploy_docker.yml --tags <role>`
+   to restart stopped containers.
 
-**Better alternative:** Use `awscli` (or `garage bucket create` via `docker_container_exec`) for the Garage bootstrap:
-```bash
-docker exec telemetron-garage /usr/bin/garage bucket create loki-chunks
-docker exec telemetron-garage /usr/bin/garage bucket allow --read --write --owner loki-chunks --key telemetron
+**Recommendation for v1.3.0:**
+Use Ansible `block`/`rescue`/`always` in each role's backup task to ensure the container
+is ALWAYS restarted (even on failure), then bail-out at the orchestrator level:
+```yaml
+- block:
+    - name: Stop container
+    - name: Tar volume
+  rescue:
+    - name: Record failure (for orchestrator bail-out)
+      set_fact: backup_failed=true
+  always:
+    - name: Restart container (always, even on failure)
+      ansible.builtin.command: docker start {{ container_name }}
 ```
-This can be encoded as `community.docker.docker_container_exec` tasks in Ansible (same pattern as the existing verify tasks in M1 roles).
 
-**Phase to address:** Garage role port, `tasks/bootstrap.yml` rewrite. Highest-priority task within the role.
-
----
-
-### Pitfall I-3: Rolling the storage backend on a running stack — Loki ingester WAL flush window
-
-**What goes wrong:**
-Loki's ingester holds unflushed chunks in memory (WAL) for `max_chunk_age` (default in Telemetron: `loki_max_chunk_age`). When Loki is stopped for the storage migration, any chunks not yet flushed to MinIO are in the WAL at `loki_data_path/wal/`. If the WAL is on a Docker named volume (as it is in Telemetron — one volume covers the full Loki data root), the WAL survives the container stop. When Loki restarts against Garage, it replays the WAL and writes the unflushed chunks to Garage. This is fine as long as the MinIO-side data that WAS flushed is also migrated to Garage. If you skip MinIO→Garage data migration and start Loki fresh against empty Garage buckets, the WAL replay will try to link WAL chunks to index entries that exist in the (now-inaccessible) MinIO store, causing query errors and compaction confusion.
-
-**Safe procedure:**
-- If doing a clean-break migration (no data migration): wipe the Loki WAL volume entirely before restarting against Garage. Accept data loss.
-- If doing a full migration: stop Loki → rclone sync → start Loki against Garage (WAL replays against migrated data on Garage).
-
-**Phase to address:** Data migration guide in Garage role README. The playbook does not handle this automatically; it must be documented as a manual step.
+**Source:** v1.3.0 PROJECT.md locked design decisions (bail-out default) — HIGH confidence.
 
 ---
 
-## Minor Pitfalls — Housekeeping
+### AN-3 (MODERATE): Vault password is needed but backup does not capture secrets.yml
 
-### Pitfall H-1: Garage admin API needs a separate token from the S3 access key
-
+**Phase:** Phase 13 (per-role backup tasks) + operator education
+**Live-UAT-only catchable:** NO — design implication
 **What goes wrong:**
-Garage's admin API (port 3903) uses a Bearer token (`garage_admin_token`), completely separate from the S3 access key/secret pair used by Loki/Tempo/Mimir. The bootstrap automation needs the admin token to run `garage layout assign`, `garage key create`, and `garage bucket create`. The S3 credentials only work against the S3 API (port 3900). Operators who try to authenticate the bootstrap with S3 credentials against port 3903 get 401 Unauthorized and conclude bootstrap is broken.
+`backup_docker.yml` requires `--ask-vault-pass` (consistent with all Telemetron playbooks,
+per CLAUDE.md: "Secrets are vault-encrypted in `secrets.yml`"). The vault is needed to read
+`garage_admin_token` (used in Garage's health check invocation inside bootstrap.yml's tasks).
 
-**Prevention:** Ship two separate secrets in the Garage inventory vars: `garage_admin_token` (used only by the bootstrap task via `docker_container_exec`) and `garage_access_key`/`garage_secret_key` (used by Loki/Tempo/Mimir S3 configs). Never cross-use.
+The backup playbook does NOT capture `secrets.yml` in the tarball — the design decision
+(PROJECT.md) explicitly excludes secrets from the backup scope. Operators are responsible
+for maintaining their own `secrets.yml` backups outside Telemetron's backup path.
 
-### Pitfall H-2: Volume rename — `telemetron_minio_data` → `telemetron_garage_data`
+**Restore implication:**
+After a purge-data + redeploy + restore cycle, the operator must supply the SAME `secrets.yml`
+vault contents as at backup time (specifically `garage_admin_token` and `garage_rpc_secret`)
+because these values are embedded in `garage.toml` and the restored LMDB expects the same
+admin token for API calls made during bootstrap verification. If `garage_admin_token` is
+rotated between backup and restore, the bootstrap verify step (`garage key list`) will
+fail with a 401 Unauthorized.
 
-**What goes wrong:**
-If the Garage role reuses the old `telemetron_minio_data` volume name (to "preserve data"), Garage will try to read data in MinIO's on-disk format, which is incompatible with Garage's internal format. MinIO stores object data in its own chunk format with MinIO-specific metadata. Garage cannot read it. The result is either a startup error or silent data corruption as Garage ignores the incompatible files.
+**Prevention:**
+Document in Phase 15 `## Backup and restore` section: "Backup does not include `secrets.yml`.
+Operators must independently back up their vault-encrypted secrets. The Garage backup will
+not be restorable if `garage_admin_token` and `garage_rpc_secret` are rotated between
+backup and restore time."
 
-**Prevention:** The Garage role must create a **new named volume** (`telemetron_garage_data` or similar). The MinIO volume is left untouched (as a safety net during migration) and can be manually pruned after the migration is confirmed working.
-
-### Pitfall H-3: Mimir retention time format — `m` means minutes not months
-
-**What goes wrong:**
-The Mimir docs note that retention periods cannot use `m` to mean "months" — `m` is minutes. A retention of `30d` is correct for 30 days. A naive attempt to set `1m` for "one month" configures 1-minute retention, which causes Mimir to delete almost all blocks on every compaction cycle. Symptoms: Mimir queries return no data; `mimir_compactor_blocks_deletion_marks_total` spikes; bucket empties out quickly.
-
-**Prevention:** Only use `d`, `w`, `y` for retention periods. The current default `30d` is correct.
+**Source:** PROJECT.md deferred items (encryption/secrets out of scope) + `roles/garage/README.md` Secrets section — HIGH confidence.
 
 ---
 
-## Pitfall-to-Phase Mapping (v1.1.0)
+## Phase-to-Pitfall Assignment
 
-| Pitfall | Phase | Verification |
-|---------|-------|--------------|
-| G-1: Garage layout required before S3 works | Garage role port — first task | `garage status` shows node with capacity assigned; S3 ListBuckets succeeds |
-| G-2: Endpoint format (http:// vs bare host) | Garage role + backend template updates | Loki/Tempo/Mimir logs show no TLS errors; first PutObject succeeds |
-| G-3: No object tagging | Document in Garage role README | — |
-| G-4: Garage port matrix | Garage role port + HEALTHCHECK | Port snapshot in docs updated; health poll targets :3903 |
-| G-5: Data migration stop-sync-start | Migration guide in Garage role README | Smoke test passes against migrated buckets |
-| G-6: Loki `object_store: aws` | Loki template update | Loki `loki_boltdb_shipper_compact` metric increases |
-| M-1: Mimir retention not wired to `limits:` | Mimir role template update | `mimir_compactor_blocks_deletion_marks_total` > 0 after compaction cycle |
-| T-1: `block_ranges_period` orphan | Tempo role defaults cleanup | Template renders without unknown-field comment; no orphan vars |
-| F-1: FB timestamp_fallback — Lua fix | FB role `enrich.lua` update | Docker log arrives in Loki with timestamp within 30s of wall-clock, not agent-start time |
-| O-1: `service` vs `service_name` label split | FB enrich.lua + Grafana + alert rules | Single LogQL query `{service_name="my-app"}` returns both FB-originated and OTLP-originated logs |
-| I-1: DNS hostname references to `minio` | Garage role + backend role defaults | No "DNS lookup failed for minio" in any backend log after migration |
-| I-2: Bucket bootstrap with Garage CLI | Garage role `tasks/bootstrap.yml` | All 5 buckets exist; backends start without NoSuchBucket errors |
-| I-3: WAL flush on storage switch | Migration guide | No query errors for recently-flushed chunks after migration |
-| H-1: Admin token vs S3 credentials | Garage role secrets discipline | Bootstrap task succeeds; S3 creds never sent to :3903 |
-| H-2: Volume rename | Garage role defaults | No attempt to read MinIO data directory with Garage |
-| H-3: Mimir `m` = minutes | Mimir retention docs + comment | `mimir_compactor_blocks_retention_period` value validated at deploy time |
+| Pitfall | ID | Phase | Catchable Static? | Catchable Live-UAT only? |
+|---------|----|-------|:-----------------:|:------------------------:|
+| Garage LMDB cold-copy requires full stop | GP-1 | 13 | YES | NO |
+| Garage meta volume scope (LMDB + layout inside DB) | GP-2 | 13 | YES | NO (restore tar path) |
+| S3-credentials sync with LMDB | GP-3 | 13+14 | YES | YES (D-146 recovery) |
+| `garage key list` regex class (Phase 11 recurrence) | GP-4 | 13 | NO | YES |
+| Prometheus lock file on restore | PP-1 | 13+14 | YES | YES (PID race) |
+| WAL not guaranteed flushed — 0-2h data gap | PP-2 | 13+15 | YES | NO |
+| queries.active stale log on startup | PP-3 | 13+15 | YES | NO |
+| `.tmp` from interrupted compaction | PP-4 | 13 | YES | NO |
+| Grafana SQLite WAL is OFF by default | GR-1 | 13 | YES | NO |
+| Plugin files in volume | GR-2 | 13 | YES | NO |
+| Provisioned dashboards re-provision on restart | GR-3 | 15 | YES | YES |
+| Admin password reverts to backup-time value | GR-4 | 15 | YES | NO |
+| AM protobuf files (not BoltDB) | AP-1 | 13 | YES | NO |
+| Stale nflog re-enables old dedup state | AP-2 | 15 | YES | NO |
+| Single-instance AM — no cluster state pitfalls | AP-3 | 13 | YES | NO |
+| `state: stopped` strips container metadata | XP-1 | 13+14 | NO | YES |
+| Restore order: Garage before Loki/Tempo/Mimir writers | XP-2 | 14 | YES | YES |
+| Partial restore consistency | XP-3 | 14+15 | YES | NO |
+| Backup destination permissions / SELinux | XP-4 | 13+14 | NO | YES |
+| Docker volume direct-path vs helper container | XP-5 | 13 | NO | YES |
+| Symlinks in volumes — tar default is correct | XP-6 | 13 | YES | NO |
+| Sparse files — unlikely at homelab scale | XP-7 | 13 | YES | NO |
+| `state: absent` vs stop for backup quiesce | AN-1 | 13 | YES | YES |
+| Bail-out leaves stopped container | AN-2 | 14 | YES | NO |
+| Vault required, secrets not backed up | AN-3 | 13+15 | YES | NO |
 
 ---
 
-## Biggest Risk for v1.1.0
+## Live-UAT-Only Catchable Pitfalls — UAT Scenario Design Implications
 
-**Mimir retention (Pitfall M-1)** is the only silent behavior regression already present in production (v1.0.1). Every day on leviathan, Mimir accumulates blocks it will never delete until this is fixed. Fix it first.
+The following pitfalls are NOT catchable by static analysis, plan-check, code review, or
+verifier reading upstream docs. They WILL only surface when the playbook runs against a
+live Docker host (leviathan). Phase 14's UAT scenarios must exercise each of them:
 
-**Garage bootstrap sequence (Pitfall G-1)** is the highest-complexity new pitfall. The layout-assign step has no MinIO analog and the bootstrap task must be written from scratch.
+| Pitfall | UAT Scenario Needed |
+|---------|---------------------|
+| GP-3: D-146 recovery branch fires if creds file absent but LMDB has the key | Backup → `purge_host_dirs=true` undeploy → redeploy → restore; verify bootstrap recovery branch fires and smoke test passes |
+| GP-4: `garage key list` regex recurrence | Any restore verify step that parses `garage key list` output |
+| PP-1: Lock file PID race | Restore Prometheus TSDB volume → restart container → verify startup succeeds with no "Locked by other process" error |
+| XP-1: `state: stopped` strips container metadata | Verify that the stop/start quiesce cycle leaves all 4 containers in the same configuration as before (check `docker inspect` volumes/networks post-restart) |
+| XP-2: Garage restore stops writers first | Verify Loki/Tempo/Mimir do not crash-loop during Garage stop window in backup_docker.yml |
+| XP-4: Backup destination permissions | Verify `/opt/telemetron/backups/` is writable and tarballs are mode 0600 |
+| XP-5: Docker volume path access | Verify tar via direct `/var/lib/docker/volumes/` path works on leviathan Ubuntu 24.04 |
+| AN-1: No `state: absent` in backup tasks | Verify 4 containers are RUNNING (not missing) after backup_docker.yml completes |
 
-**Label split (Pitfall O-1)** is the highest UX-impact bug — it silently breaks cross-signal correlation for all OTLP-instrumented apps. The fix touches three roles (fluentbit, grafana, possibly alert rules).
+The principle established in v1.1.0 and confirmed in v1.2.0 (Phase 11 G-01):
+**The planner, checker, code reviewer, and verifier all read upstream docs and assume output
+formats. None of them run the actual binary. Live-UAT on leviathan is the only gate that
+catches output-format-assumption regressions and Docker-state-interaction bugs.**
 
 ---
 
 ## Sources
 
-- [Garage S3 Compatibility Matrix](https://garagehq.deuxfleurs.fr/documentation/reference-manual/s3-compatibility/) — verified tagging ❌ Missing, path-style ✅, multipart ✅
-- [Garage Quick Start documentation](https://garagehq.deuxfleurs.fr/documentation/quick-start/) — verified layout-assign bootstrap sequence
-- [bikeshedder/garage-single-node (GitHub)](https://github.com/bikeshedder/garage-single-node) — single-node bootstrap automation via env vars
-- [Grafana community: Loki does not ship logs to external S3 storage (Garage)](https://community.grafana.com/t/loki-does-not-ship-logs-to-external-s3-storage-garage/159780) — `object_store: aws` workaround (MEDIUM confidence, thread unresolved)
-- [Migrating from MinIO to Garage (Matt Gerega, 2025-12-10)](https://www.mattgerega.com/2025/12/10/migrating-from-minio-to-garage-when-open-source-isnt-so-open-anymore/) — Loki/Tempo/Mimir endpoint-only config update confirmed working in practice
-- [Migrating from MinIO to Garage (Sander Sneekes)](https://sneekes.app/posts/migrating-from-minio-to-garage/) — rclone sync approach; RPC stability notes
-- [Use Rclone to migrate Minio to Garage](https://exia.dev/blog/2025-12-06/Use-Rclone-to-migrate-Minio-to-Garage/) — `--s3-sign-accept-encoding=false` flag for SignatureDoesNotMatch
-- [Configure Grafana Mimir metrics storage retention](https://grafana.com/docs/mimir/latest/configure/configure-metrics-storage-retention/) — `limits.compactor_blocks_retention_period` is the only documented location; HIGH confidence
-- [DeepWiki: Mimir configuration](https://deepwiki.com/grafana/mimir/4-configuration) — `KnownFields(true)` strict parsing confirmed; unknown fields fail startup
-- [Grafana Tempo configuration reference](https://grafana.com/docs/tempo/latest/configuration/) — `compaction_window` is the current field; `block_ranges_period` does not exist in 2.x schema
-- [Ingesting logs to Loki using OpenTelemetry Collector](https://grafana.com/docs/loki/latest/send-data/otel/) — `service.name` → `service_name` dot-to-underscore transformation documented; `default_resource_attributes_as_index_labels` controllable
-- [OTel Collector Contrib issue #32497: invalid service_name when service.namespace defined](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32497) — `service_name = "namespace/service"` corruption confirmed
-- [Fluent Bit Modify filter documentation](https://docs.fluentbit.io/manual/data-pipeline/filters/modify) — no restriction on `@` prefix keys; empty-value `Add` is the rejection trigger
-- [Tempo issue #431: S3ForcePathStyle](https://github.com/grafana/tempo/issues/431) — `forcepathstyle` key confirmed for Tempo S3 config
-- [Loki issue #823: s3forcepathstyle field](https://github.com/grafana/loki/issues/823) — `s3forcepathstyle` key confirmed for Loki S3 config
-- Telemetron codebase (verified against live files):
-  - `roles/mimir/templates/mimir.yaml.j2` — retention field removed but not re-wired
-  - `roles/mimir/defaults/main.yml` — `mimir_compactor_blocks_retention_period` defined but unused
-  - `roles/tempo/templates/tempo.yaml.j2` — `block_ranges_period` removed, `compaction_window` absent
-  - `roles/fluentbit/templates/fluent-bit.conf.j2` — `timestamp_fallback` block disabled
-  - `roles/opentelemetry/templates/config.yaml.j2` — `otlphttp/loki` exporter passes OTLP verbatim
-  - `roles/minio/tasks/bootstrap.yml` — bootstrap pattern to replicate for Garage
+### HIGH confidence
+- [Garage HQ: Recovering from failures](https://garagehq.deuxfleurs.fr/documentation/operations/recovering/) — LMDB cold-copy safety, snapshot directory
+- [Garage HQ: Known issues](https://garagehq.deuxfleurs.fr/documentation/reference-manual/known-issues/) — "LMDB is prone to database corruption after an unclean shutdown"
+- [Garage HQ: Configuration reference](https://garagehq.deuxfleurs.fr/documentation/reference-manual/configuration/) — `metadata_auto_snapshot_interval`, LMDB default, `db.lmdb/` layout
+- [alertmanager/silence/silence.go (GitHub)](https://github.com/prometheus/alertmanager/blob/main/silence/silence.go) — protobuf encoding, maintenance loop, final snapshot on shutdown
+- [alertmanager/nflog/nflog.go (GitHub)](https://github.com/prometheus/alertmanager/blob/main/nflog/nflog.go) — notification log protobuf, maintenance function
+- [Prometheus storage docs](https://prometheus.io/docs/prometheus/latest/storage/) — WAL, block compaction, backup recommendation
+- [Prometheus TSDB WAL deep-dive (Vernekar)](https://ganeshvernekar.com/blog/prometheus-tsdb-wal-and-checkpoint/) — WAL segments, checkpoint, HEAD flush
+- [Prometheus snapshot-on-shutdown (Vernekar)](https://ganeshvernekar.com/blog/prometheus-tsdb-snapshot-on-shutdown/) — `chunk_snapshot.X.Y` files
+- [grafana/grafana defaults.ini (GitHub)](https://github.com/grafana/grafana/blob/main/conf/defaults.ini) — `wal = false` default confirmed
+- [Grafana backup docs](https://grafana.com/docs/grafana/latest/administration/back-up-grafana/) — shutdown requirement, plugin directory inclusion
+- `roles/garage/tasks/bootstrap.yml` — D-112 credential format, D-146 recovery branch, GP-4 regex — direct code review
+- Phase 11 VERIFICATION.md — G-01 closure, two regex regressions caught live-UAT only
 
----
-*v1.1.0 pitfalls supplement. Covers Garage migration + backlog config items only. For M1 pitfalls (cardinality, Grafana UID provisioning, OTel pipeline order, Ansible idempotency, etc.), see the 2026-05-17 base PITFALLS.md.*
+### MEDIUM confidence
+- [prometheus/prometheus#2689](https://github.com/prometheus/prometheus/issues/2689) — TSDB lock file on unclean shutdown
+- [prometheus-community/helm-charts#2872](https://github.com/prometheus-community/helm-charts/issues/2872) — "lockfile from previous execution replaced" log message
+- [community.docker#791](https://github.com/ansible-collections/community.docker/issues/791) — `state: stopped` strips container metadata (issue closed; exact fix version unconfirmed in v5.x)
+- [Red Hat KB: Prometheus lock file](https://access.redhat.com/solutions/6976141) — `--storage.tsdb.no-lockfile` workaround
+
+### LOW confidence
+- Prometheus TSDB sparse files — no authoritative source found; empirical assertion based on chunk format analysis
+- Prometheus clean-SIGTERM WAL flush guarantee — behavioral evidence only; no explicit upstream contract in v3.x docs

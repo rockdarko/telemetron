@@ -1,619 +1,285 @@
-# Feature Landscape
+# Feature Research
 
-**Domain:** Self-hosted observability stack (Ansible-deployed), homelab + small-deployment ops
-**Researched:** 2026-05-17 (M1) / 2026-05-26 (v1.1.0 addendum)
-**Confidence:** HIGH (Grafana ecosystem, Mimir/Tempo config), MEDIUM (Garage operator experience, FB timestamp fix)
-
----
-
-## v1.1.0 Feature Research (primary focus for this pass)
-
-This section covers the four features targeted in v1.1.0: Garage object store, Mimir retention fix,
-Fluent Bit timestamp fallback fix, and Fluent Bit/OTel label reconciliation.
+**Domain:** Cold-quiesce backup and restore for a self-hosted, single-host, Ansible-Docker observability stack
+**Milestone:** Telemetron v1.3.0
+**Researched:** 2026-06-02
+**Confidence:** HIGH (Grafana/Prometheus official docs + Alertmanager upstream + prior-art projects verified)
 
 ---
 
-### Feature 1: Garage as Object Store
+## Prior Art Survey
 
-**What operators expect when MinIO is replaced with Garage**
+Five projects were studied to derive operator workflow conventions. Notes below inform every table that follows.
 
-#### What Garage actually is
+### 1. Gitea / Forgejo (`gitea dump` + restore)
 
-Garage is an S3-compatible distributed object store maintained by Deuxfleurs (a French non-profit),
-AGPL licensed, actively developed, designed explicitly for small/homelab/geo-distributed deployments.
-Latest stable: `v2.3.0` (April 16, 2026, Forge Deuxfleurs). Docker image: `dxflrs/garage:v2.3.0`.
-Image size ~26–27 MB compressed (vs. MinIO which ships a heavier binary).
+`gitea dump -c /data/gitea/conf/app.ini` produces `gitea-dump-<unix-epoch>.zip` — a single archive containing the DB export, config, data, and repositories. The service MUST be stopped before dumping (documented as a hard requirement). Restore is fully manual: extract, move files to locations, re-run `./gitea admin regenerate hooks`. No restore subcommand exists.
 
-v2.0 broke the admin API vs v1.x — the v2 admin API is not backward compatible with v1.x tooling.
-v2.3.0 specifically added `--single-node` + `--default-bucket` auto-configuration flags, making
-initial setup significantly easier.
+**Convention takeaways:**
+- "Stop service, dump, restart" is the established homelab quiesce pattern — operators expect brief downtime.
+- Unix-epoch timestamp in the filename is simple but not human-readable; comparable tools prefer `YYYYMMDD` or ISO 8601 variants.
+- No "latest" symlink; operators use `ls -t` to find the newest file.
+- No backup-before-restore guard; the operator is responsible.
 
-#### Operator-facing setup flow (what they must do, not optional)
+### 2. Nextcloud (`occ maintenance:mode` + db dump + rsync)
 
-Unlike MinIO which starts accepting writes immediately, **Garage requires a mandatory cluster layout
-initialization step** before it accepts any writes.
+`occ maintenance:mode --on` quiesces the application, then the operator runs a database dump (`mariadb-dump --single-transaction`) and `rsync` of the data and config directories to a timestamped target (`nextcloud-dirbkp_$(date +"%Y%m%d")/`). Restore: turn off maintenance mode, copy files back, run `occ maintenance:data-fingerprint`. The `date +"%Y%m%d"` naming is the documented recommendation.
 
-The required sequence after container start:
+**Convention takeaways:**
+- Maintenance mode = explicit quiesce state; operator knows the service is locked during backup.
+- `YYYYMMDD` (8-digit date) is the standard Nextcloud-documented timestamp format. Sorting works; uniqueness does not (two runs on the same day collide). `YYYYMMDD-HHMMSS` resolves this.
+- Post-restore integrity step (`data-fingerprint`) is a lightweight table-stakes guard.
+- Backup-before-restore is not automated; the restore doc assumes the operator manages that.
 
-```
-1. docker exec garage /garage status              # get node ID
-2. docker exec garage /garage layout assign -z dc1 -c 1G <NODE_ID>
-3. docker exec garage /garage layout apply --version 1
-4. docker exec garage /garage bucket create loki-chunks
-5. docker exec garage /garage key create telemetron-key
-6. docker exec garage /garage bucket allow --read --write --owner loki-chunks --key telemetron-key
-# (repeat bucket create + allow for all 5 buckets)
-```
+### 3. VictoriaMetrics (`vmbackup` / `vmrestore`)
 
-This is a fundamentally different bootstrap model from MinIO's `mc mb --ignore-existing`.
-The Ansible role bootstrap task must replicate all of this; it cannot use a simple one-shot mc
-container the way the minio role does.
+`vmbackup -storageDataPath /var/lib/victoriametrics -dst s3://bucket/backup-YYYYMMDD` writes a full backup to a storage destination. `vmrestore` requires VictoriaMetrics to be stopped: `vmrestore -src s3://bucket/backup-YYYYMMDD -storageDataPath /var/lib/victoriametrics`. Incremental backups are automatic if `-dst` points to an existing backup. The workflow is symmetric: one binary for backup, one for restore, same flags.
 
-#### Ports (different from MinIO)
+**Convention takeaways:**
+- Stop-before-restore is universal even for tools that support hot-backup.
+- Symmetric binary naming (`vmbackup` / `vmrestore`) mirrors the expectation for symmetric Ansible playbooks (`backup_docker.yml` / `restore_docker.yml`).
+- `YYYYMMDD` is the documented naming convention in VictoriaMetrics examples.
+- "Latest" detection is implicit: the operator names the `-dst` explicitly; no auto-discovery.
+- No confirmation gate for restore — the explicit `-src` path IS the confirmation.
 
-| Port | Purpose | MinIO equivalent |
-|------|---------|-----------------|
-| 3900 | S3 API | 9000 |
-| 3901 | RPC (internal, node-to-node) | N/A (MinIO doesn't expose this) |
-| 3902 | S3 web hosting (static sites) | N/A |
-| 3903 | Admin API | N/A |
+### 4. Grafana Labs official backup guidance
 
-All consumer roles (Loki/Tempo/Mimir) must have their S3 endpoint updated from
-`minio:9000` to `garage:3900`.
+Official docs at `grafana.com/docs/grafana/latest/administration/back-up-grafana/` state:
+- Stop Grafana before backing up SQLite: "shut down your Grafana service before backing up the SQLite database."
+- Backup: copy `grafana.db` (the SQLite file at `/var/lib/grafana/grafana.db` inside the container, exposed via the named volume `telemetron_grafana_data`) plus the config and plugins directories.
+- Restore: copy `grafana.db` back to its original location.
+- Provisioned dashboards and datasources are version-controlled config, not DB state — they do NOT need to be in the backup tarball because `deploy_docker.yml` re-renders them from Ansible templates.
 
-#### Admin UI: what operators see
+**Convention takeaways:**
+- SQLite file is the backup target; provisioning config is NOT (already in the repo).
+- Grafana's data volume is a single directory at `/var/lib/grafana`; a full volume snapshot is clean.
+- No automated backup tooling from Grafana Labs; operator is expected to write their own.
+- `grafana-tools/grafana-backup` (API-based) is community tooling for cloud-managed Grafana, not relevant for a version-controlled provisioning stack like Telemetron.
 
-Garage itself has NO built-in web UI. Administration is CLI-only via the `garage` binary inside
-the container. There is a community project `khairul169/garage-webui` (Docker:
-`khairul169/garage-webui`, port 3909) that provides a GUI for bucket browsing, key management,
-and object exploration. It requires Garage v2.0.0+ and the admin API enabled.
+### 5. Prometheus TSDB backup
 
-Comparison with what operators had in MinIO:
-- MinIO Console (`:9001`) was a full-featured S3 browser, IAM manager, lifecycle policy UI
-- Garage CLI provides: `bucket create`, `bucket list`, `key create`, `key list`, `bucket allow`
-- Garage Admin API (`/metrics`, `/health`, `/v2/GetClusterHealth`) is Prometheus-scrapeable
-- `garage-webui` provides bucket browsing and object listing — less capable than MinIO Console
+Official Prometheus docs and community consensus:
+- Hot backup: `POST /api/v2/admin/tsdb/snapshot` (requires `--web.enable-admin-api`). Creates hard-linked snapshot at `<tsdb-path>/snapshots/<timestamp>` in `20060102T150405Z` format (Go time reference). Space cost is minimal because hard links.
+- Cold backup (simpler, no API required): stop Prometheus, tar `<tsdb-path>` excluding `wal/` and `chunks_head/` for a coherent block-only backup, restart. The WAL covers only the last ~2 hours of data; excluding it accepts that loss but avoids partial-write inconsistency.
+- Restore: stop Prometheus, clear `<tsdb-path>`, untar backup, restart.
 
-**Operator experience gap:** MinIO Console was operator-friendly out of the box. Garage requires
-either CLI fluency or deploying the separate `garage-webui` sidecar. For the Telemetron homelab
-audience, this is a regression in discoverability. The `garage-webui` sidecar should be considered
-as a default-on optional component of the `garage` role.
+**Convention takeaways:**
+- Cold backup (stop + tar + restart) is the right choice for Telemetron v1.3.0 because it requires no API flag change, no API call in the backup task, and is symmetric with the restore operation. The ~2-hour WAL loss is acceptable for homelab backup semantics.
+- Prometheus data volume path is `/prometheus` (image default, confirmed in `prometheus_data_path: /prometheus` in `roles/prometheus/defaults/main.yml`).
+- Cold model aligns with the locked v1.3.0 design decision.
 
-#### Monitoring
+### 6. Alertmanager state files
 
-Garage exposes Prometheus metrics at `http://garage:3903/metrics` (admin API port, requires
-`metrics_token` auth). This is a different pattern from MinIO's self-metrics (MinIO exposes
-at `:9000/minio/v2/metrics/cluster`). OTel Collector or Prometheus must be reconfigured to
-scrape the new endpoint and token.
+Alertmanager stores two files in its data directory (`/alertmanager` inside the container, backed by `telemetron_alertmanager_data`):
+- `silences` — active and expired silence rules in protobuf format.
+- `nflog` — the notification log (which alerts fired to which receivers and when).
 
-#### Configuration shape (garage.toml)
-
-```toml
-metadata_dir = "/var/lib/garage/meta"
-data_dir = "/var/lib/garage/data"
-db_engine = "sqlite"          # recommended for single-node
-replication_factor = 1        # single-node: no redundancy (explicit tradeoff)
-rpc_public_addr = "127.0.0.1:3901"
-
-[s3_api]
-s3_region = "garage"          # CRITICAL: rclone and S3 clients must use this exact region string
-api_bind_addr = "0.0.0.0:3900"
-
-[admin]
-api_bind_addr = "0.0.0.0:3903"
-admin_token = "<generated secret>"
-metrics_token = "<generated secret>"
-```
-
-**Critical gotcha:** rclone (used for data migration) requires `region = garage` in its config.
-Without it, rclone defaults to `us-east-1` and Garage rejects with `AuthorizationHeaderMalformed`.
-The same applies to Loki/Mimir/Tempo S3 config — the region string must match what Garage expects.
-
-#### Data migration path (MinIO → Garage)
-
-The standard migration tool is rclone. The procedure:
-
-1. Start Garage alongside MinIO on the same host (different ports; Garage on 3900)
-2. Create matching buckets in Garage and generate access keys
-3. Per bucket: `rclone sync minio:<bucket> garage:<bucket> --progress --transfers 8`
-4. Stop applications (Loki/Tempo/Mimir)
-5. Run a final incremental sync to catch late writes
-6. Reconfigure backend roles to point at garage:3900 with Garage credentials
-7. Restart backends
-
-For Telemetron's homelab use case (low volume), existing data migration is optional — operators
-with fresh installs can simply create empty Garage buckets (data in MinIO is lost, acceptable if
-retention windows have not been exhausted). A migration guide should be shipped as
-`docs/storage-migration.md`.
-
-#### Table Stakes vs Differentiators for Garage
-
-**Table stakes (Garage must provide these; it does):**
-| Capability | Status | Notes |
-|-----------|--------|-------|
-| S3 API compatibility (Loki/Mimir/Tempo connect) | YES | All three work; region string must be set |
-| Bucket create/list/allow via CLI | YES | `garage bucket create`, `garage key create` |
-| Health endpoint for Ansible polling | YES | `GET /health` on admin port 3903 |
-| Prometheus metrics endpoint | YES | `GET /metrics` on admin port 3903 |
-| Actively maintained, security patches | YES | v2.3.0 released April 2026 |
-| Single-node (no replication) mode | YES | `replication_factor = 1` |
-| Idempotent bucket creation (no error if exists) | PARTIAL | CLI returns error if bucket exists; must check first |
-
-**Differentiators (Garage does better than archived MinIO):**
-| Capability | Notes |
-|-----------|-------|
-| Active maintenance with security patches | MinIO community archived; Garage is the point |
-| Designed for homelab geo-distribution | Can grow to multi-node without replacing the tool |
-| AGPL, non-commercial | No "we archived the community version" risk |
-| Tiny image (~26 MB) | MinIO was heavier |
-
-**Gaps vs MinIO (operator experience regressions):**
-| Capability | MinIO had it | Garage |
-|-----------|-------------|--------|
-| Built-in web console | Yes (`:9001`) | No — requires `garage-webui` sidecar |
-| IAM/per-bucket user policies | Rich policy model | Only key+bucket allow/deny |
-| Lifecycle policies (auto-expire objects) | Yes | Not present — retention enforced by Loki/Mimir/Tempo compactors only |
-| `mc` CLI (familiar from MinIO docs) | Yes | No — `garage` CLI is different UX |
-
-**Anti-features to avoid:**
-- Deploying Garage in `replication_factor = 3` on a single host (wastes disk, no benefit)
-- Using `dxflrs/garage:latest` (floating tag — pin to `v2.3.0`)
-- Setting region to anything other than `garage` in Loki/Mimir/Tempo S3 config without matching
-  Garage's configured `s3_region` value
-
-#### Dependencies on existing stack
-
-- **Loki role:** S3 endpoint (`minio:9000` → `garage:3900`), region, access key/secret key vars must change
-- **Mimir role:** Same S3 endpoint + credential change for all three buckets (blocks, ruler, alerts)
-- **Tempo role:** Same S3 endpoint + credential change
-- **OTel Collector/Prometheus:** Scrape config for Garage self-metrics changes endpoint + adds token auth
-- **`minio` role:** Replaced by `garage` role; playbook ordering changes (`garage` takes `minio`'s slot)
-- **Secrets:** New vars for Garage admin token, metrics token, access key ID, secret access key
-
-#### Complexity assessment
-
-**HIGH** — This is not a config variable change. It is:
-- A new Ansible role replacing the existing `minio` role
-- A fundamentally different bootstrap model (layout assign/apply before any write)
-- New port map across all consumers
-- New secrets surface (admin token, metrics token separate from S3 credentials)
-- A migration doc for existing deployments
-- Optional sidecar (`garage-webui`) for operator usability
-
-The single hardest part is the bootstrap task: the `minio` role bootstrapped buckets by running a
-one-shot `mc` container. Garage requires: (a) the container to be healthy, (b) layout to be
-initialized (a two-step CLI operation), (c) buckets created, (d) keys created, (e) keys authorized
-on each bucket. This is more orchestration than the `mc mb` one-liner.
+Both files are small (KB to low-MB for any homelab instance). Backing up the whole volume captures both. Restore is: stop Alertmanager, replace volume contents, restart. The `amtool silence import/export` JSON format is an alternative for silences-only backup but requires the container to be running; not appropriate for cold backup.
 
 ---
 
-### Feature 2: Mimir Retention Fix
+## Feature Landscape
 
-**What operators expect vs what currently happens**
+### Table Stakes (Must-Have for v1.3.0)
 
-#### The bug (confirmed from codebase inspection)
+Features the homelab operator expects. Without these, the milestone does not ship.
 
-`roles/mimir/defaults/main.yml` defines:
-```yaml
-mimir_compactor_blocks_retention_period: "{{ telemetron_default_metric_retention | default('30d') }}"
-```
+| Feature | Why Expected | Complexity | v1.2.0 Contract Dependency |
+|---------|--------------|------------|---------------------------|
+| **Per-role `tasks/backup.yml` for the 4 stateful roles** (Garage, Prometheus, Grafana, Alertmanager) | Gate 11 mirrors Gate 10: if every deploy role ships `tasks/uninstall.yml`, the natural v1.3.0 analogue is `tasks/backup.yml` + `tasks/restore.yml`. Homelab operators expect role-scoped artifacts. | MEDIUM | Inherits `--tags <role>` UX from Phase 11; role-tag-only convention (no sub-tags) per D-133 |
+| **Cold-quiesce model per role: stop container, snapshot, restart** | All prior-art projects (Gitea, Nextcloud, vmbackup) use "stop service, backup, restart." Operators expect brief downtime per role (~30–60 s). Aligns with locked design decision. | SMALL (each role's backup task is 3–4 tasks: stop, tar, restart, verify) | `keep_volumes: true` + `state: stopped` pattern already established in `tasks/uninstall.yml` |
+| **`playbooks/backup_docker.yml` orchestrator** | Mirrors `deploy_docker.yml` and `undeploy_docker.yml` shape. Operators who learned the `ansible-playbook playbooks/deploy_docker.yml --ask-vault-pass` pattern expect the same invocation for backup. | SMALL | Inherits D-160 PLAY-start informational banner; inherits `--ask-vault-pass` + `--tags <role>` UX from v1.2.0 |
+| **`playbooks/restore_docker.yml` orchestrator** | Symmetric to backup; same UX shape. Operators expect `backup_docker.yml` and `restore_docker.yml` to be a matched pair. | SMALL | Inherits D-159 WARN template — restore is destructive (overwrites volume data) so it must emit `WARNING: irreversible -- <role> restore: <targets>` before overwriting |
+| **Tarball naming: `<role>-<UTC-timestamp>.tar.zst`** | `YYYYMMDD-HHMMSS` format (e.g., `garage-20260602-140000.tar.zst`) is human-readable, filesystem-safe, and lexicographically sorted. Nextcloud's documented format is `YYYYMMDD`; adding `-HHMMSS` resolves same-day collisions. `tar.zst` is the established zstd-compressed tar extension. | SMALL | No existing Telemetron convention to align; establishes the v1.3.0 convention |
+| **Destination layout: `/opt/telemetron/backups/<role>/`** | Operators can `ls /opt/telemetron/backups/garage/` to see all Garage backups. Consistent with existing `/opt/telemetron/<role>/` bind-mount structure. Mode 0600 on the backups directory gates casual access. | SMALL | `telemetron_config_root` variable already defines `/opt/telemetron/` as the base |
+| **Default-to-latest tarball per role on restore** | Operators expect "just run the restore playbook" to use the most recent backup without needing to specify a timestamp. `find` + `sort -rn` + `head -1` against `YYYYMMDD-HHMMSS` filenames is correct because lexicographic order == chronological order. | SMALL | Applies to all 4 roles independently; each role finds its own latest |
+| **`--extra-vars backup_restore_from=<YYYYMMDD-HHMMSS>` to pin a specific backup** | Operators need to restore from a specific point when the latest backup is itself corrupt or post-incident. Ansible Tower / vmbackup both use an explicit path extra-var for non-default restores. | SMALL | Single timestamp applies to all 4 roles (cross-role consistency); per-role pins deferred as differentiator |
+| **`backup_continue_on_failure=true` opt-in** | Locked design decision: bail-out default on first failure. Homelab operators evaluating the feature want to know that a single role's failure does not silently corrupt a partial backup set. Opt-in override matches the v1.2.0 purge-flag pattern. | SMALL | Mirrors `telemetron_purge_data` / `telemetron_purge_images` pattern from Phase 11 |
+| **Restore gated by `backup_restore_confirm=true`** | Restore overwrites volume data — it is irreversible in the same class as `telemetron_purge_data=true`. The v1.2.0 purge flags are the established pattern for bomb-button opt-in. Without a confirm gate, `restore_docker.yml` could accidentally destroy live data on a misfire. | SMALL | Direct mirror of `telemetron_purge_data` semantics; PLAY OUTPUT shows the gate state in the D-160-style banner |
+| **D-159 WARN before each destructive restore task** | Restore is a destructive overwrite; it must emit `WARNING: irreversible -- <role> restore: <targets>` before overwriting volume data, matching the exact D-159 contract established in v1.2.0. | SMALL | D-159 contract is exact: `WARNING: irreversible -- <role> <action>: <targets>` — one WARN task per role before the overwrite task |
+| **PLAY-start informational banner for `backup_docker.yml`** | Operators see what will happen before it happens. Backup is not destructive but the banner is informational: "Backing up 4 stateful roles to /opt/telemetron/backups/". Mirrors D-160 in shape but does NOT use `WARNING:` prefix — backup is not irreversible. | SMALL | D-160 contract (undeploy): WARN for destructive ops, informational for non-destructive. Backup banner = informational; restore banner = WARN |
+| **Live leviathan round-trip UAT** | v1.1.0 and v1.2.0 lessons both demonstrated that static verification misses output-format regressions. The full round-trip — `backup_docker.yml` → `undeploy --purge-data` → `deploy_docker.yml` → `restore_docker.yml` → smoke signals visible in Grafana — is the only gate that validates end-to-end correctness. | MEDIUM | Mirrors v1.0.0 `smoke_test.yml` pattern as acceptance gate |
+| **Documentation cascade (Gate 11 shape)** | v1.2.0 Phase 12 established the 3-layer cascade: `roles/README.md` gate → `docs/quickstart.md` section → per-role README section. v1.3.0 must apply the same shape: Gate 11 in `roles/README.md`, `## Backup and restore` in `docs/quickstart.md`, `## Backup` H2 in each of the 4 stateful role READMEs, one-liner "no backup needed" note for each stateless role README. | SMALL | Mirrors Phase 12 (Phases 10+11 → Phase 12 doc cascade) exactly |
+| **Tarball integrity list-check after creation** | `tar --list --file=<archive>` (or `tar tf <archive>`) verifies the archive was written without corruption before the container is restarted. Fails the backup task if the archive cannot be listed. This is the table-stakes verification that the file is at minimum a valid tar archive. | SMALL | Single task added at the end of each `tasks/backup.yml`; uses `community.docker.docker_container_exec` or `ansible.builtin.command` against the host |
+| **Backup task emits final archive path and size** | Operators need to know where the backup landed and whether it is non-zero size. A `debug: msg=` task showing the archive path + `stat` size after the list-check closes the loop. Comparable to how `gitea dump` prints the output path on completion. | SMALL | `ansible.builtin.stat` on the tarball; `failed_when: stat.size == 0` |
 
-`roles/mimir/templates/mimir.yaml.j2` has this comment in the `compactor:` block:
-```yaml
-# Removed: blocks_retention_period -- field is not on compactor.Config in
-# Mimir 3.0. The setting moved to per-tenant `limits:`. Default retention
-# is 1 week, fine for M1.
-```
+### Differentiators (Nice to Have, Can Defer Beyond v1.3.0)
 
-And the `limits:` block in the template has only:
-```yaml
-limits:
-  max_global_series_per_user: ...
-  max_global_series_per_metric: ...
-```
+Features that add value but are not required for the milestone to be credible.
 
-**The variable is declared but never used in the template.** The operator sets 30d retention in
-inventory, runs the playbook, and gets Mimir's built-in default (which per Grafana docs is
-"never delete" — not 1 week as the comment incorrectly states). The retention comment is doubly
-wrong: the upstream default is unlimited retention, not 1 week.
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| **Per-role timestamp pin via `--extra-vars`** (`backup_restore_from_garage=X`, `backup_restore_from_prometheus=Y`) | Operators restoring after a cascade failure might want Garage from Tuesday and Prometheus from Wednesday. Useful but rare. | SMALL | Too many knobs for v1.3.0; single `backup_restore_from` timestamp that applies to all 4 roles is the right default. Add per-role vars only if operators request them. |
+| **`backup_docker.yml --check` dry-run mode** | Shows which roles would be backed up and where, without stopping any container. Useful for verifying inventory is correct. | SMALL | Ansible `--check` mode does not fully simulate `community.docker.docker_container` state changes; a custom `dry_run` var with early-exit tasks is more reliable but adds surface. Defer. |
+| **Manifest file at `/opt/telemetron/backups/manifest.json`** | Machine-readable index of all backups with role, timestamp, size, and Telemetron version. Useful for tooling that wraps Telemetron (e.g., a future web UI or monitoring job). | MEDIUM | `ls` the directory is enough for v1.3.0. A manifest becomes useful when the operator has many backups or when off-host sync tools need to know what to transfer. Defer. |
+| **`<role>-latest.tar.zst` symlink** | `ln -sf <role>-YYYYMMDD-HHMMSS.tar.zst <role>-latest.tar.zst` lets operators (and scripts) reference the latest backup without parsing timestamps. | SMALL | `find + sort + head -1` on `YYYYMMDD-HHMMSS` names is equally reliable and avoids symlink management complexity (what happens when the symlink target is deleted?). Defer until operators request scripting integration. |
+| **SHA256 checksum file alongside each tarball** | `sha256sum <tarball> > <tarball>.sha256` enables verification without extracting. Restic and Borg both do this natively. | SMALL | Adds one task per backup; pairs with a verification task on restore (`sha256sum --check`). Worthwhile but not blocking v1.3.0 — the list-check provides structural integrity; SHA256 adds data integrity. Defer to v1.3.x. |
+| **`backup_before_restore` auto-snapshot gate** | Automatically runs `backup_docker.yml` before executing `restore_docker.yml` so the current state is captured before being overwritten. Protects against "restore breaks something worse." | MEDIUM | Useful safety net. Complex to implement cleanly in Ansible (nested playbook invocation or `import_playbook`). The `backup_restore_confirm=true` gate + the operator's own pre-restore backup habit covers the v1.3.0 case. Defer. |
+| **Stateless-role config snapshot** | Tar the config directory (`/opt/telemetron/<role>/`) for stateless roles (Loki, Tempo, Mimir, OTel, FB) to capture rendered config at a point in time. | SMALL | Redundant: rendered config is deterministic from Ansible templates + `group_vars`. Re-running `deploy_docker.yml` reproduces it exactly. No operator state exists in these roles. Not useful. |
 
-#### What the correct configuration looks like
+### Anti-Features (Explicitly Out of Scope for v1.3.0)
 
-Per Grafana Mimir docs (HIGH confidence — official docs verified):
+Features to NOT build, with the rationale for each deferral.
 
-The retention setting belongs under `limits:` in the Mimir config YAML, not under `compactor:`:
-
-```yaml
-limits:
-  compactor_blocks_retention_period: 30d   # this is the correct path
-  max_global_series_per_user: ...
-  max_global_series_per_metric: ...
-```
-
-There is no `compactor.blocks_retention_period` field in Mimir 3.x YAML — only
-`limits.compactor_blocks_retention_period`. The compactor reads this from the limits layer, which
-is why putting it under `compactor:` was silently ignored (Mimir would reject unknown fields in
-newer versions or silently ignore them in others — Phase 2 UAT caught this and removed it, but
-forgot to re-add it under `limits:`).
-
-#### Operator experience when correctly configured
-
-- Operator sets `telemetron_default_metric_retention: 30d` in `group_vars/all/telemetron.yml`
-- Mimir config renders with `limits.compactor_blocks_retention_period: 30d`
-- Compactor periodically deletes blocks older than 30d from the Mimir S3 bucket
-- Operator can verify: Mimir exposes `cortex_compactor_blocks_cleaned_total` and
-  `cortex_bucket_blocks_count` metrics scrapeable from `:9009/metrics`
-- There is no UI — verification is metric-based or by checking bucket object count
-
-#### Operator experience when broken (current state)
-
-- Operator sets 30d retention and observes no block deletion
-- S3 bucket (MinIO/Garage) grows without bound
-- No error is surfaced — Mimir simply never enforces retention
-
-#### Complexity assessment
-
-**LOW** — One-line template fix: add `compactor_blocks_retention_period: {{ mimir_compactor_blocks_retention_period }}` to the `limits:` block in `mimir.yaml.j2`. The variable already exists in defaults. The fix is safe to ship without data loss risk (it starts enforcing retention going forward; blocks already stored are only deleted after the configured period elapses).
-
-#### Table stakes
-
-Operators who configure retention expect it to take effect. Silent non-enforcement is a critical
-correctness bug, not a missing feature. This is firmly table stakes.
+| Anti-Feature | Why Excluded | Why Deferred and What Covers It Instead |
+|--------------|--------------|----------------------------------------|
+| **Off-host backup push (rsync, S3, rclone)** | Telemetron stays opinion-free on off-host storage. Different operators use restic, BorgBackup, rclone, or simple rsync — mandating one would gate adoption. | Operator wraps Telemetron's `/opt/telemetron/backups/` output with their preferred off-host tool. Telemetron writes dated local tarballs; the operator ships them off-host. |
+| **Encryption at rest** | `age`, `gpg`, `restic`, and LUKS all encrypt at rest. Picking one imposes a key-management story on Telemetron. The `secrets.yml` surface already has enough complexity. | Operators who need encryption wrap with their chosen tool after the tarball is written. Telemetron does not decrypt on restore either — the same tool that encrypted must decrypt. |
+| **Automatic retention / keep-last-N pruning** | Deleting backups is irreversible. The D-159 WARN contract exists precisely because silent deletion is the homelab disaster scenario. Adding pruning logic in v1.3.0 would require its own WARN + confirm gate, doubling the surface. | Operator manages retention with `find /opt/telemetron/backups -mtime +N -delete` or their off-host tool's retention policy. Telemetron writes and never deletes. |
+| **Incremental backups** | Full-snapshot-per-run is simpler, predictable, and correct for homelab volumes. Incremental requires a reference snapshot chain; chain corruption invalidates all incrementals since the last full. | Operator uses restic or BorgBackup on top of the full snapshots if incremental semantics are needed. These tools handle deduplication transparently. |
+| **Hot backup via per-component APIs** | Prometheus `/api/v2/admin/tsdb/snapshot`, Grafana SQLite `.backup` pragma, Garage `snapshot` subcommand — each has a different interface, each requires the container to be running and healthy, and each produces a different artifact shape. Four different mechanisms = four different failure modes to test in UAT. | Cold quiesce is uniform: stop all 4 containers with the same `state: stopped, keep_volumes: true` pattern, tar, restart. One mechanism, one UAT path. |
+| **Cross-version backup migration** | A backup taken under v1.3.0 may not be directly restoreable under v1.4.0+ if role configs or volume schemas change. The operator needs to know this explicitly. | Document in `docs/quickstart.md` `## Backup and restore` section: "Backups are intended for same-version restore. Cross-version restore is not tested or supported." |
+| **Backup verification by parallel-restore** | Spinning up a second stack on the same host to test-restore into it would require port remapping, separate volumes, and a separate inventory target. Too heavy for homelab. | The list-check (`tar tf`) + stat-size check after backup provides structural confidence. Full restore is tested in the leviathan UAT round-trip; that is the real verification. |
+| **"Last good backup" auto-discovery via integrity check** | Scanning all tarballs to find the most recent one that passes `tar tf` would require iterating over N archives on every restore. Adds latency and complexity. The timestamp-sort heuristic is the right default. | Operators who need integrity discovery use `for f in $(ls -rt); do tar tf $f && break; done` manually. Not Telemetron's responsibility. |
+| **Backup of stateless roles** | Loki, Tempo, and Mimir data lives in Garage (covered by the Garage backup). Their rendered config is reproducible from Ansible templates. Karma, node_exporter, OTel, and Fluent Bit carry zero operator state. | Operator re-runs `deploy_docker.yml` to restore stateless role config. It is idempotent and takes the same time as a restore would. |
+| **Multi-host coordination** | v1.3.0 scope is single-host, single-deploy — the same surface as every prior milestone. Coordinating backups across multiple hosts would require a coordinator role and cross-host sequencing logic. | Deferred to the distributed-mode milestone (alongside `DIST-01..03`). |
 
 ---
 
-### Feature 3: Fluent Bit Timestamp Fallback
-
-**What operators expect vs what currently happens**
-
-#### The bug (confirmed from codebase inspection)
-
-`roles/fluentbit/templates/fluent-bit.conf.j2` has this block commented out:
+## Feature Dependencies
 
 ```
-# DISABLED: Fluent Bit 4.x rejects `Add @timestamp ${ingest_time}` as
-# "Invalid operation add : @timestamp". Likely cause: `${ingest_time}` is
-# not a defined env var so the substitution leaves the value empty, AND/OR
-# keys beginning with `@` need quoting in FB 4. Docker logs already include
-# their own timestamp so this fallback is for edge cases only.
+[backup_docker.yml orchestrator]
+    └──calls──> [tasks/backup.yml for each of 4 stateful roles]
+                    └──requires──> [container state: stopped (community.docker.docker_container)]
+                    └──produces──> [<role>-YYYYMMDD-HHMMSS.tar.zst in /opt/telemetron/backups/<role>/]
+                    └──verifies──> [tar list-check + stat size check]
+                    └──restarts──> [container state: started]
+
+[restore_docker.yml orchestrator]
+    └──gated by──> [backup_restore_confirm=true (anti-misfire gate)]
+    └──calls──> [tasks/restore.yml for each of 4 stateful roles]
+                    └──requires──> [tarball exists at resolved path (latest or explicit timestamp)]
+                    └──requires──> [container state: stopped]
+                    └──emits──> [D-159 WARNING before overwriting volume contents]
+                    └──overwrites──> [volume contents from tarball]
+                    └──restarts──> [container state: started]
+
+[tasks/backup.yml] ──depends on order──> [tasks/main.yml deploying the container first]
+[tasks/restore.yml] ──depends on order──> [tasks/main.yml deploying the container first]
+
+[Garage backup] ──covers──> [Loki data (loki-chunks bucket)]
+                ──covers──> [Tempo data (tempo-traces bucket)]
+                ──covers──> [Mimir data (mimir-blocks, mimir-ruler, mimir-alerts buckets)]
+[Garage backup] ──also covers──> [S3 credentials file at /opt/telemetron/garage/s3-credentials]
+
+[leviathan UAT round-trip]
+    └──requires──> [backup_docker.yml complete]
+    └──requires──> [undeploy_docker.yml --extra-vars telemetron_purge_data=true complete]
+    └──requires──> [deploy_docker.yml complete]
+    └──requires──> [restore_docker.yml complete]
+    └──validates via──> [smoke_test.yml: synthetic OTLP signals visible in Grafana]
 ```
 
-The intended behavior was: for log records that arrive without a timestamp (edge case for Docker
-JSON logs, more likely for system logs via D-48 extension knobs), add a field `@timestamp` with
-the ingest time so the record has a usable timestamp in Loki.
+### Dependency Notes
 
-#### Why `${ingest_time}` doesn't work
-
-`${ingest_time}` is not a Fluent Bit built-in environment variable. It was never a valid
-variable reference in the modify filter. The modify filter's `Add` operation supports:
-- Static literal values: `Add myfield staticvalue`
-- Environment variable substitution via `${ENV_VAR_NAME}` — but only for variables that
-  actually exist in the environment at runtime
-
-`ingest_time` is not set in the Fluent Bit container's environment, so `${ingest_time}` expands
-to empty string. Additionally, keys starting with `@` require quoting in Fluent Bit 4.x YAML
-mode (less relevant here since the role uses classic INI config, but the `@timestamp` key name
-is non-standard for the modify filter).
-
-#### The correct approach (Lua filter)
-
-The Lua filter can read the record's ingestion timestamp (which Fluent Bit always assigns from
-system clock when no source timestamp is found) and write it to a record field:
-
-```lua
-function add_timestamp(tag, timestamp, record)
-    -- timestamp is a float: seconds since epoch
-    -- write it as ISO 8601 string to @timestamp field
-    record["@timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ", math.floor(timestamp))
-    return 2, timestamp, record  -- return code 2: record modified, timestamp unchanged
-end
-```
-
-The corresponding filter config:
-```
-[FILTER]
-    Name    lua
-    Match   *
-    script  /fluent-bit/etc/timestamp_fallback.lua
-    call    add_timestamp
-```
-
-Since the `enrich.lua` file already exists and is bind-mounted, the timestamp fallback function
-can be added to `enrich.lua` itself (if the call pattern allows), or a second Lua file can be
-shipped alongside it.
-
-An alternative that doesn't require Lua: use the modify filter's `Set` operation with a hard-coded
-value placeholder — but this cannot produce dynamic timestamps. Lua is the only correct path.
-
-#### Operator experience when correctly configured
-
-For Docker container logs (the default input): Docker JSON log records always include a `time`
-field that FB's `docker` parser picks up as the record timestamp. The fallback is never triggered
-for the happy-path use case. The fallback matters only when:
-1. `fluentbit_tail_system_logs: true` (syslog/auth.log without a parsed timestamp)
-2. `fluentbit_extra_tail_paths` pointing at app logs without a standard timestamp format
-3. A container produces logs without the Docker JSON wrapper (unusual, but possible with
-   `--log-driver=none` or custom loggers)
-
-Correct behavior: records that would otherwise arrive in Loki with timestamp `1970-01-01T00:00:00Z`
-(the Unix epoch, Loki's zero-timestamp) instead arrive with the ingest time as timestamp.
-
-#### Complexity assessment
-
-**LOW-MEDIUM** — The fix requires:
-- Adding a timestamp function to the existing `enrich.lua` (or shipping a new `timestamp_fallback.lua`)
-- Wiring the Lua filter call in `fluent-bit.conf.j2`
-- Re-enabling the filter block (currently commented out with a different approach)
-
-The tricky part is that `enrich.lua` is already doing per-container Docker label enrichment.
-Adding timestamp fallback to the same Lua callback or adding a second callback in the same file
-is technically straightforward but requires care about return codes (code 1 = modify timestamp
-too, code 2 = modify record only). For timestamp fallback specifically, code 2 is correct (don't
-override the source timestamp if FB already detected one; only add the `@timestamp` field to the
-record metadata).
-
-#### Table stakes
-
-Timestamp correctness is table stakes for a log shipping solution. The current state (fallback
-disabled, no substitute) is acceptable only because Docker logs have native timestamps. As soon
-as operators enable `fluentbit_tail_system_logs` or `fluentbit_extra_tail_paths`, they hit the
-zero-timestamp problem. The fix belongs in v1.1.0 to prevent silent data quality issues.
+- **Garage backup covers Loki/Tempo/Mimir data:** Loki chunks, Tempo traces, and Mimir metric blocks all live in Garage's named volumes (`telemetron_garage_meta`, `telemetron_garage_data`). Backing up Garage IS backing up those three backends. No separate `tasks/backup.yml` for Loki, Tempo, or Mimir.
+- **Garage backup must also capture the S3 credentials file:** The file at `/opt/telemetron/garage/s3-credentials` (mode 0600) holds the auto-generated S3 key/secret. On restore, Loki/Tempo/Mimir must be given the same credentials that their bucket ACLs were created with. If the credentials file is not in the backup, the post-restore deploy will generate a new key that Garage's bucket ACLs do not recognize, requiring a full bootstrap. The Garage `tasks/backup.yml` must include both the named volumes AND the `garage_s3_credentials_file` path.
+- **Restore ordering mirrors deploy ordering:** Garage must be restored (and running) before Loki/Tempo/Mimir are started, since their startup requires S3 access. The `restore_docker.yml` orchestrator must follow the same dependency order as `deploy_docker.yml` for the 4 stateful roles.
+- **`backup_restore_confirm=true` gate:** Restore without confirmation is a misfire risk. The gate mirrors `telemetron_purge_data=true`. Unlike purge (which is always opt-in), restore has a default action (restore latest) — the confirm gate ensures the operator typed the intent explicitly.
 
 ---
 
-### Feature 4: Fluent Bit / OTel Label Naming Reconciliation
+## v1.3.0 Build Scope
 
-**What operators see in Loki and why it matters**
+### Phase 13 (Per-Role Backup + Restore Tasks)
 
-#### The divergence (confirmed from codebase inspection and Loki OTLP docs)
+Minimum viable artifact set: each of the 4 stateful roles has `tasks/backup.yml` and `tasks/restore.yml`.
 
-Telemetron's Fluent Bit label allowlist (D-47 in the existing role) defines these labels:
-```
-service    (from org.telemetron.service Docker label)
-job        (from org.telemetron.job Docker label)
-host       (static: ansible_hostname)
-env        (static: telemetron_env)
-level      (extracted from log line)
-```
+- [x] `roles/garage/tasks/backup.yml` — stop container; tar `telemetron_garage_meta` + `telemetron_garage_data` volumes AND `garage_s3_credentials_file`; restart; list-check; stat-size check
+- [x] `roles/garage/tasks/restore.yml` — stop container; D-159 WARN; untar into volume mounts; restore `s3-credentials` file; restart
+- [x] `roles/prometheus/tasks/backup.yml` — stop container; tar `telemetron_prometheus_data` volume (`/prometheus` path); restart; list-check; stat-size
+- [x] `roles/prometheus/tasks/restore.yml` — stop; D-159 WARN; untar; restart
+- [x] `roles/grafana/tasks/backup.yml` — stop container; tar `telemetron_grafana_data` volume (`/var/lib/grafana` path, contains `grafana.db`); restart; list-check; stat-size
+- [x] `roles/grafana/tasks/restore.yml` — stop; D-159 WARN; untar; restart
+- [x] `roles/alertmanager/tasks/backup.yml` — stop container; tar `telemetron_alertmanager_data` volume (`/alertmanager` path, contains `silences` + `nflog` files); restart; list-check; stat-size
+- [x] `roles/alertmanager/tasks/restore.yml` — stop; D-159 WARN; untar; restart
 
-When Loki receives logs via OTLP (the default path: FB → OTel Collector → Loki via OTLP/HTTP),
-the OTel semantic conventions apply. Per Loki's OTLP ingestion documentation (HIGH confidence —
-Grafana official docs):
+### Phase 14 (Orchestrators + UAT)
 
-**OTel resource attributes use dot notation. Loki converts dots to underscores for index labels.**
+- [x] `playbooks/backup_docker.yml` — informational PLAY-start banner + `include_role tasks_from: backup` for 4 stateful roles; `backup_continue_on_failure` flag; `--ask-vault-pass` + `--tags <role>` UX; deploy-order (not reverse-order)
+- [x] `playbooks/restore_docker.yml` — D-159/D-160 WARN banner + `backup_restore_confirm` gate + `include_role tasks_from: restore` for 4 stateful roles; `backup_restore_from` timestamp var (empty = latest); deploy-order restore (Garage before Loki/Tempo/Mimir consumers)
+- [x] Live leviathan round-trip UAT: backup → `undeploy --purge-data` → deploy → restore → smoke signals visible
 
-So `service.name` (OTel attribute) becomes `service_name` (Loki label). The Fluent Bit Lua
-enrichment sets `service` (no dot, no underscore suffix) in the record as a log field — not as
-an OTel resource attribute.
+### Phase 15 (Documentation Cascade + Gate 11)
 
-The OTel Collector receives logs from Fluent Bit via OTLP/HTTP. At this point, the Fluent Bit
-labels (`service`, `job`, `host`, `env`, `level`) are carried as log record attributes (not
-resource attributes). Loki's OTLP ingestion path promotes resource attributes to index labels
-by default; log record attributes become structured metadata.
-
-#### What operators actually see in Loki (current state)
-
-When querying logs in Grafana Explore (Loki datasource):
-- Label `service_name` appears (from OTel's default resource attribute if any instrumented service
-  sets `service.name`) — this is from OTLP-instrumented apps, not from Fluent Bit
-- Labels from Fluent Bit (`service`, `job`, `host`, `env`, `level`) may appear as structured
-  metadata or not at all as queryable index labels, depending on how the OTel Collector promotes them
-
-The disconnect: the FB label spec says `service`, but OTel-aware operators writing LogQL queries
-expect `service_name` (the OTel convention). This creates query divergence:
-- `{service="telemetron"}` — works for FB-sourced logs (if FB labels make it to index)
-- `{service_name="telemetron"}` — works for OTLP-instrumented app logs
-- Neither query works for both, unless labels are explicitly reconciled
-
-#### The three valid approaches and their operator experience
-
-**Option A: Accept OTel convention — rename `service` → `service_name` in FB config**
-
-FB label changes to emit `service_name` instead of `service`. All Loki queries use `service_name`.
-Consistent with OTel-instrumented apps. Requires updating the Lua enrichment and the label
-allowlist filter. Operators write `{service_name="myapp"}` for all log sources.
-
-*Operator experience:* Clean, consistent with OTel ecosystem docs. The Grafana Loki Explore
-panel's label autocomplete shows `service_name` for everything. Grafana 13's Explore Logs
-feature expects `service_name` as a default label for service-level log browsing.
-
-**Option B: Relabel at OTel Collector — rename `service` to `service_name` in the pipeline**
-
-OTel Collector's `transform` processor or `attributes` processor renames the log record attribute
-`service` to `service_name` before forwarding to Loki. FB config unchanged. Fragile: depends on
-the attribute being in the right place (record vs resource attributes).
-
-*Operator experience:* Invisible to the operator if it works, confusing to debug if it doesn't.
-Adds config complexity to the OTel Collector.
-
-**Option C: Overwrite at Loki — use `otlp_config` to promote `service` as an index label**
-
-Loki's `limits_config.otlp_config` can specify that `service` is stored as an index label.
-Requires Loki config change. Operators query `{service="myapp"}`.
-
-*Operator experience:* Keeps the FB label spec unchanged but deviates from OTel defaults.
-Operators migrating from OTel docs will expect `service_name`.
-
-#### Recommended approach for Telemetron
-
-**Option A** (rename in FB) is the correct long-term choice because:
-- Grafana's Explore Logs feature treats `service_name` as a first-class concept for log browsing
-- OTel-instrumented applications (the intended primary signal path) already emit `service_name`
-- A user following any OTLP instrumentation guide will discover `service_name` naturally
-- Keeping `service` as the FB label creates a permanent two-tier query experience
-
-The rename is a breaking change for any existing Loki dashboards or alerts that query `{service=...}`.
-For Telemetron v1.1.0 (still pre-1.0 community traction), this is the right time to break
-compatibility in the correct direction.
-
-#### Complexity assessment
-
-**LOW** — The rename requires:
-1. Update `enrich.lua` to set `record["service_name"]` instead of `record["service"]`
-2. Update the modify filter in `fluent-bit.conf.j2` to use `service_name` in the allowlist
-3. Update the label allowlist doc table in `roles/fluentbit/README.md`
-4. Update any Grafana dashboard JSON files that query `{service=...}` — the curated dashboards
-   may need a sweep (check all 7 dashboard files for `service` label references)
-5. Update `docs/architecture.md` and `docs/quickstart.md` label references
-
-The code change is small. The coordination cost (README, docs, dashboards) is the larger effort.
-
-#### Table stakes
-
-Consistent queryable label names are table stakes for an observability stack. Having two different
-label names (`service` vs `service_name`) for the same concept depending on whether the log came
-from Fluent Bit or an OTLP-instrumented app is a correctness failure. Users will file issues.
+- [x] `roles/README.md` Gate 11: "every stateful role ships a tested backup + restore path"
+- [x] `docs/quickstart.md` `## Backup and restore` section
+- [x] Root `README.md` cross-ref to `docs/quickstart.md#backup-and-restore`
+- [x] Per-role `## Backup` H2 section in each of the 4 stateful role READMEs
+- [x] One-liner "no backup needed" rationale in each stateless role README
 
 ---
 
-### Feature 5: Tempo compactor orphan variable cleanup
+## Operator UX Conventions Inherited from v1.2.0
 
-**What currently exists (confirmed from codebase inspection)**
+The following contracts are established in v1.2.0 and MUST carry over without modification:
 
-`roles/tempo/defaults/main.yml` defines:
-```yaml
-tempo_compactor_block_ranges_period: 5m
-```
-
-`roles/tempo/templates/tempo.yaml.j2` has:
-```yaml
-# Removed: block_ranges_period -- the field does not exist in
-# tempodb.CompactorConfig in Tempo 2.10. Caught Phase 2 UAT 2026-05-18
-```
-
-The variable is defined but never used. Per Grafana Tempo docs (HIGH confidence — official docs),
-the correct compactor parameter for grouping blocks into compaction windows is `compaction_window`
-under `compactor.compaction`, not `block_ranges_period`.
-
-**Correct config shape:**
-```yaml
-compactor:
-  compaction:
-    block_retention: {{ tempo_block_retention }}
-    compacted_block_retention: {{ tempo_compacted_block_retention }}
-    compaction_window: {{ tempo_compactor_compaction_window | default('1h') }}
-```
-
-This is a dead variable cleanup + optional wire-in of the correct knob. The current retention
-settings (`block_retention`, `compacted_block_retention`) are correctly placed and functioning.
-The orphan is cosmetic pollution but should be cleaned to avoid confusing future operators who
-see a variable that does nothing.
-
-#### Complexity assessment
-
-**LOW** — Either: (a) delete `tempo_compactor_block_ranges_period` from defaults and add a comment
-explaining why it was removed, or (b) rename to `tempo_compactor_compaction_window`, wire it
-into the template under `compactor.compaction.compaction_window`, and drop the orphan.
-
-Option (b) is better — it turns dead code into functional config.
+| Contract | v1.2.0 Origin | v1.3.0 Application |
+|----------|--------------|-------------------|
+| `--ask-vault-pass` on all playbooks | `playbooks/deploy_docker.yml` | Required on `backup_docker.yml` + `restore_docker.yml` |
+| `--tags <role>` for per-role targeted runs | Phase 11 / D-133 | `--tags garage` backs up only Garage; `--tags prometheus` restores only Prometheus |
+| Role-tag-only (no sub-tags) | D-133: `garage` tag only, never `garage-backup` | `tasks/backup.yml` and `tasks/restore.yml` carry only the role tag |
+| D-159 WARN template for irreversible ops | Phase 11 / D-159 | `restore_docker.yml` emits `WARNING: irreversible -- <role> restore: <targets>` before each overwrite |
+| D-160 PLAY-start banner | Phase 11 / D-160 | `backup_docker.yml`: informational banner (not WARN). `restore_docker.yml`: WARN banner (destructive) |
+| Opt-in extra-var for irreversible operations | `telemetron_purge_data=true` | `backup_restore_confirm=true` (required to run `restore_docker.yml`) |
+| Conservative-by-default | `undeploy_docker.yml` defaults to no purge | `restore_docker.yml` defaults to bail-out (`backup_continue_on_failure=false`); restore is blocked without `backup_restore_confirm=true` |
+| Three-layer doc cascade | Phase 12 | Phase 15 applies same shape: `roles/README.md` gate → quickstart section → per-role README H2 |
 
 ---
 
-## v1.1.0 Feature Summary Table
+## Backup Naming Convention — Decision
 
-| Feature | Category | Complexity | Breaking | Operator Impact |
-|---------|----------|------------|----------|-----------------|
-| Garage as object store | New feature (replaces minio role) | HIGH | YES — new role, new ports, new secrets | Security fix (no more archived MinIO) |
-| Garage bucket bootstrap via CLI | Table stakes | HIGH (included in above) | — | Required for stack boot |
-| Garage admin UI (garage-webui) | Differentiator | LOW (optional sidecar) | No | Restores MinIO Console–equivalent UX |
-| Mimir retention fix | Bug fix | LOW | No | Retention actually enforced after fix |
-| FB timestamp fallback (Lua) | Bug fix | LOW-MEDIUM | No | Log quality for non-Docker inputs |
-| FB label rename (service → service_name) | Config fix | LOW | YES — existing LogQL queries | OTel ecosystem consistency |
-| Tempo orphan var cleanup | Cleanup | LOW | No | Code hygiene |
+**Chosen format:** `<role>-<YYYYMMDD>-<HHMMSS>.tar.zst`
 
----
+Example: `garage-20260602-140000.tar.zst`
 
-## Feature Dependencies (v1.1.0)
+**Rationale:**
+- Human-readable: operator glancing at `ls /opt/telemetron/backups/garage/` immediately knows which backup is which.
+- Filesystem-safe: no colons, no slashes, no ISO 8601 `T` or `Z` that some tools mishandle.
+- Lexicographically sortable == chronologically sortable: `sort` and `find -name "garage-*.tar.zst" | sort -r | head -1` both work correctly.
+- YYYYMMDD-HHMMSS resolves same-day collisions that Nextcloud's `YYYYMMDD`-only format suffers from.
+- UTC assumed (Ansible `{{ now(utc=true, fmt='%Y%m%d-%H%M%S') }}`); no timezone ambiguity in the filename.
 
-```
-[Garage role]
-    └──requires──> [garage.toml template + rendered config]
-    └──requires──> [Layout initialization bootstrap task]
-                       └──requires──> [container healthy + CLI reachable]
-    └──requires──> [Bucket create + key create + allow tasks per bucket]
-    └──breaks──>   [minio role] (replaced; must be removed from play order)
-    └──feeds──>    [Loki/Mimir/Tempo S3 config vars changed]
+**Rejected alternatives:**
+- Unix epoch (`garage-1748872800.tar.zst`): Gitea uses this; not human-readable without `date -d @<epoch>`.
+- ISO 8601 with `T` and `Z` (`garage-20260602T140000Z.tar.zst`): technically correct but colons in ISO 8601 basic (`T140000Z`) are fine; however the `T` and `Z` are unfamiliar to operators not steeped in RFC 3339. The hyphen separator is more scan-friendly.
+- Full ISO 8601 with colons (`garage-2026-06-02T14:00:00Z.tar.zst`): colons are illegal in filenames on Windows (irrelevant for homelab Linux but bad convention to establish).
 
-[Loki/Mimir/Tempo S3 retargeting]
-    └──requires──> [Garage role ships first in playbook]
-    └──requires──> [New S3 vars: endpoint=garage:3900, region=garage, new credentials]
-    └──requires──> [Data migration doc if operator has existing MinIO data]
+**Latest-backup resolution on restore:**
+`find /opt/telemetron/backups/<role>/ -name "<role>-*.tar.zst" | sort -r | head -1`
 
-[Mimir retention fix]
-    └──requires──> [Template: add limits.compactor_blocks_retention_period]
-    └──independent of Garage migration] (can be applied against MinIO too)
+This is idiomatic shell, requires no symlink management, and works correctly with the `YYYYMMDD-HHMMSS` format. Ansible `ansible.builtin.find` + `sort` filter achieves the same.
 
-[FB label rename: service → service_name]
-    └──requires──> [enrich.lua update]
-    └──requires──> [fluent-bit.conf.j2 allowlist filter update]
-    └──requires──> [Dashboard JSON sweep: {service=...} → {service_name=...}]
-    └──requires──> [Docs update: README, architecture.md, quickstart.md]
-
-[FB timestamp fallback]
-    └──requires──> [New Lua function (can be in enrich.lua or separate file)]
-    └──requires──> [fluent-bit.conf.j2: new [FILTER] lua block replacing commented-out modify block]
-    └──independent of label rename] (can be applied separately)
-
-[Tempo orphan var cleanup]
-    └──standalone] (no dependencies; optional wire-in of compaction_window)
-```
+No `<role>-latest.tar.zst` symlink. Symlink management on delete (if the operator manually prunes) creates stale-symlink risk. Timestamp sort is simpler and more robust.
 
 ---
 
-## Anti-Features for v1.1.0
+## Data Surfaces per Role
 
-| Avoid | Why |
-|-------|-----|
-| Garage `replication_factor = 3` on single host | Wastes disk, no redundancy benefit without separate physical nodes |
-| Keeping both `minio` and `garage` roles active simultaneously | Doubles the storage footprint, confuses consumers (which endpoint is canonical?) |
-| Floating `dxflrs/garage:latest` tag | Garage releases regularly; pin to `v2.3.0` |
-| Garage S3 region ≠ `garage` in consumer configs | Auth errors at runtime; hard to diagnose |
-| Adding MinIO lifecycle policies as a workaround | Mimir/Loki/Tempo's compactors handle object deletion; MinIO lifecycle policies are redundant and can cause premature deletion |
-| Renaming FB label to `service_name` but keeping old dashboards with `{service=...}` | Split-brain queries; worse than either consistent state |
+What each `tasks/backup.yml` must capture:
+
+| Role | Named Volume(s) | Key Files Inside Volume | Also Backup? |
+|------|----------------|------------------------|--------------|
+| Garage | `telemetron_garage_meta`, `telemetron_garage_data` | All S3 object data + metadata | YES: also capture `garage_s3_credentials_file` (`/opt/telemetron/garage/s3-credentials`) from host bind-mount |
+| Prometheus | `telemetron_prometheus_data` | TSDB blocks + WAL (WAL covers ~2h; include for completeness, cold backup means WAL is quiesced) | No additional host files needed |
+| Grafana | `telemetron_grafana_data` | `grafana.db` (SQLite, contains users/orgs/dashboards/alerts state), plugins, sessions | Provisioned config (datasources/dashboards YAML) is NOT included — re-rendered by deploy |
+| Alertmanager | `telemetron_alertmanager_data` | `silences` (protobuf), `nflog` (protobuf) | No additional host files needed |
+
+**Implementation note on Garage credential inclusion:** The Garage `tasks/backup.yml` must include the credentials file in the same tarball as the volume data. On restore, `tasks/restore.yml` must restore the credentials file to `garage_s3_credentials_file` BEFORE Garage starts, so that the subsequent Loki/Tempo/Mimir deploy finds the correct S3 key already in place. This is the most critical cross-role dependency in v1.3.0.
 
 ---
 
 ## Sources
 
-### Garage (HIGH confidence — official sources)
-- [Garage releases — Forge Deuxfleurs](https://git.deuxfleurs.fr/Deuxfleurs/garage/releases) — v2.3.0 verified April 16, 2026
-- [Garage quick start](https://garagehq.deuxfleurs.fr/documentation/quick-start/) — layout init workflow verified
-- [Garage admin API — monitoring endpoints](https://garagehq.deuxfleurs.fr/documentation/reference-manual/admin-api/) — /metrics, /health, no web UI confirmed
-- [dxflrs/garage Docker Hub](https://hub.docker.com/r/dxflrs/garage/tags) — v2.3.0 confirmed
-
-### Garage operator experience (MEDIUM confidence — practitioner sources)
-- [MinIO to Garage migration — Cloud Rumble](https://cloudrumble.net/blog/2025/12/22/minio-to-garage-migration/) — rclone workflow, region gotcha
-- [Migrating from MinIO to Garage — sneekes.app](https://sneekes.app/posts/migrating-from-minio-to-garage/) — S3 compatibility confirmed, rclone sync procedure
-- [Garage Docker compose example — portalZINE.DE](https://portalzine.de/day-38-garage-object-storage-the-self-hosted-s3-alternative-7-days-of-docker/) — full Docker compose + init sequence
-- [khairul169/garage-webui GitHub](https://github.com/khairul169/garage-webui) — web UI requires Garage 2.0+, port 3909
-
-### Mimir retention (HIGH confidence — official docs)
-- [Configure Grafana Mimir retention — Grafana docs](https://grafana.com/docs/mimir/latest/configure/configure-metrics-storage-retention/) — limits.compactor_blocks_retention_period verified as correct YAML path
-- [Mimir blocks retention discussion #3242 — GitHub](https://github.com/grafana/mimir/discussions/3242) — blocks_retention_period confirmed as a limits-layer setting
-
-### Fluent Bit timestamp (MEDIUM confidence — docs + issue tracker)
-- [Fluent Bit Lua filter docs](https://docs.fluentbit.io/manual/data-pipeline/filters/lua) — return codes 1/2 verified
-- [Fluent Bit modify filter — copy timestamp issue #7054](https://github.com/fluent/fluent-bit/issues/7054) — modify filter cannot copy timestamps; Lua filter is the workaround
-- [Fluent Bit modify filter docs](https://docs.fluentbit.io/manual/data-pipeline/filters/modify) — ${ingest_time} not documented as a variable
-
-### OTel/Loki label naming (HIGH confidence — official docs)
-- [Grafana Loki OTel ingestion docs](https://grafana.com/docs/loki/latest/send-data/otel/) — dots-to-underscores conversion confirmed; service.name → service_name verified
-- [OTel Collector loki exporter issue #32497](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32497) — service_name label generation from service.name + service.namespace confirmed
-
-### Tempo compactor (HIGH confidence — official docs)
-- [Grafana Tempo configuration reference](https://grafana.com/docs/tempo/latest/configuration/) — block_ranges_period not a valid field; compaction_window is the correct knob under compactor.compaction
-
----
-
-## M1 Feature Landscape (carried forward, reference only)
-
-The M1 feature landscape (table stakes, differentiators, anti-features for the original
-port) is preserved in git history. Key decisions still relevant to v1.1.0:
-
-- **MinIO bundled for S3-compatible storage** was listed as a differentiator in M1 with the
-  note "M1 role exists. Differentiator is *defaults*: bucket pre-created, credentials in vault."
-  The v1.1.0 Garage migration preserves this differentiator with a better underlying component.
-- **Retention controls exposed as variables** was listed as a table-stakes feature with the
-  note "Surface as group_vars. Planned docs/mimir-retention.md confirms intent." The Mimir
-  retention fix completes this — the variable existed but was not wired.
-- **PromLens** row in the competitor table is now moot (removed v1.0.1).
+- [Grafana official backup docs](https://grafana.com/docs/grafana/latest/administration/back-up-grafana/) — stop service before SQLite backup; `/var/lib/grafana/grafana.db` is the backup target (HIGH confidence)
+- [Gitea backup and restore docs](https://docs.gitea.com/administration/backup-and-restore) — `gitea dump` pattern; stop-before-backup; Unix epoch naming (HIGH confidence)
+- [Nextcloud backup docs](https://docs.nextcloud.com/server/stable/admin_manual/maintenance/backup.html) — `occ maintenance:mode`; `YYYYMMDD` naming; rsync data + DB dump (HIGH confidence)
+- [VictoriaMetrics vmbackup](https://docs.victoriametrics.com/victoriametrics/vmbackup/) + [vmrestore](https://docs.victoriametrics.com/victoriametrics/vmrestore/) — symmetric backup/restore CLI; stop-before-restore; `YYYYMMDD` naming (HIGH confidence)
+- [Prometheus TSDB snapshot API](https://prometheus.io/docs/prometheus/latest/querying/api/#tsdb-admin-apis) — hot snapshot path; cold backup = stop + tar + restart (HIGH confidence, confirmed via devopstales.github.io article)
+- [Alertmanager data files — upstream issue #1000](https://github.com/prometheus/alertmanager/issues/1000) + [#1673](https://github.com/prometheus/alertmanager/issues/1673) — `silences` and `nflog` files at `--storage.path`; data directory = `/alertmanager` inside container (HIGH confidence)
+- [Suraj Deshmukh: Prometheus backup and restore](https://suraj.io/post/how-to-backup-and-restore-prometheus/) — cold backup procedure; stop → tar TSDB path → restart (MEDIUM confidence)
+- [spantaleev/matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy) — Ansible Docker project prior art; `--extra-vars` for restore path (MEDIUM confidence)
+- [thedatabaseme/docker_backup](https://github.com/thedatabaseme/docker_backup) — cold Docker volume backup with Ansible; stop + tar + restart pattern (MEDIUM confidence)
+- Telemetron `roles/garage/defaults/main.yml`, `roles/grafana/defaults/main.yml`, `roles/prometheus/defaults/main.yml`, `roles/alertmanager/defaults/main.yml` — volume names, data paths, credentials file paths (HIGH confidence, source of truth)
+- Telemetron `playbooks/undeploy_docker.yml` — v1.2.0 UX contracts: D-159 WARN, D-160 banner, purge flag pattern, `--tags <role>`, `--ask-vault-pass` (HIGH confidence, direct precedent)
