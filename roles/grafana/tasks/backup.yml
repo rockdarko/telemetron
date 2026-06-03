@@ -1,0 +1,143 @@
+---
+# roles/grafana/tasks/backup.yml
+# Cold-quiesce backup for Grafana embedded SQLite (BACKUP-V13-03).
+#
+# Stops the Grafana container (cold-quiesce via `docker stop` + poll;
+# Grafana docs require shutdown before SQLite backup) then tars the
+# single named volume {{ grafana_data_volume }} into one zstd tarball:
+#   {{ backup_dest_root }}/grafana/grafana-<UTC>.tar.zst   (mode 0600)
+#
+# Tarball contents: the FULL /var/lib/grafana/ tree (GR-2 -- tar the entire
+# `_data/` so operator-installed plugins survive a round-trip):
+#   - grafana.db            -- SQLite rollback-journal mode (NOT WAL).
+#                              GR-1: Grafana 13.0.1 defaults.ini ships
+#                              wal=false; NO `-wal`/`-shm` sidecars exist
+#                              on clean stop, so tar captures a consistent
+#                              SQLite file directly. No PRAGMA wal_checkpoint
+#                              dance needed.
+#   - plugins/              -- operator-installed plugin binaries (GR-2:
+#                              MUST be tarred; excluding plugins/ would
+#                              silently lose installed plugins on restore).
+#   - csv/                  -- Grafana export staging (if present).
+#   - sessions / png        -- transient UI state (harmless to round-trip).
+#
+# What is NOT in the backup (intentional, GR-3):
+# Provisioned dashboards + datasources live in {{ grafana_config_dir }}/
+# provisioning/ on the host bind-mount, NOT in the named volume. Those
+# files are re-applied by playbooks/deploy_docker.yml on every deploy and
+# they OVERRIDE any matching grafana.db entries on container start.
+# The backup captures operator UI state + plugins ONLY; provisioning
+# re-rules on the next container start.
+#
+# GR-4 (admin password reverts on restore -- operator-facing): grafana.db
+# carries the bcrypt admin-password hash from backup time. If the operator
+# rotated GF_SECURITY_ADMIN_PASSWORD between backup and restore, restore
+# silently reverts the in-DB hash to the backup-time value (the env var
+# is FIRST-BOOT-ONLY per RESEARCH sec.2.1 Risk 2). Post-restore workaround:
+#   docker exec telemetron-grafana grafana-cli admin reset-admin-password '<new>'
+# Phase 15 surfaces this in roles/grafana/README.md `## Backup`.
+#
+# Block/rescue/always: the container ALWAYS restarts (AN-2) even on tar
+# failure. Post-restart verification reuses the existing 268-line
+# tasks/verify.yml (D-178) which exercises Gate 9 + Gate 9.5: 4 datasource
+# UIDs resolve in-network. Stop-timeout default 60s gives SQLite plenty
+# of room to complete its shutdown checkpoint.
+#
+# XP-1 critical: this file uses `ansible.builtin.command: docker stop`,
+# NEVER the community.docker docker_container module's stopped-state
+# transition (issue #791 strips volume + mount + network specs on the
+# implicit-recreate).
+#
+# Tags: [grafana, backup].
+
+- name: Ensure zstd is installed for tar --zstd compression
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - grafana
+    - backup
+
+- name: Ensure Grafana backup destination directory exists
+  ansible.builtin.file:
+    path: "{{ backup_dest_root }}/grafana"
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+  become: true
+  tags:
+    - grafana
+    - backup
+
+- name: Record UTC timestamp for backup filename (D-179 ISO 8601 basic)
+  ansible.builtin.command: date -u +%Y%m%dT%H%M%SZ
+  register: backup_timestamp
+  changed_when: false
+  tags:
+    - grafana
+    - backup
+
+- name: Cold-quiesce Grafana backup -- block wraps stop + tar (AN-2 restart guarantee)
+  block:
+    # XP-1: docker stop, NOT community.docker state=stopped.
+    - name: Stop Grafana container for cold-quiesce backup (XP-1)
+      ansible.builtin.command: "docker stop -t {{ grafana_backup_stop_timeout }} {{ grafana_container_name }}"
+      changed_when: true
+      become: true
+
+    # Verbatim shape from roles/garage/tasks/bootstrap.yml lines 21-35,
+    # inverted: until Running == false (not Health.Status == healthy).
+    - name: Wait for Grafana container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ grafana_container_name }}"
+      register: grafana_stopped_check
+      until: >-
+        grafana_stopped_check.container is defined
+        and grafana_stopped_check.container.State is defined
+        and grafana_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # GR-2: tar the ENTIRE _data/ tree (no --exclude on plugins/ or csv/).
+    # Single volume, single tarball, single -C source dir.
+    - name: Create Grafana backup tarball (full _data/ tree -- includes plugins/)
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -cpf
+          {{ backup_dest_root }}/grafana/grafana-{{ backup_timestamp.stdout }}.tar.zst
+          -C /var/lib/docker/volumes/{{ grafana_data_volume }}/_data
+          .
+      become: true
+      changed_when: true
+
+    # XP-4: tarball mode 0600. grafana.db carries the bcrypt admin password
+    # hash + user accounts + API tokens; 0600 root-only is mandatory.
+    - name: Set tarball permissions (XP-4 mode 0600)
+      ansible.builtin.file:
+        path: "{{ backup_dest_root }}/grafana/grafana-{{ backup_timestamp.stdout }}.tar.zst"
+        mode: "0600"
+        owner: root
+        group: root
+      become: true
+
+  always:
+    # AN-2: restart regardless of tar success/failure. Identical shape to
+    # the stop step above (docker start has no native community.docker
+    # analog; symmetry with `docker stop` is intentional).
+    - name: Restart Grafana container after backup (AN-2 always-restart guarantee)
+      ansible.builtin.command: "docker start {{ grafana_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: reuse the 268-line tasks/verify.yml unchanged. Gate 9 +
+    # Gate 9.5 validate the 4 hardcoded datasource UIDs resolve, which is
+    # the deploy-time correctness contract and the post-restart contract.
+    - name: Verify Grafana post-backup
+      ansible.builtin.include_tasks: verify.yml
+
+  tags:
+    - grafana
+    - backup
