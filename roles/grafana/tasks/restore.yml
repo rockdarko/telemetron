@@ -1,0 +1,195 @@
+---
+# roles/grafana/tasks/restore.yml
+# Confirm-gated, integrity-checked, wipe-then-untar restore for the Grafana
+# embedded SQLite volume (RESTORE-V13-03).
+#
+# Hard-fails unless the operator passes `--extra-vars backup_restore_confirm=true`
+# (per-role gate mirroring v1.2.0's telemetron_purge_data=true contract, so a
+# custom playbook that does `include_role: name=grafana tasks_from=restore`
+# can never silently wipe state). Latest tarball is auto-discovered via
+# `find ... | sort -r | head -1` against backup_dest_root unless the operator
+# pins a specific UTC timestamp via `backup_restore_from=20260603T143012Z`.
+# `tar --zstd -tf` lists the tarball BEFORE any destructive step, so a
+# corrupt or truncated archive aborts the restore before the volume is wiped.
+#
+# GR-1 (WAL OFF by default): Grafana 13.0.1 ships defaults.ini with
+# wal=false, so there are NO `-wal`/`-shm` sidecar files in the live volume
+# OR in the backup tarball. The Prometheus PP-1 lock-file deletion has NO
+# analog here -- SQLite's rollback-journal mode does not produce a sidecar
+# file on clean shutdown, and there is no PID-based lock file like
+# Prometheus's stale-PID-tracked one under the TSDB root. This restore
+# task does NOT have a post-untar cleanup step (any cargo-culted
+# `file: path=.../some-file state=absent` would be a no-op against a
+# non-existent file class).
+#
+# GR-2 (entire volume restored): the tarball captures the full `_data/`
+# tree -- grafana.db + plugins/ + csv/ + sessions -- and untar restores
+# all of it. Operator-installed plugins survive the round-trip.
+#
+# GR-3 (provisioning re-overrides on first start): provisioned dashboards
+# and datasources live in {{ grafana_config_dir }}/provisioning/ on the
+# host bind-mount, NOT in the volume. After the restored container starts,
+# Grafana's provisioning loader re-applies those YAML/JSON files and
+# OVERRIDES any matching entries in the restored grafana.db. No special
+# handling required here -- this is the standard Grafana behavior on every
+# container start, deploy or restore.
+#
+# GR-4 (admin password reverts -- operator-facing CRITICAL):
+# The restored grafana.db carries the bcrypt admin-password hash from
+# backup time. If the operator rotated GF_SECURITY_ADMIN_PASSWORD between
+# backup and restore, the restored hash WINS (the env var is
+# FIRST-BOOT-ONLY per RESEARCH sec.2.1 Risk 2 -- it only seeds the DB on
+# the first boot of a fresh volume). Post-restore re-rotation workaround:
+#
+#   docker exec telemetron-grafana grafana-cli admin reset-admin-password '<new>'
+#
+# Phase 15 surfaces this in roles/grafana/README.md `## Backup`.
+#
+# Block/rescue/always: the container ALWAYS restarts (AN-2) even on untar
+# failure. Post-restart verification reuses the existing 268-line
+# tasks/verify.yml (D-178) which validates Gate 9 + Gate 9.5: the 4
+# hardcoded datasource UIDs resolve in-network -- the RESTORE-V13-03
+# success criterion 3 contract.
+#
+# XP-1 critical: this file uses `ansible.builtin.command: docker stop`,
+# NEVER the community.docker docker_container module's stopped-state
+# transition (issue #791 strips volume + mount + network specs on the
+# implicit-recreate).
+#
+# Tags: [grafana, restore].
+
+- name: Ensure zstd is installed for tar --zstd compression
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - grafana
+    - restore
+
+# Per-role hard gate. Mirrors v1.2.0 D-159 telemetron_purge_data=true shape
+# (roles/garage/tasks/purge.yml line 69) but uses `fail:` to abort instead
+# of skipping -- restore must be EXPLICITLY confirmed, never silently skipped.
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - grafana
+    - restore
+
+# D-179: latest-discovery via lexicographic sort of ISO 8601 basic UTC
+# filenames. `find -printf '%f\n'` gives basename only so the subsequent
+# `sort -r | head -1` is filename-only (path-independent).
+- name: Discover latest Grafana backup tarball (when backup_restore_from empty)
+  ansible.builtin.shell:
+    cmd: >-
+      find {{ backup_dest_root }}/grafana/ -name 'grafana-*.tar.zst' -type f -printf '%f\n'
+      | sort -r | head -1
+  register: grafana_latest_tarball
+  changed_when: false
+  failed_when: grafana_latest_tarball.stdout == ""
+  when: backup_restore_from | default("") == ""
+  become: true
+  tags:
+    - grafana
+    - restore
+
+# Resolve `backup_src_path` from either the pinned timestamp or the
+# auto-discovered latest tarball. Both branches assemble the full path
+# under backup_dest_root/grafana/.
+- name: Resolve Grafana backup source path
+  ansible.builtin.set_fact:
+    backup_src_path: >-
+      {{ (backup_dest_root ~ '/grafana/grafana-' ~ backup_restore_from ~ '.tar.zst')
+         if (backup_restore_from | default('') != '')
+         else (backup_dest_root ~ '/grafana/' ~ grafana_latest_tarball.stdout) }}
+  tags:
+    - grafana
+    - restore
+
+# D-159 WARN: name identifiers ONLY (volume name + source path). Do NOT
+# echo `tar tf` listing here -- dashboard titles or user emails inside
+# grafana.db could leak into PLAY OUTPUT logs.
+- name: WARN -- grafana restore will overwrite existing volume contents
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- grafana restore: {{ grafana_data_volume }} from {{ backup_src_path }}"
+  tags:
+    - grafana
+    - restore
+
+# Integrity check BEFORE any destructive step. Aborts the play (and thus
+# leaves the live volume untouched) if the tarball is truncated or the
+# zstd stream is corrupt.
+- name: Integrity-check Grafana backup tarball
+  ansible.builtin.command:
+    cmd: "tar --zstd -tf {{ backup_src_path }}"
+  changed_when: false
+  become: true
+  tags:
+    - grafana
+    - restore
+
+- name: Cold-quiesce Grafana restore -- block wraps stop + wipe + untar (AN-2 restart guarantee)
+  block:
+    # XP-1: docker stop, NOT community.docker stopped-state transition.
+    - name: Stop Grafana container for cold-quiesce restore (XP-1)
+      ansible.builtin.command: "docker stop -t {{ grafana_backup_stop_timeout }} {{ grafana_container_name }}"
+      changed_when: true
+      become: true
+
+    # Verbatim shape from roles/garage/tasks/bootstrap.yml lines 21-35,
+    # inverted: until Running == false (not Health.Status == healthy).
+    - name: Wait for Grafana container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ grafana_container_name }}"
+      register: grafana_stopped_check
+      until: >-
+        grafana_stopped_check.container is defined
+        and grafana_stopped_check.container.State is defined
+        and grafana_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # STACK.md sec.3 wipe pattern: `find -mindepth 1 -delete` keeps the
+    # _data/ root in place (Docker manages it) but clears all contents
+    # atomically. Faster + more idempotent than ansible.builtin.find +
+    # state=absent loop.
+    - name: Wipe existing Grafana volume contents (PITFALLS XP-5)
+      ansible.builtin.command:
+        cmd: "find /var/lib/docker/volumes/{{ grafana_data_volume }}/_data -mindepth 1 -delete"
+      become: true
+      changed_when: true
+
+    # GR-2: untar restores the full _data/ tree -- grafana.db + plugins/ +
+    # csv/. Same -C target dir as the backup's source dir.
+    - name: Untar Grafana backup into volume _data/
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -xpf {{ backup_src_path }}
+          -C /var/lib/docker/volumes/{{ grafana_data_volume }}/_data
+      become: true
+      changed_when: true
+
+    # NO post-untar cleanup step. Grafana has NO analog to Prometheus's
+    # PP-1 stale-PID lock file (GR-1: SQLite rollback-journal mode + no
+    # PID-based lock). Adding a no-op `state: absent` here would be
+    # cargo-culted.
+
+  always:
+    # AN-2: restart regardless of untar success/failure.
+    - name: Restart Grafana container after restore (AN-2 always-restart guarantee)
+      ansible.builtin.command: "docker start {{ grafana_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: reuse the 268-line tasks/verify.yml unchanged. Gate 9 +
+    # Gate 9.5 confirm the 4 hardcoded datasource UIDs resolve in-network --
+    # the RESTORE-V13-03 success criterion 3 contract.
+    - name: Verify Grafana post-restore
+      ansible.builtin.include_tasks: verify.yml
+
+  tags:
+    - grafana
+    - restore
