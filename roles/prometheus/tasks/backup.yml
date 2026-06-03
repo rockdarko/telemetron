@@ -1,0 +1,136 @@
+---
+# roles/prometheus/tasks/backup.yml
+# Cold-quiesce backup for Prometheus TSDB (BACKUP-V13-02).
+#
+# Stops the Prometheus container (cold-quiesce via `docker stop` + poll --
+# NOT community.docker with the stopped state per PITFALLS.md XP-1, which
+# strips volume/mount specs on re-create), then tars the named volume
+# {{ prometheus_data_volume }} (default telemetron_prometheus_data) into a
+# single zstd tarball at:
+#   {{ backup_dest_root }}/prometheus/prometheus-<UTC>.tar.zst   (mode 0600)
+# Destination dir is mode 0700, owned by root (PITFALLS XP-4 hardening).
+#
+# Tarball contents: full `_data/` tree of the volume -- WAL, chunks_head/,
+# compacted blocks (ULID dirs), queries.active, lock file. The clean SIGTERM
+# from `docker stop` (timeout = prometheus_backup_stop_timeout, D-177)
+# flushes the WAL; the 0-2h head-block gap is documented (PITFALLS PP-2 --
+# Mimir remote_write covers the gap, see prometheus_remote_write_* in
+# defaults/main.yml). queries.active is harmless on restart (PP-3); .tmp
+# dirs are absent on clean stop (PP-4).
+#
+# Lock file is INCLUDED in the backup but DELETED on restore (PITFALLS PP-1).
+# This backup task does NOT need to delete it -- the running container holds
+# the lock by PID; after `docker stop` the lock file is stale-on-disk and
+# safe to tar (Prometheus 3.x replaces stale locks on its own startup; the
+# restore path deletes it pre-`docker start` to avoid any PID collision).
+#
+# Block/always (PITFALLS AN-2): container ALWAYS restarts even on tar
+# failure -- the `always:` clause owns the `docker start` + verify.
+# Verify post-restart re-uses roles/prometheus/tasks/verify.yml as-is via
+# `include_tasks` (CONTEXT D-178) -- the same file tasks/main.yml runs
+# post-deploy, so backup health == deploy health.
+#
+# zstd ensure-present pre-task is OPS-V13-04 (zstd is not in Ubuntu 22 /
+# Debian 12 / RHEL 9 base; package install is idempotent).
+#
+# Tags: [prometheus, backup] (D-133 + ARCHITECTURE.md sec.5 cross-cutting).
+
+# OPS-V13-04: ensure zstd is installed (idempotent; no-op if already present).
+- name: Ensure zstd is installed for Prometheus backup (OPS-V13-04)
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - prometheus
+    - backup
+
+# Lazy-create per-role backup destination directory. Mode 0700 + root-owned
+# (XP-4); per-tarball mode 0600 is set inside the block below.
+- name: Ensure Prometheus backup destination directory exists
+  ansible.builtin.file:
+    path: "{{ backup_dest_root }}/prometheus"
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+  become: true
+  tags:
+    - prometheus
+    - backup
+
+# D-179 timestamp: ISO 8601 basic UTC (YYYYMMDDTHHMMSSZ). Lexicographic
+# sort of these filenames is chronological -- consumed by restore's
+# `find ... | sort -r | head -1` latest-discovery.
+- name: Generate backup timestamp (D-179 ISO 8601 basic UTC)
+  ansible.builtin.command: date -u +%Y%m%dT%H%M%SZ
+  register: backup_timestamp
+  changed_when: false
+  tags:
+    - prometheus
+    - backup
+
+- name: Cold-quiesce Prometheus backup -- block (PITFALLS AN-2 always-restart)
+  block:
+    # XP-1: `ansible.builtin.command: docker stop` shells out, NOT
+    # community.docker.docker_container with the stopped state (which
+    # strips volume/mount specs and forces a re-create with empty mounts
+    # on next task). docker stop -t honours prometheus_backup_stop_timeout
+    # (D-177) so the WAL gets a clean SIGTERM flush before SIGKILL.
+    - name: Stop Prometheus container for cold-quiesce backup (XP-1)
+      ansible.builtin.command: "docker stop -t {{ prometheus_backup_stop_timeout }} {{ prometheus_container_name }}"
+      changed_when: true
+      become: true
+
+    - name: Wait for Prometheus container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ prometheus_container_name }}"
+      register: prometheus_stopped_check
+      until: >-
+        prometheus_stopped_check.container is defined
+        and prometheus_stopped_check.container.State is defined
+        and prometheus_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # Single-volume tarball -- no `--transform` needed (Prometheus has only
+    # one named volume; Garage's three-source layout does not apply).
+    # `-C <_data>` + `.` makes entries relative to the volume root, so the
+    # restore-side `tar -xpf -C <_data>` lands them back exactly in place.
+    - name: Create Prometheus TSDB backup tarball
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -cpf
+          {{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp.stdout }}.tar.zst
+          -C /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data
+          .
+      become: true
+      changed_when: true
+
+    # XP-4: tarball mode 0600 + root-owned. Belt-and-suspenders alongside
+    # the 0700 destination dir set above.
+    - name: Set Prometheus backup tarball permissions (XP-4)
+      ansible.builtin.file:
+        path: "{{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp.stdout }}.tar.zst"
+        mode: "0600"
+        owner: root
+        group: root
+      become: true
+
+  always:
+    # AN-2: restart is the operational guarantee -- runs even if tar failed.
+    - name: Restart Prometheus container after backup (AN-2)
+      ansible.builtin.command: "docker start {{ prometheus_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: re-use roles/prometheus/tasks/verify.yml unchanged (152-line
+    # file already invoked post-deploy by tasks/main.yml). No sub-tags
+    # here -- the block-level [prometheus, backup] tags carry down per
+    # PATTERNS.md Pattern F.
+    - name: Verify Prometheus post-backup (D-178 reuse verify.yml)
+      ansible.builtin.include_tasks: verify.yml
+  tags:
+    - prometheus
+    - backup
