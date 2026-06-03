@@ -62,6 +62,14 @@ garage_buckets: "{{ telemetron_garage_buckets | default([
 garage_health_retries: 30
 garage_health_delay: 2
 
+# --- Backup stop-timeout (D-177; Phase 13) ---
+# Seconds to wait between SIGTERM and SIGKILL when stopping the Garage
+# container for cold-quiesce backup or restore. Defaults from the shared
+# {{ backup_stop_timeout }} in inventory/<env>/group_vars/all/backup.yml.
+# Override per-role for environments with very large LMDB metadata.
+# (PITFALLS.md GP-1: LMDB clean-close required.)
+garage_backup_stop_timeout: "{{ backup_stop_timeout | default(60) }}"
+
 # --- Healthcheck (OPS-06) ---
 # Docker HEALTHCHECK -- the Garage image ships none (docker inspect returns
 # null Healthcheck). We use a binary-alive proxy: /garage --version exits 0

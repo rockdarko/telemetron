@@ -78,6 +78,10 @@ grafana_healthcheck_start_period: 60s                   # generous -- first-boot
 grafana_health_retries: 45
 grafana_health_delay: 2
 
+# --- Backup stop-timeout (D-177; Phase 13) ---
+# SQLite checkpoint on shutdown is fast; default 60s is generous.
+grafana_backup_stop_timeout: "{{ backup_stop_timeout | default(60) }}"
+
 # --- Restart policy (OPS-06) ---
 grafana_restart_policy: unless-stopped
 
