@@ -56,6 +56,21 @@
 # transition (issue #791 strips volume + mount + network specs on the
 # implicit-recreate).
 #
+# WR-01 (operator-interrupt window -- documented corner case):
+# If the operator sends SIGINT (Ctrl-C) or ansible-playbook is killed
+# between the wipe step (find -mindepth 1 -delete on the data volume)
+# and the untar step, the always: clause STILL fires -- the Grafana
+# container restarts against an empty data volume. Grafana will then
+# re-seed grafana.db on first boot as if it were a fresh deploy
+# (loss of historical UI state, plugins, custom dashboards). The
+# AN-2 always-restart guarantee becomes a footgun for THIS specific
+# failure mode. Recovery: re-run the restore play (it is idempotent at
+# the file level -- the wipe is a no-op on an already-empty volume and
+# the untar reconstitutes state). The integrity check (tar --zstd -tf)
+# above guards against a corrupt tarball but cannot guard against a
+# mid-destructive-sequence interrupt. Phase 15 surfaces this in the
+# per-role README operator guidance.
+#
 # Tags: [grafana, restore].
 
 - name: Ensure zstd is installed for tar --zstd compression

@@ -49,6 +49,22 @@
 # D-178 verify: roles/prometheus/tasks/verify.yml is re-used unchanged via
 #   `include_tasks: verify.yml` inside `always:`.
 #
+# WR-01 (operator-interrupt window -- documented corner case):
+# If the operator sends SIGINT (Ctrl-C) or ansible-playbook is killed
+# between the wipe step (find -mindepth 1 -delete on the data volume)
+# and the untar + lock-delete steps, the always: clause STILL fires --
+# the Prometheus container restarts against an empty TSDB. All historical
+# blocks are gone; Prometheus comes up with an empty store and starts
+# scraping fresh from the next interval. The 0-2h head-block gap from
+# PP-2 is now an indefinite gap until Mimir remote_write catches up.
+# The AN-2 always-restart guarantee becomes a footgun for THIS specific
+# failure mode. Recovery: re-run the restore play (it is idempotent at
+# the file level -- the wipe is a no-op on an already-empty volume and
+# the untar reconstitutes state). The integrity check (tar --zstd -tf)
+# above guards against a corrupt tarball but cannot guard against a
+# mid-destructive-sequence interrupt. Phase 15 surfaces this in the
+# per-role README operator guidance.
+#
 # Tags: [prometheus, restore] (D-133 + cross-cutting --tags restore).
 
 # OPS-V13-04: ensure zstd is installed before any tar operation.

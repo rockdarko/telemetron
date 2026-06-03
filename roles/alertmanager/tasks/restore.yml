@@ -44,6 +44,22 @@
 # (no PID-based lock; no WAL; no sidecar files; protobuf files are
 # read+rewritten in place).
 #
+# WR-01 (operator-interrupt window -- documented corner case):
+# If the operator sends SIGINT (Ctrl-C) or ansible-playbook is killed
+# between the wipe step (find -mindepth 1 -delete on the data volume)
+# and the untar step, the always: clause STILL fires -- the Alertmanager
+# container restarts against an empty data volume. AP-1 covers this case:
+# Alertmanager creates a fresh `data/` subdir on first state-write, so
+# the container will START cleanly but with no prior silences or nflog
+# dedup memory (all historical silences lost). The AN-2 always-restart
+# guarantee becomes a footgun for THIS specific failure mode. Recovery:
+# re-run the restore play (it is idempotent at the file level -- the
+# wipe is a no-op on an already-empty volume and the untar reconstitutes
+# state). The integrity check (tar --zstd -tf) above guards against a
+# corrupt tarball but cannot guard against a mid-destructive-sequence
+# interrupt. Phase 15 surfaces this in the per-role README operator
+# guidance.
+#
 # Tags: [alertmanager, restore] on block: parent (D-133 + ARCHITECTURE
 # sec.5).
 

@@ -55,6 +55,21 @@
 # Verify: INLINE healthy-poll (D-178 -- Garage ships no tasks/verify.yml).
 # Verbatim shape from roles/garage/tasks/bootstrap.yml lines 21-35.
 #
+# WR-01 (operator-interrupt window -- documented corner case):
+# If the operator sends SIGINT (Ctrl-C) or ansible-playbook is killed
+# between the wipe step (find -mindepth 1 -delete on the meta/data volumes
+# and ansible.builtin.file state: absent on s3-credentials) and the untar
+# steps, the always: clause STILL fires -- the Garage container restarts
+# against empty meta + data volumes and a missing s3-credentials file.
+# Garage will then fail its bootstrap-required layout check and the
+# AN-2 always-restart guarantee becomes a footgun for THIS specific
+# failure mode. Recovery: re-run the restore play (it is idempotent at
+# the file level -- the wipe is a no-op on an already-empty volume and
+# the untar reconstitutes state). The integrity check (tar --zstd -tf)
+# above guards against a corrupt tarball but cannot guard against a
+# mid-destructive-sequence interrupt. Phase 15 surfaces this in the
+# per-role README operator guidance.
+#
 # Tags: [garage, restore] -- D-133 + ARCHITECTURE.md sec.5.
 
 # OPS-V13-04: zstd is required for `tar --zstd` on both ends. Same shape
