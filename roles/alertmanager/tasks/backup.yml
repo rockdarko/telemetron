@@ -126,9 +126,16 @@
     # (AP-1; tar still produces a valid small tarball with whatever
     # bookkeeping is at _data/ root). The stat-guard above is informational
     # only; this tar invocation is unconditional by design lock.
+    #
+    # CR-01: umask 0177 BEFORE tar ensures the tarball is created with mode
+    # 0600 directly -- closes the TOCTOU window between `tar -cpf` (default
+    # umask 0022 -> 0644) and the subsequent ansible.builtin.file mode: "0600"
+    # step. Use ansible.builtin.shell (not command) because umask is a shell
+    # builtin. silences + nflog protobuf may carry recipient addresses.
     - name: Create Alertmanager state backup tarball
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: >-
+          umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp.stdout }}.tar.zst
           -C /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data

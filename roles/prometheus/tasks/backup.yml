@@ -98,9 +98,16 @@
     # one named volume; Garage's three-source layout does not apply).
     # `-C <_data>` + `.` makes entries relative to the volume root, so the
     # restore-side `tar -xpf -C <_data>` lands them back exactly in place.
+    #
+    # CR-01: umask 0177 BEFORE tar ensures the tarball is created with mode
+    # 0600 directly -- closes the TOCTOU window between `tar -cpf` (default
+    # umask 0022 -> 0644) and the subsequent ansible.builtin.file mode: "0600"
+    # step. Use ansible.builtin.shell (not command) because umask is a shell
+    # builtin. TSDB embeds scrape-time labels (potentially sensitive).
     - name: Create Prometheus TSDB backup tarball
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: >-
+          umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp.stdout }}.tar.zst
           -C /var/lib/docker/volumes/{{ prometheus_data_volume }}/_data

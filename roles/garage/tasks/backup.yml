@@ -136,9 +136,16 @@
     # the --transform regexes anchor on the relativized (leading-slash
     # stripped) form, which is the form tar uses on extract. GP-2 is
     # satisfied: both volumes are listed as sources in one invocation.
+    # CR-01: umask 0177 BEFORE tar ensures the tarball is created with mode
+    # 0600 directly -- closes the TOCTOU window between `tar -cpf` (default
+    # umask 0022 -> 0644) and the subsequent ansible.builtin.file mode: "0600"
+    # step. Use ansible.builtin.shell (not command) because umask is a shell
+    # builtin. The follow-up ansible.builtin.file step below is now an
+    # idempotency guard rather than a race-window narrower.
     - name: Create Garage backup tarball (meta + data + s3-credentials -- D-176, GP-2, GP-3)
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: >-
+          umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/garage/garage-{{ backup_timestamp.stdout }}.tar.zst
           --transform 's,^var/lib/docker/volumes/{{ garage_meta_volume }}/_data,meta,'

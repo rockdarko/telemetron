@@ -103,9 +103,18 @@
 
     # GR-2: tar the ENTIRE _data/ tree (no --exclude on plugins/ or csv/).
     # Single volume, single tarball, single -C source dir.
+    #
+    # CR-01: umask 0177 BEFORE tar ensures the tarball is created with mode
+    # 0600 directly -- closes the TOCTOU window between `tar -cpf` (default
+    # umask 0022 -> 0644) and the subsequent ansible.builtin.file mode: "0600"
+    # step. Use ansible.builtin.shell (not command) because umask is a shell
+    # builtin. The follow-up ansible.builtin.file step below is now an
+    # idempotency guard rather than a race-window narrower. grafana.db
+    # embeds bcrypt admin-password hash + user accounts + API tokens.
     - name: Create Grafana backup tarball (full _data/ tree -- includes plugins/)
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: >-
+          umask 0177 &&
           tar --zstd -cpf
           {{ backup_dest_root }}/grafana/grafana-{{ backup_timestamp.stdout }}.tar.zst
           -C /var/lib/docker/volumes/{{ grafana_data_volume }}/_data
