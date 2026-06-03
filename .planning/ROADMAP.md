@@ -57,7 +57,7 @@ Tag: `v1.2.0`
 
 ### 🚧 v1.3.0 — Backup & Restore (In Progress)
 
-- [ ] **Phase 13: Per-Role Backup & Restore Tasks** — `tasks/backup.yml` + `tasks/restore.yml` for the 4 stateful roles (garage, prometheus, grafana, alertmanager); cold-quiesce model; zstd tarballs at `/opt/telemetron/backups/<role>/`; block/rescue/always container-restart guarantee (9 requirements: BACKUP-V13-01..04, RESTORE-V13-01..04, OPS-V13-04)
+- [x] **Phase 13: Per-Role Backup & Restore Tasks** — `tasks/backup.yml` + `tasks/restore.yml` for the 4 stateful roles (garage, prometheus, grafana, alertmanager); cold-quiesce model; zstd tarballs at `/opt/telemetron/backups/<role>/`; block/rescue/always container-restart guarantee (9 requirements: BACKUP-V13-01..04, RESTORE-V13-01..04, OPS-V13-04) (completed 2026-06-03)
 - [ ] **Phase 14: Orchestrators + Leviathan HUMAN-UAT** — `playbooks/backup_docker.yml` + `playbooks/restore_docker.yml`; confirm-gate, bail-out, and `--tags` cross-cutting UX; live 7-step backup → purge-data undeploy → redeploy → restore → re-smoke round-trip on leviathan (6 requirements: BACKUP-V13-05, RESTORE-V13-05, OPS-V13-01..03, UAT-V13-01)
 - [ ] **Phase 15: Documentation Cascade** — Gate 11 in `roles/README.md`; `docs/quickstart.md` `## Backup and restore` section + root README cross-ref; per-stateful-role README `## Backup` H2 sections; stateless role README one-liners (3 requirements: DOCS-V13-01..03)
 
@@ -76,10 +76,10 @@ Tag: `v1.2.0`
   6. Running `ansible-playbook playbooks/backup_docker.yml --tags garage --ask-vault-pass` (substituting any of the 4 role names) on leviathan completes with `failed=0` and the role's container is in a running/healthy state afterward.
 **Plans**: 5 plans
 - [x] 13-01-PLAN.md — Shared backup vars file + 4 role defaults additions (foundation; wave 1)
-- [ ] 13-02-PLAN.md — Garage backup.yml + restore.yml (3-entry tarball: meta + data + s3-credentials per D-176)
-- [ ] 13-03-PLAN.md — Prometheus backup.yml + restore.yml (PP-1 lock-file deletion on restore)
-- [ ] 13-04-PLAN.md — Grafana backup.yml + restore.yml (entire-volume tar per GR-2; GR-4 password rotation documented)
-- [ ] 13-05-PLAN.md — Alertmanager backup.yml + restore.yml (empty-data stat-guard per AP-1)
+- [x] 13-02-PLAN.md — Garage backup.yml + restore.yml (3-entry tarball: meta + data + s3-credentials per D-176)
+- [x] 13-03-PLAN.md — Prometheus backup.yml + restore.yml (PP-1 lock-file deletion on restore)
+- [x] 13-04-PLAN.md — Grafana backup.yml + restore.yml (entire-volume tar per GR-2; GR-4 password rotation documented)
+- [x] 13-05-PLAN.md — Alertmanager backup.yml + restore.yml (empty-data stat-guard per AP-1)
 
 ### Phase 14: Orchestrators + Leviathan HUMAN-UAT
 **Goal**: Operators have two symmetric orchestrator playbooks (`backup_docker.yml` and `restore_docker.yml`) with the same `--tags <role>`, `--ask-vault-pass`, and UX conventions as `deploy_docker.yml` and `undeploy_docker.yml`, proven end-to-end on leviathan via the full backup → purge-data undeploy → redeploy → restore → re-smoke round-trip.
@@ -122,7 +122,7 @@ Tag: `v1.2.0`
 | 10    | v1.2.0    | 6/6            | Complete    | 2026-05-29 |
 | 11    | v1.2.0    | 6/6            | Complete    | 2026-05-30 |
 | 12    | v1.2.0    | 3/3            | Complete    | 2026-05-30 |
-| 13    | v1.3.0    | 1/5 | In Progress|  |
+| 13    | v1.3.0    | 5/5 | Complete   | 2026-06-03 |
 | 14    | v1.3.0    | 0/?            | Not started | -          |
 | 15    | v1.3.0    | 0/?            | Not started | -          |
 
