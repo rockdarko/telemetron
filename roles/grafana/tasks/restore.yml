@@ -120,14 +120,23 @@
 # D-179: latest-discovery via lexicographic sort of ISO 8601 basic UTC
 # filenames. `find -printf '%f\n'` gives basename only so the subsequent
 # `sort -r | head -1` is filename-only (path-independent).
+# WR-04: set -o pipefail makes the pipeline exit non-zero when find fails
+# (e.g. backup directory does not exist on a fresh host that never ran
+# backup). Without pipefail, head's exit 0 masks find's failure and the
+# task fails with the misleading "stdout was empty" rather than the
+# actual root cause from find's stderr. executable: /bin/bash is required
+# because pipefail is a bash-ism not in POSIX sh.
 - name: Discover latest Grafana backup tarball (when backup_restore_from empty)
   ansible.builtin.shell:
     cmd: >-
+      set -o pipefail;
       find {{ backup_dest_root }}/grafana/ -name 'grafana-*.tar.zst' -type f -printf '%f\n'
       | sort -r | head -1
+  args:
+    executable: /bin/bash
   register: grafana_latest_tarball
   changed_when: false
-  failed_when: grafana_latest_tarball.stdout == ""
+  failed_when: grafana_latest_tarball.rc != 0 or grafana_latest_tarball.stdout == ""
   when: backup_restore_from | default("") == ""
   become: true
   tags:
