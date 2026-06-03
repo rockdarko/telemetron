@@ -1,0 +1,191 @@
+---
+# roles/garage/tasks/backup.yml
+#
+# Cold-quiesce backup for the Garage role (D-176 single-tarball decision,
+# Phase 13 / BACKUP-V13-01 / OPS-V13-04).
+#
+# Stops the Garage container (cold-quiesce per GP-1: LMDB cannot be tarred
+# while Garage is writing -- see .planning/research/PITFALLS.md GP-1) and
+# produces ONE tarball at:
+#   {{ backup_dest_root }}/garage/garage-<UTC>.tar.zst   (mode 0600)
+#
+# Three top-level entries inside the tarball (D-176):
+#   meta/            -> contents of {{ garage_meta_volume }} (_data dir)
+#                       holds LMDB db.lmdb/ -- node id, layout, buckets,
+#                       keys, ACLs. ALL Telemetron-specific identity
+#                       (GP-2 -- both volumes are in scope).
+#   data/            -> contents of {{ garage_data_volume }} (_data dir)
+#                       holds the actual S3 object chunks (Loki, Tempo,
+#                       Mimir blocks).
+#   s3-credentials   -> the file at {{ garage_s3_credentials_file }}.
+#                       Without this, post-restore deploy hits the D-146
+#                       recovery branch (regenerates key) -- see GP-3.
+#
+# XP-1 critical: the container stop uses `ansible.builtin.command: docker stop`,
+# NOT `community.docker.docker_container state: stopped` -- the latter strips
+# volume/mount/network specs from the container spec (community.docker
+# issue #791) and silently breaks the next start. AN-1 follows from the
+# same constraint: no `state: absent` on community.docker.docker_container
+# anywhere in this file.
+#
+# Container is ALWAYS restarted (block/always per AN-2) even on tar failure.
+# Verify is INLINE because Garage has NO tasks/verify.yml (verification is
+# inline in tasks/main.yml + tasks/bootstrap.yml per D-178). The inline poll
+# is the verbatim shape from roles/garage/tasks/bootstrap.yml lines 21-35.
+#
+# Permissions (XP-4): destination subdir mode 0700, tarball mode 0600 --
+# the tarball captures the s3-credentials secret in plaintext, so at-rest
+# perms matter.
+#
+# Tags: [garage, backup] -- D-133 + ARCHITECTURE.md sec.5 cross-cutting subtag.
+
+# OPS-V13-04: zstd is required for `tar --zstd` and is NOT pre-installed
+# on Ubuntu 22 / Debian 12 / RHEL 9. ansible.builtin.package is idempotent
+# (changed=0 on re-run when state matches). Shape adapted from
+# roles/nfsd/tasks/install_debian.yml lines 5-11 (the only existing
+# ansible.builtin.package precedent in the repo), minus update_cache --
+# zstd is a tiny universal package and we do not want to drag in a
+# cache refresh on every backup invocation.
+- name: Ensure zstd is installed for tar --zstd compression
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - garage
+    - backup
+
+# Pattern D: lazy idempotent destination-dir create at mode 0700 (XP-4).
+# Shape adapted from roles/garage/tasks/main.yml lines 7-14 (the existing
+# ansible.builtin.file state=directory precedent for garage_config_dir).
+# Per-role subdir under backup_dest_root keeps the four stateful roles'
+# tarballs cleanly separated; the parent backup_dest_root is created by
+# the Phase 14 orchestrator (no orchestrator-side bootstrap here).
+- name: Ensure Garage backup destination directory exists
+  ansible.builtin.file:
+    path: "{{ backup_dest_root }}/garage"
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+  become: true
+  tags:
+    - garage
+    - backup
+
+# D-179: ISO 8601 basic UTC timestamp (YYYYMMDDTHHMMSSZ) -- monotonic +
+# lexicographically chronological, so the Phase 14 latest-discovery glob
+# (`find ... | sort -r | head -1`) Just Works without a date parser.
+- name: Record UTC timestamp for Garage backup filename (D-179 ISO 8601 basic)
+  ansible.builtin.command: date -u +%Y%m%dT%H%M%SZ
+  register: backup_timestamp
+  changed_when: false
+  tags:
+    - garage
+    - backup
+
+# AN-2: the stop + tar sequence is wrapped in a block/always so the
+# Garage container ALWAYS restarts -- even if tar fails (full disk,
+# zstd missing, etc.). The always: clause is the operational guarantee;
+# no rescue: body is needed beyond the always: restart (ARCHITECTURE.md
+# sec.3: orchestrator-level continue-on-failure handles bail-out).
+- name: Cold-quiesce Garage backup -- block wraps stop + tar (AN-2 restart guarantee)
+  block:
+    # XP-1 critical: docker stop CLI, NOT community.docker state=stopped.
+    # `docker stop -t N` is SIGTERM + N-second grace + SIGKILL. The
+    # garage_backup_stop_timeout default (60s, defaults from the shared
+    # backup_stop_timeout per D-177) gives LMDB its clean-close window
+    # (GP-1) -- the default Docker 10s is too tight for large meta volumes.
+    - name: Stop Garage container for cold-quiesce backup (XP-1; PITFALLS GP-1)
+      ansible.builtin.command: "docker stop -t {{ garage_backup_stop_timeout }} {{ garage_container_name }}"
+      changed_when: true
+      become: true
+
+    # Verbatim shape from roles/garage/tasks/bootstrap.yml lines 21-35,
+    # with the until: clause flipped from Health.Status == 'healthy' to
+    # State.Running == false. 30 retries * 2s = 60s -- mirrors the
+    # garage_backup_stop_timeout budget rather than the bootstrap health
+    # retries (which are tuned for first-start, not stop).
+    - name: Wait for Garage container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ garage_container_name }}"
+      register: garage_stopped_check
+      until: >-
+        garage_stopped_check.container is defined
+        and garage_stopped_check.container.State is defined
+        and garage_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # D-176: ONE tarball, THREE top-level entries (meta + data + s3-credentials).
+    # GP-3 critical: s3-credentials MUST be captured -- without it, the
+    # post-restore deploy hits the D-146 recovery branch (regenerates a
+    # new S3 key), and Loki/Tempo/Mimir lose access until they are
+    # redeployed with the new credentials.
+    #
+    # --transform rewrites the in-tar paths so a restore can extract each
+    # entry to the right destination via -C + --strip-components or per-entry
+    # extraction. The three transforms:
+    #   var/lib/docker/volumes/<meta_vol>/_data/...   -> meta/...
+    #   var/lib/docker/volumes/<data_vol>/_data/...   -> data/...
+    #   <s3_credentials_file lstripped of leading />  -> s3-credentials
+    #
+    # tar with absolute source paths emits a leading-slash warning to
+    # stderr but still archives correctly with the relativized paths --
+    # the --transform regexes anchor on the relativized (leading-slash
+    # stripped) form, which is the form tar uses on extract. GP-2 is
+    # satisfied: both volumes are listed as sources in one invocation.
+    - name: Create Garage backup tarball (meta + data + s3-credentials -- D-176, GP-2, GP-3)
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -cpf
+          {{ backup_dest_root }}/garage/garage-{{ backup_timestamp.stdout }}.tar.zst
+          --transform 's,^var/lib/docker/volumes/{{ garage_meta_volume }}/_data,meta,'
+          --transform 's,^var/lib/docker/volumes/{{ garage_data_volume }}/_data,data,'
+          --transform 's,^{{ garage_s3_credentials_file | regex_replace("^/", "") }}$,s3-credentials,'
+          /var/lib/docker/volumes/{{ garage_meta_volume }}/_data
+          /var/lib/docker/volumes/{{ garage_data_volume }}/_data
+          {{ garage_s3_credentials_file }}
+      become: true
+      changed_when: true
+
+    # XP-4: tarball at rest holds the s3-credentials secret. Mode 0600
+    # (root-only read) is the at-rest contract -- mirrors the existing
+    # roles/garage/tasks/bootstrap.yml Step 7f host-file write.
+    - name: Set Garage backup tarball permissions (XP-4 mode 0600)
+      ansible.builtin.file:
+        path: "{{ backup_dest_root }}/garage/garage-{{ backup_timestamp.stdout }}.tar.zst"
+        mode: "0600"
+        owner: root
+        group: root
+      become: true
+
+  always:
+    # AN-2: ALWAYS restart, even if any block: task failed. docker start
+    # is symmetric with the docker stop above -- no community.docker
+    # equivalent is needed and using the CLI keeps the symmetry obvious.
+    - name: Restart Garage container after backup (AN-2 always-restart guarantee)
+      ansible.builtin.command: "docker start {{ garage_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: Garage has NO tasks/verify.yml -- the inline healthy-poll is
+    # the verify mechanism. Verbatim shape from roles/garage/tasks/bootstrap.yml
+    # lines 21-35 (same retries/delay defaults from the same defaults file).
+    # Note: Garage ships no tasks/verify.yml, so we do not include one here.
+    - name: Wait for Garage container HEALTHCHECK to report healthy post-backup
+      community.docker.docker_container_info:
+        name: "{{ garage_container_name }}"
+      register: garage_post_backup_health
+      until: >-
+        garage_post_backup_health.container is defined
+        and garage_post_backup_health.container.State is defined
+        and garage_post_backup_health.container.State.Health is defined
+        and garage_post_backup_health.container.State.Health.Status == 'healthy'
+      retries: "{{ garage_health_retries }}"
+      delay: "{{ garage_health_delay }}"
+      changed_when: false
+  tags:
+    - garage
+    - backup
