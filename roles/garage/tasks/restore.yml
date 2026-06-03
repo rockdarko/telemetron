@@ -297,6 +297,25 @@
       become: true
       changed_when: true
 
+    # WR-05: lazy-create garage_config_dir before tar extracts into it.
+    # On a true bare-metal restore (replacement host, no prior deploy of
+    # this role), garage_config_dir does NOT exist -- main.yml is the
+    # task file that creates it during deploy_docker.yml. tar with -C
+    # fails immediately if the target is missing ("Cannot chdir: No
+    # such file or directory"), the block fails, and the always: clause
+    # then restarts Garage against a half-restored state (meta + data
+    # volumes have content but s3-credentials is missing). Mirroring
+    # the file: state: directory shape from main.yml gives restore the
+    # same idempotent guarantee deploy has.
+    - name: Ensure Garage config directory exists for s3-credentials extract
+      ansible.builtin.file:
+        path: "{{ garage_config_dir }}"
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+      become: true
+
     # Extract the `s3-credentials` entry directly into garage_config_dir.
     # garage_s3_credentials_file is defined as {{ garage_config_dir }}/s3-credentials
     # in defaults/main.yml line 109, so this lands the file at exactly
