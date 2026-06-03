@@ -1,0 +1,278 @@
+---
+# roles/garage/tasks/restore.yml
+#
+# Confirm-gated, integrity-checked restore for the Garage role (D-176
+# 3-entry symmetric inverse of tasks/backup.yml, Phase 13 / RESTORE-V13-01 /
+# OPS-V13-04).
+#
+# Symmetric inverse of tasks/backup.yml: where backup tars 3 entries into
+# one tarball, restore extracts those same 3 entries back into their
+# canonical locations:
+#   meta/            -> /var/lib/docker/volumes/{{ garage_meta_volume }}/_data
+#   data/            -> /var/lib/docker/volumes/{{ garage_data_volume }}/_data
+#   s3-credentials   -> {{ garage_s3_credentials_file }}
+#
+# GP-3 critical: s3-credentials is restored to the host file BEFORE the
+# Garage container restarts. This is the entire reason we capture it in
+# the backup -- without restoring it, the post-restore deploy would hit
+# the D-146 self-healing branch (regenerate a new S3 key from the
+# preserved meta volume's key registry), and Loki/Tempo/Mimir would lose
+# their reference to the OLD key until they were redeployed. Restoring
+# s3-credentials keeps everyone aligned with the existing meta-volume
+# key registry, so the D-146 recovery branch does NOT fire.
+#
+# AN-3 (vault token rotation): if garage_admin_token or garage_rpc_secret
+# was rotated in secrets.yml between the backup and this restore, the
+# restored meta volume's RPC fabric expects the OLD secret -- Garage will
+# refuse to talk to itself and bootstrap verify will return 401. Operators
+# MUST keep these secrets stable across backup/restore cycles (or rotate
+# them OUT-of-band and run deploy_docker.yml AFTER restore completes,
+# which will re-render garage.toml with the new values). No code-level
+# guard for this here -- documented in this header per AN-3.
+#
+# Safety contract (mirrors v1.2.0 D-159 telemetron_purge_data gate):
+#   1. backup_restore_confirm=true is REQUIRED -- the fail gate at the
+#      top of this file refuses to run otherwise. The gate fires INSIDE
+#      this role-task (not just at the Phase 14 orchestrator level) so
+#      a custom playbook calling `include_role: tasks_from=restore` is
+#      ALSO blocked without the flag.
+#   2. tar --zstd -tf integrity check runs BEFORE any wipe step. If the
+#      tarball is corrupt/truncated/missing, restore fails before any
+#      destructive action.
+#   3. D-159-style WARN msg names ONLY the destination identifiers
+#      (volume names + host file path + source tarball) -- NOT the
+#      tarball contents and NOT the existing volume contents.
+#   4. block/always wrapper guarantees container restart even on partial
+#      wipe / failed untar (AN-2).
+#
+# Cold-quiesce (GP-1): container is stopped via `docker stop` (XP-1 -- the
+# community.docker stopped-state alternative strips volume specs and is
+# forbidden). AN-1: no community.docker.docker_container removal anywhere
+# in this file. The s3-credentials host file removal uses ansible.builtin.file
+# (per-file scope) -- AN-1 governs only the community.docker.docker_container
+# module, so per-file removal is fine.
+#
+# Verify: INLINE healthy-poll (D-178 -- Garage ships no tasks/verify.yml).
+# Verbatim shape from roles/garage/tasks/bootstrap.yml lines 21-35.
+#
+# Tags: [garage, restore] -- D-133 + ARCHITECTURE.md sec.5.
+
+# OPS-V13-04: zstd is required for `tar --zstd` on both ends. Same shape
+# as backup.yml's first task. Idempotent (changed=0 on re-run).
+- name: Ensure zstd is installed for tar --zstd decompression
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - garage
+    - restore
+
+# Pattern I: confirm-gate. Fires INSIDE the role-task per CONTEXT.md
+# carry-forward -- a standalone `include_role: tasks_from=restore` from
+# a custom operator playbook is blocked without --extra-vars
+# backup_restore_confirm=true. Mirrors v1.2.0 D-159 (telemetron_purge_data)
+# gate idiom (see roles/garage/tasks/purge.yml line 69 for the `when:`
+# variant of the same idiom).
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - garage
+    - restore
+
+# Pattern G (latest-discovery, D-179): when the operator did not pin a
+# specific timestamp via backup_restore_from, find the newest tarball
+# matching the per-role glob. Lexicographic sort is chronological because
+# filenames use ISO 8601 basic UTC (D-179: YYYYMMDDTHHMMSSZ).
+# failed_when guards against an empty backup directory -- restore is
+# destructive, so silently picking the wrong source is worse than failing.
+- name: Discover latest Garage backup tarball (when backup_restore_from empty)
+  ansible.builtin.shell:
+    cmd: >-
+      find {{ backup_dest_root }}/garage/ -name 'garage-*.tar.zst' -type f -printf '%f\n'
+      | sort -r | head -1
+  register: garage_latest_tarball
+  changed_when: false
+  failed_when: garage_latest_tarball.stdout == ""
+  when: backup_restore_from | default("") == ""
+  tags:
+    - garage
+    - restore
+
+# Resolve the absolute source path -- either the latest-discovered file
+# or the operator-pinned timestamp. Set as a single fact so downstream
+# tasks reference one path expression.
+- name: Set Garage restore source path (latest-discovered)
+  ansible.builtin.set_fact:
+    backup_src_path: "{{ backup_dest_root }}/garage/{{ garage_latest_tarball.stdout }}"
+  when: backup_restore_from | default("") == ""
+  tags:
+    - garage
+    - restore
+
+- name: Set Garage restore source path (operator-pinned timestamp)
+  ansible.builtin.set_fact:
+    backup_src_path: "{{ backup_dest_root }}/garage/garage-{{ backup_restore_from }}.tar.zst"
+  when: backup_restore_from | default("") != ""
+  tags:
+    - garage
+    - restore
+
+# Pattern E (D-159 destructive WARN): names ONLY the destination
+# identifiers (volume names + host file path) and the source tarball
+# path. Does NOT echo tarball contents or existing volume contents
+# (CONTEXT.md "Restore-side D-159 WARN must NOT echo the tarball
+# contents or volume contents"). Operator sees the full destruction
+# scope in PLAY OUTPUT before any wipe fires.
+- name: WARN -- garage restore will overwrite existing volume contents
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- garage restore: {{ garage_meta_volume }}, {{ garage_data_volume }}, {{ garage_s3_credentials_file }} from {{ backup_src_path }}"
+  tags:
+    - garage
+    - restore
+
+# Pattern G (integrity check, T-13-02-02 mitigation): list the tarball
+# contents BEFORE any wipe. If the tarball is corrupt, truncated, or not
+# a valid zstd archive, `tar --zstd -tf` exits non-zero and restore fails
+# before any destructive operation. This is the single guard between a
+# bad tarball and irrecoverable data loss (no checksum sidecar in v1.3.0
+# per FEATURES.md).
+- name: Integrity-check Garage backup tarball (T-13-02-02 -- before any wipe)
+  ansible.builtin.command:
+    cmd: "tar --zstd -tf {{ backup_src_path }}"
+  become: true
+  changed_when: false
+  tags:
+    - garage
+    - restore
+
+# AN-2: stop + wipe + untar + restart all wrapped in block/always so
+# the container restarts even on partial failure (e.g., wipe completes
+# but untar fails on a bad tarball that somehow passed the integrity
+# check).
+- name: Cold-quiesce Garage restore -- block wraps stop + wipe + untar (AN-2 restart guarantee)
+  block:
+    # XP-1: docker stop CLI for cold-quiesce. Same shape as backup.yml.
+    - name: Stop Garage container for cold-quiesce restore (XP-1; PITFALLS GP-1)
+      ansible.builtin.command: "docker stop -t {{ garage_backup_stop_timeout }} {{ garage_container_name }}"
+      changed_when: true
+      become: true
+
+    # Verbatim shape from bootstrap.yml lines 21-35, flipped to
+    # State.Running == false (mirrors backup.yml's stopped-check).
+    - name: Wait for Garage container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ garage_container_name }}"
+      register: garage_stopped_check
+      until: >-
+        garage_stopped_check.container is defined
+        and garage_stopped_check.container.State is defined
+        and garage_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # Pattern H (wipe via find -mindepth 1 -delete -- STACK.md sec.3).
+    # Using docker_volume removal here would recreate the volume, changing
+    # its ID and breaking the Docker daemon's mount table -- that path is
+    # the AN-1 footgun and is rejected. -mindepth 1 keeps the volume's
+    # `_data` root directory intact while removing every child entry.
+    - name: Wipe existing Garage meta volume contents (XP-5 host _data path)
+      ansible.builtin.command:
+        cmd: "find /var/lib/docker/volumes/{{ garage_meta_volume }}/_data -mindepth 1 -delete"
+      become: true
+      changed_when: true
+
+    - name: Wipe existing Garage data volume contents
+      ansible.builtin.command:
+        cmd: "find /var/lib/docker/volumes/{{ garage_data_volume }}/_data -mindepth 1 -delete"
+      become: true
+      changed_when: true
+
+    # GP-3 host-file removal before untar. Per-file ansible.builtin.file
+    # removal is correct -- AN-1 governs only the community.docker
+    # container module, not ansible.builtin.file.
+    - name: Remove existing s3-credentials host file before restore
+      ansible.builtin.file:
+        path: "{{ garage_s3_credentials_file }}"
+        state: absent
+      become: true
+
+    # Extract the `meta/` entry of the tarball into the meta volume's
+    # _data directory. --strip-components=1 drops the `meta/` prefix
+    # added by backup.yml's --transform, so the LMDB files land directly
+    # at _data/db.lmdb/ as Garage expects.
+    - name: Extract meta entry of Garage tarball into meta volume _data
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -xpf {{ backup_src_path }}
+          --strip-components=1
+          -C /var/lib/docker/volumes/{{ garage_meta_volume }}/_data
+          meta
+      become: true
+      changed_when: true
+
+    # Same shape for the data volume.
+    - name: Extract data entry of Garage tarball into data volume _data
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -xpf {{ backup_src_path }}
+          --strip-components=1
+          -C /var/lib/docker/volumes/{{ garage_data_volume }}/_data
+          data
+      become: true
+      changed_when: true
+
+    # Extract the `s3-credentials` entry directly into garage_config_dir.
+    # garage_s3_credentials_file is defined as {{ garage_config_dir }}/s3-credentials
+    # in defaults/main.yml line 109, so this lands the file at exactly
+    # the right path. Using -C + the bare entry name avoids the shell
+    # redirection problem with ansible.builtin.command (which doesn't
+    # process > redirection without going through ansible.builtin.shell).
+    - name: Extract s3-credentials entry of Garage tarball into garage config dir
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -xpf {{ backup_src_path }}
+          -C {{ garage_config_dir }}
+          s3-credentials
+      become: true
+      changed_when: true
+
+    # XP-4: re-apply the secret-bearing host file's mode after untar.
+    # tar preserves perms (the -p flag), but defense-in-depth: if the
+    # backup ever drifted from 0600 (it should not, per bootstrap.yml
+    # Step 7f), this re-establishes the at-rest contract.
+    - name: Re-apply mode 0600 to restored s3-credentials host file (XP-4)
+      ansible.builtin.file:
+        path: "{{ garage_s3_credentials_file }}"
+        mode: "0600"
+        owner: root
+        group: root
+      become: true
+
+  always:
+    # AN-2: ALWAYS restart, even on partial failure. Symmetric with backup.yml.
+    - name: Restart Garage container after restore (AN-2 always-restart guarantee)
+      ansible.builtin.command: "docker start {{ garage_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: inline healthy-poll (Garage ships no tasks/verify.yml).
+    # Verbatim shape from bootstrap.yml lines 21-35.
+    - name: Wait for Garage container HEALTHCHECK to report healthy post-restore
+      community.docker.docker_container_info:
+        name: "{{ garage_container_name }}"
+      register: garage_post_restore_health
+      until: >-
+        garage_post_restore_health.container is defined
+        and garage_post_restore_health.container.State is defined
+        and garage_post_restore_health.container.State.Health is defined
+        and garage_post_restore_health.container.State.Health.Status == 'healthy'
+      retries: "{{ garage_health_retries }}"
+      delay: "{{ garage_health_delay }}"
+      changed_when: false
+  tags:
+    - garage
+    - restore
