@@ -1,0 +1,187 @@
+---
+# roles/alertmanager/tasks/restore.yml
+# Confirm-gated restore for Alertmanager silences + nflog state (RESTORE-V13-04).
+#
+# Symmetric inverse of tasks/backup.yml. Refuses to run without
+# `backup_restore_confirm=true` (role-level safety gate -- mirrors v1.2.0
+# D-159 `telemetron_purge_data=true` contract). Defaults to the
+# latest-discovery via `find ... | sort -r | head -1` lexicographic-on-
+# ISO-8601-basic-UTC discovery (D-179). Operators can pin a specific
+# tarball via --extra-vars backup_restore_from=20260603T143012Z.
+#
+# Sequence: confirm-gate -> latest-discovery (if backup_restore_from empty)
+# -> resolve backup_src_path -> WARN -> integrity-check (tar tf) ->
+# docker stop -> wait stopped -> wipe _data/ -> untar -> always-restart
+# (AN-2) -> include verify.yml (D-178 -- 202-line file asserts /-/ready,
+# /-/healthy, /api/v2/* + Prom->AM round-trip + amtool synthetics).
+#
+# AP-1 empty-data restore symmetry: A backup taken on a fresh deploy may
+# carry no `data/` subdir inside the tarball. Untar of such a tarball
+# leaves an empty _data/ directory; on first state-write (silence add /
+# notification dedup), Alertmanager creates `data/` and the protobuf
+# files automatically. NO post-untar "ensure data/ subdir exists" task
+# is needed. `tar --zstd -tf` on an empty tarball returns rc=0 with an
+# empty listing -- the integrity check is robust to both empty and
+# populated tarballs.
+#
+# AP-2 (stale nflog re-fire -- docs only): Restoring nflog may re-enable
+# old dedup memory; operators wired to REAL receivers (Slack/email/etc.)
+# may see re-notification for ongoing alerts. Telemetron's default
+# config uses the `null` receiver so there is no re-notification surface.
+# Operator education for real-receiver setups lives in the Phase 15
+# per-role README + quickstart.md doc cascade. Selective state-restore
+# is an explicit v1.3.0 anti-feature (FEATURES.md).
+#
+# AP-3 (no cluster state): Single-instance --cluster.listen-address=""
+# means no gossip-peer-merge pitfalls on container restart.
+#
+# AN-2 always-restart: the always: clause runs docker start + verify
+# even if untar failed. This is non-negotiable -- a half-restored volume
+# with the container down is the worst possible state.
+#
+# Unlike Prometheus restore, NO post-untar cleanup task is needed:
+# Alertmanager has no analog to Prometheus's /prometheus/lock file
+# (no PID-based lock; no WAL; no sidecar files; protobuf files are
+# read+rewritten in place).
+#
+# Tags: [alertmanager, restore] on block: parent (D-133 + ARCHITECTURE
+# sec.5).
+
+# OPS-V13-04: zstd ensure-present (idempotent; no-op once installed).
+- name: Ensure zstd is installed for tar --zstd decompression
+  ansible.builtin.package:
+    name: zstd
+    state: present
+  become: true
+  tags:
+    - alertmanager
+    - restore
+
+# Confirm gate -- fires BEFORE any destructive step (and before tarball
+# discovery, so a misconfigured run fails fast without touching disk).
+# Mirrors v1.2.0 D-159 telemetron_purge_data gate idiom.
+- name: Fail unless backup_restore_confirm is set
+  ansible.builtin.fail:
+    msg: "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."
+  when: not (backup_restore_confirm | default(false) | bool)
+  tags:
+    - alertmanager
+    - restore
+
+# Latest-tarball discovery (D-179): lexicographic sort is chronological
+# because filenames are ISO 8601 basic UTC (YYYYMMDDTHHMMSSZ -- a
+# monotonic format). Skipped when operator pins backup_restore_from.
+- name: Discover latest Alertmanager backup tarball (when backup_restore_from empty)
+  ansible.builtin.shell:
+    cmd: >-
+      find {{ backup_dest_root }}/alertmanager/ -name 'alertmanager-*.tar.zst' -type f -printf '%f\n'
+      | sort -r | head -1
+  register: alertmanager_latest_tarball
+  changed_when: false
+  failed_when: alertmanager_latest_tarball.stdout == ""
+  when: backup_restore_from | default("") == ""
+  tags:
+    - alertmanager
+    - restore
+
+# Resolve backup_src_path: pinned timestamp wins; otherwise use the
+# discovered latest filename. Both branches produce an absolute path
+# under backup_dest_root/alertmanager/.
+- name: Resolve Alertmanager backup source path
+  ansible.builtin.set_fact:
+    backup_src_path: >-
+      {{
+        (backup_dest_root + '/alertmanager/alertmanager-' + backup_restore_from + '.tar.zst')
+        if (backup_restore_from | default('') != '')
+        else (backup_dest_root + '/alertmanager/' + alertmanager_latest_tarball.stdout)
+      }}
+  tags:
+    - alertmanager
+    - restore
+
+# D-159 WARN: identifiers only -- volume name + tarball path. No
+# `tar tf` content listing (information-disclosure mitigation per
+# threat model T-13-05-04).
+- name: WARN -- alertmanager restore will overwrite existing volume contents
+  ansible.builtin.debug:
+    msg: "WARNING: irreversible -- alertmanager restore: {{ alertmanager_data_volume }} from {{ backup_src_path }}"
+  tags:
+    - alertmanager
+    - restore
+
+# Integrity check BEFORE wipe -- a corrupted tarball must not destroy
+# existing on-disk state. `tar --zstd -tf` returns rc=0 on a valid
+# tarball regardless of whether the content listing is empty (AP-1
+# fresh-deploy edge case) or fully populated.
+- name: Integrity-check Alertmanager backup tarball before wipe
+  ansible.builtin.command:
+    cmd: "tar --zstd -tf {{ backup_src_path }}"
+  changed_when: false
+  become: true
+  tags:
+    - alertmanager
+    - restore
+
+# Cold-quiesce + wipe + untar block. always: clause restarts + verifies
+# whether or not the destructive sequence succeeded (AN-2 + D-178).
+- name: Cold-quiesce Alertmanager restore -- block (AN-2)
+  block:
+    - name: Stop Alertmanager container for restore (XP-1)
+      ansible.builtin.command: "docker stop -t {{ alertmanager_backup_stop_timeout }} {{ alertmanager_container_name }}"
+      changed_when: true
+      become: true
+
+    - name: Wait for Alertmanager container to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ alertmanager_container_name }}"
+      register: alertmanager_stopped_check
+      until: >-
+        alertmanager_stopped_check.container is defined
+        and alertmanager_stopped_check.container.State is defined
+        and alertmanager_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # Wipe in-place via `find -mindepth 1 -delete` (STACK.md sec.3 --
+    # `docker_volume state: absent` is the wrong tool; it changes the
+    # volume ID and may break Docker's mount table). The -mindepth 1
+    # preserves _data/ itself (the volume mount-point) while clearing
+    # all children.
+    - name: Wipe existing Alertmanager volume contents
+      ansible.builtin.command:
+        cmd: "find /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data -mindepth 1 -delete"
+      become: true
+      changed_when: true
+
+    # Untar into the wiped volume. Empty-state tarballs untar to an
+    # empty _data/ (AP-1: AM creates `data/` and the protobuf files on
+    # first state-write -- no post-untar ensure-subdir task is needed).
+    - name: Untar Alertmanager backup into volume
+      ansible.builtin.command:
+        cmd: >-
+          tar --zstd -xpf {{ backup_src_path }}
+          -C /var/lib/docker/volumes/{{ alertmanager_data_volume }}/_data
+      become: true
+      changed_when: true
+
+    # NO PP-1-style lock-file deletion here -- Alertmanager has no
+    # analog to Prometheus's /prometheus/lock (no PID-based lock; no
+    # WAL; no sidecar files per AP-1). Intentional asymmetry with the
+    # Prometheus restore.
+
+  always:
+    # AN-2: container ALWAYS restarts even if wipe/untar failed.
+    - name: Restart Alertmanager container after restore (AN-2)
+      ansible.builtin.command: "docker start {{ alertmanager_container_name }}"
+      changed_when: true
+      become: true
+
+    # D-178: verify.yml re-used as-is. RESTORE-V13-04 success criterion 3
+    # is the /api/v2/status check, which verify.yml asserts as part of
+    # the 9-step verification suite (config + /api/v2/* probes).
+    - name: Verify Alertmanager post-restore
+      ansible.builtin.include_tasks: verify.yml
+  tags:
+    - alertmanager
+    - restore
