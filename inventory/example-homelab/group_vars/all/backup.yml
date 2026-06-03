@@ -1,0 +1,41 @@
+---
+# Telemetron -- shared backup knobs (Phase 13, D-176..D-179)
+# Consumed by per-role tasks/backup.yml + tasks/restore.yml and by
+# playbooks/backup_docker.yml + playbooks/restore_docker.yml (Phase 14).
+#
+# All knobs are operator-tunable. Per-role overrides live in each role's
+# defaults/main.yml as <role>_backup_stop_timeout (default-from
+# {{ backup_stop_timeout }}).
+
+# Root destination for all backup tarballs. Per-role subdirs are auto-created
+# by each tasks/backup.yml at mode 0700. Tarballs are written mode 0600.
+# (D-176; ARCHITECTURE.md sec.8; PITFALLS.md XP-4)
+backup_dest_root: /opt/telemetron/backups
+
+# Seconds to wait between SIGTERM and SIGKILL when stopping a container for
+# cold-quiesce backup or restore. 60s default gives Prometheus WAL flush
+# and Garage LMDB clean-close ~6x the Docker default (10s). Per-role
+# overrides via <role>_backup_stop_timeout in each role's defaults/main.yml.
+# (D-177; PITFALLS.md GP-1, PP-1)
+backup_stop_timeout: 60
+
+# Default false: bail out on first role failure. Operator opt-in to "continue
+# all 4 roles even if one fails" via --extra-vars backup_continue_on_failure=true.
+# (D-178; carry-forward from v1.2.0 fail-fast contract.)
+backup_continue_on_failure: false
+
+# Default false: restore refuses to run. Operator opt-in confirmation:
+#   --extra-vars backup_restore_confirm=true
+# Required at BOTH orchestrator-level (Phase 14) AND per-role tasks/restore.yml
+# (so include_role: tasks_from=restore is safe from custom playbooks too).
+# Mirrors v1.2.0 D-159 telemetron_purge_data=true safety contract.
+# (D-179)
+backup_restore_confirm: false
+
+# Default "" -> per-role tasks/restore.yml resolves the latest tarball
+# matching <role>-*.tar.zst via `find ... | sort -r | head -1`. Lexicographic
+# sort is chronological because filenames use ISO 8601 basic UTC
+# (D-179: YYYYMMDDTHHMMSSZ).
+# Set to a specific UTC timestamp string (e.g. 20260603T143012Z) to restore
+# that exact backup across all roles.
+backup_restore_from: ""

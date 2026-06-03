@@ -66,6 +66,10 @@ alertmanager_healthcheck_start_period: 30s
 alertmanager_health_retries: 30
 alertmanager_health_delay: 2
 
+# --- Backup stop-timeout (D-177; Phase 13) ---
+# Final maintenance snapshot on SIGTERM is sub-second; default 60s is generous.
+alertmanager_backup_stop_timeout: "{{ backup_stop_timeout | default(60) }}"
+
 # --- Restart policy (OPS-06) ---
 alertmanager_restart_policy: unless-stopped
 

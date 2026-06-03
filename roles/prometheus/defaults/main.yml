@@ -87,6 +87,11 @@ prometheus_healthcheck_start_period: 30s
 prometheus_health_retries: 45
 prometheus_health_delay: 2
 
+# --- Backup stop-timeout (D-177; Phase 13) ---
+# Override default 60s for very large TSDB (WAL flush latency).
+# PITFALLS.md PP-1: SIGKILL mid-checkpoint reintroduces lock-file regression.
+prometheus_backup_stop_timeout: "{{ backup_stop_timeout | default(60) }}"
+
 # --- Restart policy (OPS-06) ---
 prometheus_restart_policy: unless-stopped
 
