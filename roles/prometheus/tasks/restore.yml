@@ -84,6 +84,25 @@
     - prometheus
     - restore
 
+# WR-03: validate operator-supplied backup_restore_from BEFORE it is
+# interpolated into a tar path. The regex pins the format to ISO 8601
+# basic UTC (YYYYMMDDTHHMMSSZ) -- the same format backup.yml emits
+# (D-179). An empty value is allowed (latest-discovery path). This
+# prevents path-traversal payloads like "../../../etc/passwd" from
+# being interpolated into ansible.builtin.command cmd: scalars.
+- name: Validate backup_restore_from matches ISO 8601 basic UTC format
+  ansible.builtin.assert:
+    that:
+      - >-
+        backup_restore_from | default('') == ''
+        or backup_restore_from | default('') | regex_search('^[0-9]{8}T[0-9]{6}Z$') is not none
+    fail_msg: >-
+      backup_restore_from must be an ISO 8601 basic UTC timestamp
+      (YYYYMMDDTHHMMSSZ), got: {{ backup_restore_from | default('') }}
+  tags:
+    - prometheus
+    - restore
+
 # OPS-V13-04: ensure zstd is installed before any tar operation.
 - name: Ensure zstd is installed for Prometheus restore (OPS-V13-04)
   ansible.builtin.package:
