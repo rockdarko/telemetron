@@ -25,20 +25,43 @@ A homelab operator can clone the repo, point the bundled example inventory at on
 
 ### Active
 
-<!-- Awaiting v1.3.0 scope. Define via `/gsd:new-milestone`. -->
+<!-- v1.3.0 Backup & Restore — defined 2026-06-02. Requirements live in REQUIREMENTS.md (created by /gsd:new-milestone). -->
 
-## Deferred to later milestones
+## Current Milestone: v1.3.0 — Backup & Restore
 
-Carried forward from v1.0 → v1.1 → v1.2 close-outs; candidates for v1.3.0+ scope:
+**Goal:** Operators have a symmetric backup/restore story for the 4 stateful Telemetron roles (Garage, Prometheus, Grafana, Alertmanager) — proven end-to-end on leviathan via the round-trip "backup → undeploy --purge-data → redeploy → restore" cycle preserving the synthetic OTLP signals shipped in v1.0.0's smoke test.
 
-- **Backup / restore for stateful volumes** — Garage S3 data + metadata, Prometheus TSDB, Grafana SQLite, Alertmanager state (`BACKUP-V13-01..04`). Operator-responsibility today; the v1.2.0 undeploy story explicitly does not include backup framing.
-- **Preflight check playbook** — "is this host ready / does it have prior Telemetron state?" surface (`PREFLIGHT-V13-*`).
-- **`docker_doctor` health-probe playbook** — diagnose-failed-deploys helper for operators who hit a partial state mid-deploy.
-- **Secrets rotation** — Grafana admin password + Prometheus bearer tokens + future hook-router HMAC.
-- **Hook router** — Flask + per-rule allowlist + per-tuple rate limit + Jenkins `buildWithParameters` auth (`ALERT-V2-01..05`). Design preserved in archived `04-DISCUSSION-LOG.md`.
-- **Distributed / scale-out** — Loki/Tempo/Mimir distributed mode + HAProxy + multi-host inventory (`DIST-01..03`).
-- **Multi-arch** — arm64 (Pi 5 / Apple Silicon) base image testing + CI matrix (`ARCH-01..02`).
-- **Documentation deep-dives** — alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics (`DOCS-V2-01..07`).
+**Target features:**
+- `playbooks/backup_docker.yml` — symmetric orchestrator (mirrors `deploy_docker.yml` shape); calls per-role `tasks/backup.yml` for the 4 stateful roles; cold-quiesce model (stops containers, snapshots host bind-mount + Docker volume, restarts); writes `/opt/telemetron/backups/<role>/<role>-<UTC-timestamp>.tar.zst`; bail-out by default on first failure (`--extra-vars backup_continue_on_failure=true` to override).
+- Per-role `tasks/backup.yml` for the 4 stateful roles: **Garage** (S3 buckets + metadata + S3-credentials file), **Prometheus** (TSDB), **Grafana** (SQLite + provisioning state), **Alertmanager** (silences + active alerts state). Stateless roles (Loki/Tempo/Mimir data lives IN Garage so it's covered by the Garage backup; Karma/node_exporter/OTel/FB carry no operator state) skip backup entirely.
+- `playbooks/restore_docker.yml` — symmetric to backup; per-role `tasks/restore.yml` for the same 4 roles; takes either explicit `--extra-vars backup_restore_from=<timestamp>` or defaults to latest tarball per role; cold-restore (stops container, restores volume + bind-mount contents, restarts).
+- Live leviathan UAT proving the full round-trip: synthetic OTLP push → wait for Garage chunks to land → `backup_docker.yml` → `undeploy_docker.yml --extra-vars telemetron_purge_data=true` → `deploy_docker.yml` → `restore_docker.yml` → same synthetic OTLP signals visible in Grafana. Mirrors the v1.0.0 `smoke_test.yml` pattern as the milestone acceptance gate.
+- Documentation cascade (matches v1.2.0 Phase 12 shape): `docs/quickstart.md` `## Backup and restore` section; root README cross-ref; per-role README `## Backup` H2 section on each of the 4 stateful roles (stateless roles get a one-liner explaining why they have nothing to back up); `roles/README.md` Gate 11 ("every stateful role ships a tested backup + restore path").
+
+**Locked design decisions (from /gsd:new-milestone questioning 2026-06-02):**
+- **Quiescing:** Cold backup — stop container, snapshot volume + bind-mount, restart. Brief downtime (~30-60s per role) is acceptable for homelab; aligns with v1.2.0 `state: stopped, keep_volumes: true` per-role uninstall pattern. Hot-snapshot rejected (4 different per-component mechanisms = 4x surface).
+- **Destination:** Local disk only at `/opt/telemetron/backups/<role>/<role>-<UTC-timestamp>.tar.zst` (mode 0600 dir). Operator's responsibility to ship off-host (rsync, restic, BorgBackup, rclone — Telemetron stays opinion-free). Pluggable handler abstraction rejected.
+- **Retention:** Operator-managed — Telemetron writes dated tarballs and never deletes. No `keep_last_N` knob.
+- **Encryption:** None at rest. Operators who need it wrap with age/gpg/restic/LUKS. Keeps `secrets.yml` surface unchanged.
+- **Failure mode:** Bail-out default (first role's failure halts orchestrator); `backup_continue_on_failure=true` opt-in.
+- **Quality bar:** Live leviathan round-trip UAT (per v1.1.0 / v1.2.0 lessons — static verifier alone misses output-format regressions).
+- **Size:** 3 phases (parallel to v1.2.0 shape) — Phase 13 per-role tasks, Phase 14 orchestrators + UAT, Phase 15 doc cascade + Gate 11.
+
+**Deferred to later milestones (not in v1.3.0):**
+- Off-host backup destination (rsync, S3, rclone) — operator wraps Telemetron's local-disk output
+- Hot snapshots via per-component mechanisms (Garage `snapshot`, Prometheus `/api/v1/admin/tsdb/snapshot`, Grafana SQLite `.backup`, Alertmanager state-file copy)
+- Encryption at rest
+- Automatic retention / pruning
+- Backup of stateless roles' config (operator re-runs deploy_docker.yml; config is version-controlled)
+- Cross-version backup compatibility (v1.3.0 backups restoring under v1.4.0+ schemas)
+- Multi-host coordination (single-host single-deploy is the v1.3.0 surface)
+- **Preflight check playbook** (`PREFLIGHT-V13-*`) — host-readiness diagnostic; deferred to v1.4.0+
+- **`docker_doctor`** health-probe playbook — diagnose-failed-deploys helper; deferred to v1.4.0+
+- **Secrets rotation** — Grafana admin password + Prometheus bearer tokens + future hook-router HMAC
+- **Hook router** (`ALERT-V2-01..05`) — Flask + per-rule allowlist + per-tuple rate limit + Jenkins `buildWithParameters` auth. Design preserved in archived `04-DISCUSSION-LOG.md`. Still deferred since v1.0.
+- **Distributed / scale-out** (`DIST-01..03`) — Loki/Tempo/Mimir distributed mode + HAProxy + multi-host inventory
+- **Multi-arch** (`ARCH-01..02`) — arm64 (Pi 5 / Apple Silicon) base image testing + CI matrix
+- **Documentation deep-dives** (`DOCS-V2-01..07`) — alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics
 
 ### Out of Scope
 
@@ -135,4 +158,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-30 after v1.2.0 milestone close (Operator Undeploy Path). v1.2.0 archived to `.planning/milestones/v1.2.0-{ROADMAP,REQUIREMENTS}.md` and tagged `v1.2.0`. 8/8 v1.2.0 requirements validated via live leviathan UAT across Phases 10/11/12; Gate 10 ("every deploy role ships a tested uninstall path") added to `roles/README.md`; full 3-layer documentation cascade in place. v1.1.0 close: 9/9 requirements validated, archived, tagged `v1.1.0`. v1.0.0 close: 37/37 requirements validated, archived, tagged `v1.0.0` (PromLens subsequently removed in `v1.0.1`). Awaiting v1.3.0 scoping via `/gsd:new-milestone`.*
+*Last updated: 2026-06-02 — v1.3.0 (Backup & Restore) scoped via `/gsd:new-milestone`. 3-phase plan parallel to v1.2.0: per-role backup+restore tasks → orchestrators + live leviathan round-trip UAT → doc cascade + Gate 11. v1.2.0 close (2026-05-30): 8/8 requirements validated, archived, tagged `v1.2.0`. v1.1.0 close: 9/9, tagged `v1.1.0`. v1.0.0 close: 37/37, tagged `v1.0.0` (PromLens subsequently removed in `v1.0.1`).*

@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2.0
-milestone_name: Operator Undeploy Path
-status: Awaiting next milestone
-stopped_at: Phase 12 context gathered
-last_updated: "2026-05-30T20:25:05.859Z"
-last_activity: 2026-05-30 — Milestone v1.2.0 completed and archived
+milestone: v1.3.0
+milestone_name: Backup & Restore
+status: planning
+last_updated: "2026-06-03T02:06:15.940Z"
+last_activity: 2026-06-03
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-19 after v1.0.0 milestone close)
 
 ## Current Position
 
-Phase: Milestone v1.2.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-05-30 — Milestone v1.2.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-03 — Milestone v1.3.0 started
 
 ## Performance Metrics
 
