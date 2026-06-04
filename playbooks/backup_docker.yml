@@ -1,0 +1,174 @@
+---
+# Telemetron -- M1 backup orchestrator (Docker target)
+#
+# Backs up the 4 stateful Telemetron roles on a single Docker host by
+# invoking each role's tasks/backup.yml in FORWARD-deploy order
+# (garage -> prometheus -> grafana -> alertmanager). This is content-
+# dependency order, NOT reverse-of-deploy: Garage is the S3 store the
+# other 3 roles do not depend on for their own state, so it goes first
+# and remains the only "shared writer" considered (Loki/Tempo/Mimir are
+# stateless from a per-role-backup standpoint -- their data lives in
+# Garage and is captured by the Garage backup).
+#
+# Uses `include_role` (NOT a `roles:` block) per D-149, so each include
+# can carry its own per-role tag AND the cross-cutting `backup` tag
+# (D-149 explicit-include precedent extended for SC4 cross-cutting).
+#
+# A single shared ISO 8601 basic UTC timestamp is generated once in
+# pre_tasks (D-191) and passed to each role via
+#   vars: { backup_timestamp_override: "{{ backup_timestamp_shared }}" }
+# so all 4 tarballs from one run share one filename suffix. Standalone
+# `include_role: name=<role> tasks_from=backup` calls (no override set)
+# fall through to the per-role inline `date` -- Plan 14-01's
+# `backup_timestamp_effective` set_fact resolves the indirection.
+#
+# Bail-out vs continue-on-failure (D-184):
+#   default: any_errors_fatal=true (first role failure aborts the play)
+#   opt-in:  --extra-vars backup_continue_on_failure=true (all 4 roles
+#            attempt their backup; failures aggregated in PLAY RECAP)
+#
+# Per-role + cross-cutting tag UX (OPS-V13-03; SC4):
+#   --tags <role>  (e.g. --tags garage) -> runs only that role's backup
+#                  plus the `tags: always` pre_tasks (banner + timestamp).
+#   --tags backup  -> runs all 4 role include_role calls (cross-cutting
+#                  selector backed by the per-include `[<role>, backup]`
+#                  tag list). The `tags: always` pre_tasks fire too.
+#   --tags <stateless-role> (loki/tempo/mimir/karma/fluentbit/
+#                  opentelemetry/node_exporter/nfsd) -> matches nothing;
+#                  exits 0 with an empty play (SC1).
+#
+# Banner is stable across role additions (D-186): it does NOT enumerate
+# role names; instead it shows the destination root with a `<role>/`
+# token, the bail-out knob status with a category description, and the
+# stop-timeout. Read line 1 as "one tarball per role under that root".
+#
+# Usage:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/backup_docker.yml \
+#                    --ask-vault-pass
+#
+#   # Per-role:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/backup_docker.yml --tags garage --ask-vault-pass
+#
+#   # Cross-cutting (all 4 stateful roles via the shared `backup` tag):
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/backup_docker.yml --tags backup --ask-vault-pass
+#
+#   # Opt-in: continue past the first role's failure:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/backup_docker.yml \
+#                    --extra-vars backup_continue_on_failure=true \
+#                    --ask-vault-pass
+
+- name: Telemetron -- back up Docker host stateful roles
+  hosts: telemetron
+  gather_facts: true
+  become: false
+
+  collections:
+    - community.docker
+
+  # D-184: default behaviour is fail-fast on the first role's first task
+  # failure. Operator opts into "run all 4 roles past failures" via
+  # --extra-vars backup_continue_on_failure=true. The Jinja2 expression
+  # inverts the knob (knob false -> any_errors_fatal true -> bail).
+  any_errors_fatal: "{{ not (backup_continue_on_failure | default(false) | bool) }}"
+
+  vars:
+    # D-184 default: bail on first role failure. Operator opts in via
+    # --extra-vars backup_continue_on_failure=true to attempt all 4 roles.
+    backup_continue_on_failure: false
+
+  pre_tasks:
+    # D-186: PLAY-start banner. Category descriptions (no role-name
+    # enumeration) so the banner is stable across future role additions.
+    # Tagged `always` (Shared Pattern 4) so the banner displays under
+    # --tags <role> targeted runs too. NO destructive-action prefix --
+    # backup is not destructive (D-187 prefix is restore-only).
+    - name: Banner -- backup invocation context (D-186; tags always for --tags <role> visibility)
+      ansible.builtin.debug:
+        msg: |
+          Backup destination: {{ backup_dest_root }}/<role>/
+          backup_continue_on_failure={{ backup_continue_on_failure | default(false) }}
+            {{ '(all 4 roles will attempt their backup; failures aggregated in PLAY RECAP)' if (backup_continue_on_failure | default(false) | bool) else '(first role failure will abort the playbook)' }}
+          backup_stop_timeout={{ backup_stop_timeout }}s
+      tags:
+        - always
+
+    # D-191: generate the shared ISO 8601 basic UTC timestamp ONCE so
+    # all 4 tarballs in one orchestrator run share a filename suffix.
+    # The `<role>-<ts>.tar.zst` lexicographic sort is chronological
+    # because the format is monotonic. Tagged `always` so --tags <role>
+    # targeted runs still get the shared timestamp.
+    - name: Generate shared backup timestamp (D-191 ISO 8601 basic UTC)
+      ansible.builtin.command: date -u +%Y%m%dT%H%M%SZ
+      register: backup_ts
+      changed_when: false
+      tags:
+        - always
+
+    # D-191: promote the registered stdout to a play-scope fact so each
+    # include_role's vars: block reads the SAME value. Tagged `always`.
+    - name: Publish shared timestamp as backup_timestamp_shared fact
+      ansible.builtin.set_fact:
+        backup_timestamp_shared: "{{ backup_ts.stdout }}"
+      tags:
+        - always
+
+  # D-149 + D-193: 4 explicit include_role calls in FORWARD-deploy order
+  # (garage -> prometheus -> grafana -> alertmanager). NOT reverse-of-
+  # deploy; backup is content-dependency-ordered with Garage first.
+  # Each include carries TWO tags: the per-role `<role>` (for --tags
+  # <role> per-role invocation) AND the cross-cutting `backup` (for the
+  # SC4 --tags backup invocation that covers all 4 includes). With
+  # dynamic include_role, Ansible resolves tags at the include-task
+  # level BEFORE descending into the role body, so the include-task tag
+  # list is the ONLY mechanism that makes --tags backup cross-cutting
+  # work; the per-role block-level tags inside each tasks/backup.yml
+  # are not visible at play-level tag-selection time for dynamic
+  # includes.
+  tasks:
+    - name: Invoke garage backup
+      ansible.builtin.include_role:
+        name: garage
+        tasks_from: backup
+      vars:
+        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+      tags:
+        - garage
+        - backup
+
+    - name: Invoke prometheus backup
+      ansible.builtin.include_role:
+        name: prometheus
+        tasks_from: backup
+      vars:
+        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+      tags:
+        - prometheus
+        - backup
+
+    - name: Invoke grafana backup
+      ansible.builtin.include_role:
+        name: grafana
+        tasks_from: backup
+      vars:
+        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+      tags:
+        - grafana
+        - backup
+
+    - name: Invoke alertmanager backup
+      ansible.builtin.include_role:
+        name: alertmanager
+        tasks_from: backup
+      vars:
+        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+      tags:
+        - alertmanager
+        - backup
+
+  # D-193: NO post_tasks. Backup orchestrator does not need shared-
+  # resource cleanup; each per-role tasks/backup.yml owns its own
+  # block/rescue/always restart guarantee (Phase 13 contract).
