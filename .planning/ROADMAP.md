@@ -58,7 +58,7 @@ Tag: `v1.2.0`
 ### 🚧 v1.3.0 — Backup & Restore (In Progress)
 
 - [x] **Phase 13: Per-Role Backup & Restore Tasks** — `tasks/backup.yml` + `tasks/restore.yml` for the 4 stateful roles (garage, prometheus, grafana, alertmanager); cold-quiesce model; zstd tarballs at `/opt/telemetron/backups/<role>/`; block/rescue/always container-restart guarantee (9 requirements: BACKUP-V13-01..04, RESTORE-V13-01..04, OPS-V13-04) (completed 2026-06-03)
-- [ ] **Phase 14: Orchestrators + Leviathan HUMAN-UAT** — `playbooks/backup_docker.yml` + `playbooks/restore_docker.yml`; confirm-gate, bail-out, and `--tags` cross-cutting UX; live 7-step backup → purge-data undeploy → redeploy → restore → re-smoke round-trip on leviathan (6 requirements: BACKUP-V13-05, RESTORE-V13-05, OPS-V13-01..03, UAT-V13-01)
+- [x] **Phase 14: Orchestrators + Leviathan HUMAN-UAT** — `playbooks/backup_docker.yml` + `playbooks/restore_docker.yml`; confirm-gate, bail-out, and `--tags` cross-cutting UX; live 7-step backup → purge-data undeploy → redeploy → restore → re-smoke round-trip on leviathan (6 requirements: BACKUP-V13-05, RESTORE-V13-05, OPS-V13-01..03, UAT-V13-01) (completed 2026-06-04)
 - [ ] **Phase 15: Documentation Cascade** — Gate 11 in `roles/README.md`; `docs/quickstart.md` `## Backup and restore` section + root README cross-ref; per-stateful-role README `## Backup` H2 sections; stateless role README one-liners (3 requirements: DOCS-V13-01..03)
 
 ## Phase Details
@@ -92,7 +92,11 @@ Tag: `v1.2.0`
   4. Both playbooks honour `--tags <role>` for any of the 4 stateful roles using the same tagging convention as `deploy_docker.yml`; `--tags backup` and `--tags restore` are also valid cross-cutting commands that operate on all 4 roles.
   5. `playbooks/backup_docker.yml` defaults to bail-out on the first role's failure; `--extra-vars backup_continue_on_failure=true` opts into continuing past failed roles.
   6. The `14-HUMAN-UAT.md` 7-step round-trip on leviathan completes with no manual intervention: (1) `deploy_docker.yml`, (2) `smoke_test.yml` records `smoke_trace_id` + `smoke_run_id`, (3) `backup_docker.yml`, (4) `undeploy_docker.yml --extra-vars telemetron_purge_data=true`, (5) `deploy_docker.yml`, (6) `restore_docker.yml --extra-vars backup_restore_confirm=true backup_restore_from=<timestamp>`, (7) `smoke_test.yml` with the same `smoke_trace_id` + `smoke_run_id` asserts the same synthetic OTLP signals are visible in Grafana — the milestone acceptance gate passes.
-**Plans**: TBD
+**Plans**: 4 plans
+- [x] 14-01-amend-backup-yml-timestamp-override-PLAN.md — D-191 timestamp_override amendment to 4 backup.yml files (wave 1)
+- [x] 14-02-backup-docker-orchestrator-PLAN.md — backup_docker.yml thin orchestrator with shared timestamp + bail-out knob (wave 2)
+- [x] 14-03-restore-docker-orchestrator-PLAN.md — restore_docker.yml confirm-gated orchestrator with writer-quiesce around Garage (wave 2)
+- [x] 14-04-human-uat-PLAN.md — 14-HUMAN-UAT.md skeleton + live leviathan UAT round-trip (wave 3)
 
 ### Phase 15: Documentation Cascade
 **Goal**: Operators can discover the backup and restore story entirely through documentation — from root README to quickstart to per-role README — without reading source code, and Gate 11 codifies the stateful-role contract for future contributors.
@@ -123,7 +127,7 @@ Tag: `v1.2.0`
 | 11    | v1.2.0    | 6/6            | Complete    | 2026-05-30 |
 | 12    | v1.2.0    | 3/3            | Complete    | 2026-05-30 |
 | 13    | v1.3.0    | 5/5 | Complete    | 2026-06-03 |
-| 14    | v1.3.0    | 0/?            | Not started | -          |
+| 14    | v1.3.0    | 6/7 | In Progress|  |
 | 15    | v1.3.0    | 0/?            | Not started | -          |
 
 ## Backlog
