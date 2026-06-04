@@ -70,6 +70,17 @@
     - prometheus
     - backup
 
+# D-191 (Phase 14): when invoked from playbooks/backup_docker.yml the
+# orchestrator passes a single shared timestamp so all 4 tarballs in a
+# multi-role run share one filename suffix. Standalone include_role calls
+# (no override set) fall through to the per-role inline backup_timestamp.stdout.
+- name: Resolve effective backup timestamp (D-191 orchestrator override or inline)
+  ansible.builtin.set_fact:
+    backup_timestamp_effective: "{{ backup_timestamp_override | default(backup_timestamp.stdout) }}"
+  tags:
+    - prometheus
+    - backup
+
 # CR-02: resolve host-side mountpoint via docker_volume_info instead of
 # hardcoding /var/lib/docker/volumes/<vol>/_data -- daemon-data-root-agnostic.
 - name: Resolve Prometheus data volume mountpoint (CR-02 data-root-agnostic)
@@ -119,7 +130,7 @@
         cmd: >-
           umask 0177 &&
           tar --zstd -cpf
-          {{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp.stdout }}.tar.zst
+          {{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp_effective }}.tar.zst
           -C {{ prometheus_data_volume_info.volume.Mountpoint }}
           .
       become: true
@@ -129,7 +140,7 @@
     # the 0700 destination dir set above.
     - name: Set Prometheus backup tarball permissions (XP-4)
       ansible.builtin.file:
-        path: "{{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp.stdout }}.tar.zst"
+        path: "{{ backup_dest_root }}/prometheus/prometheus-{{ backup_timestamp_effective }}.tar.zst"
         mode: "0600"
         owner: root
         group: root
