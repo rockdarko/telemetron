@@ -374,3 +374,33 @@
   tags:
     - garage
     - restore
+
+# G-01 closure (14-HUMAN-UAT.md): after the Garage restore completes
+# successfully, populate garage_s3_access_key_id and garage_s3_secret_key
+# as play-level facts from the just-restored {{ garage_s3_credentials_file }}.
+# Without these facts, a subsequent `include_role: name=loki tasks_from=main`
+# (e.g. from playbooks/restore_docker.yml after this role-task returns) would
+# render loki.yaml.j2 lines 53-54 which lazy-resolve loki_s3_access_key ->
+# garage_s3_access_key_id via inventory/.../secrets.yml -- that resolution
+# explodes with `AnsibleUndefinedVariable: 'garage_s3_access_key_id' is
+# undefined` because the restore path NEVER called bootstrap.yml (which is
+# the normal fact-population path). These two tasks reproduce bootstrap.yml's
+# Step 7b + 7c (lines 124-147) without the garage_creds_file.stat.exists
+# guard (the just-completed block wrote the file; if block failed, Ansible
+# raised before reaching here). Canonical shape: roles/garage/tasks/bootstrap.yml:124-147.
+- name: Load restored Garage S3 credentials from host file (G-01 fact-population for writer-config re-render)
+  ansible.builtin.slurp:
+    src: "{{ garage_s3_credentials_file }}"
+  register: garage_creds_raw
+  changed_when: false
+  tags:
+    - garage
+    - restore
+
+- name: Set Garage S3 credential facts from restored host file (G-01; mirrors bootstrap.yml:140-147)
+  ansible.builtin.set_fact:
+    garage_s3_access_key_id: "{{ (garage_creds_raw.content | b64decode) | regex_search('(?m)^key_id=(.+)$', '\\1') | first }}"
+    garage_s3_secret_key: "{{ (garage_creds_raw.content | b64decode) | regex_search('(?m)^secret=(.+)$', '\\1') | first }}"
+  tags:
+    - garage
+    - restore
