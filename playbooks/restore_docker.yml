@@ -183,12 +183,67 @@
         - garage
         - restore
 
-    # D-183 + D-189 amended: restart the 3 Garage writers sequentially AFTER
-    # the Garage restore. Symmetric with the stop step (same loop shape,
-    # opposite verb). Garage S3 endpoint and credentials haven't changed
-    # (Phase 13's Garage restore restores the s3-credentials host file), so
-    # the writers come back pointing at the same buckets they were
-    # configured for -- no config re-render needed.
+    # G-01 (14-HUMAN-UAT.md) + D-183 REVERSED: the original D-183 assumption
+    # "Garage S3 endpoint and credentials haven't changed [...] no config
+    # re-render needed" is WRONG in the 7-step round-trip context. Step 5
+    # (post-purge redeploy) re-runs Garage bootstrap which generates a NEW
+    # S3 key (because the purge removed the host credentials file). Step 5's
+    # writer-config renders use that NEW key. Then step 6 (this play) calls
+    # `include_role: name=garage tasks_from=restore` above, which overwrites
+    # {{ garage_s3_credentials_file }} with the ORIGINAL pre-backup key --
+    # but writer configs on the host (/opt/telemetron/{loki,tempo,mimir}/*.yaml)
+    # still hold the post-purge (wrong) key. Writers crash-loop with
+    # "Forbidden: No such key:" against the restored Garage.
+    #
+    # Fix (G-01 closure):
+    #   1. roles/garage/tasks/restore.yml now populates garage_s3_access_key_id
+    #      and garage_s3_secret_key as play-level facts from the restored
+    #      garage_s3_credentials_file (the two tail tasks added by Plan 14-05).
+    #   2. `tasks_from=main` re-renders each writer's config template against
+    #      the now-correct facts (loki_s3_access_key -> garage_s3_access_key_id
+    #      via lazy-Jinja indirection in inventory/.../secrets.yml lines 42-49).
+    #      The template notifies `restart <writer>` if the rendered file changed.
+    #   3. `meta: flush_handlers` forces those restart handlers to fire NOW --
+    #      before the unconditional `docker start` loop below -- so the
+    #      healthy-poll races against a correctly-configured container.
+    #   4. The existing `docker start` loop (unconditional) below is preserved
+    #      as the fallback for the case where the template happened to match
+    #      (no handler fired, writer still stopped from the writer-stop loop
+    #      earlier in this play).
+    #
+    # D-183 is PRESERVED for the non-purge case (same-deploy restore where
+    # the S3 key didn't change): the template task reports changed=false,
+    # no handler fires, no restart, the `docker start` below brings the
+    # stopped writer back up. D-189 tag rationale: writer-rerender is a
+    # Garage-restore prerequisite so it shares [garage, restore] tags.
+
+    - name: Re-render Loki config from restored Garage s3-credentials (G-01 fix; D-183 reversed)
+      ansible.builtin.include_role:
+        name: loki
+        tasks_from: main
+      tags:
+        - garage
+        - restore
+
+    - name: Re-render Tempo config from restored Garage s3-credentials (G-01 fix; D-183 reversed)
+      ansible.builtin.include_role:
+        name: tempo
+        tasks_from: main
+      tags:
+        - garage
+        - restore
+
+    - name: Re-render Mimir config from restored Garage s3-credentials (G-01 fix; D-183 reversed)
+      ansible.builtin.include_role:
+        name: mimir
+        tasks_from: main
+      tags:
+        - garage
+        - restore
+
+    - name: Flush restart handlers now so writers pick up new config before healthy-poll (G-01)
+      ansible.builtin.meta: flush_handlers
+
     - name: Start Garage writers (Loki/Tempo/Mimir) after Garage restore (D-183, D-189)
       ansible.builtin.command: "docker start {{ item.container_name }}"
       loop:
