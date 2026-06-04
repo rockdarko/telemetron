@@ -1,0 +1,257 @@
+---
+# Telemetron -- M1 restore orchestrator (Docker target)
+#
+# DESTRUCTIVE: requires `--extra-vars backup_restore_confirm=true` for ANY
+# invocation (including stateless-tag invocations like `--tags loki`). The
+# orchestrator-level fail gate is tagged `[always]` because the playbook's
+# IDENTITY is destructive -- the gate is the playbook-identity-level safety
+# (D-188 amended by SC4 reconciliation in 14-CONTEXT.md / 14-03-PLAN.md).
+#
+# Calls the 4 per-role tasks/restore.yml files in forward-deploy order:
+#   garage -> prometheus -> grafana -> alertmanager
+# (NOT reverse-of-deploy -- restore preserves the storage-dependency-first
+# ordering established by backup. See ROADMAP SC2.)
+#
+# Cross-role coordination (D-180): the Garage `tasks_from=restore` is
+# bracketed by writer-stop (Loki, Tempo, Mimir) BEFORE and writer-restart
+# AFTER. The writer-quiesce tasks live inline here -- not as new per-role
+# tasks in roles/loki, roles/tempo, or roles/mimir. The bracket is tagged
+# `[garage, restore]` (D-189 amended by SC4 reconciliation):
+#   --tags garage    -> runs writer-stop -> Garage restore -> writer-restart as one unit.
+#   --tags restore   -> runs the bracketed unit AND the other 3 role restores (SC4 cross-cutting).
+#   --tags loki/tempo/mimir/writers/always -> matches nothing in the bracket
+#                                              (D-189 original rationale preserved -- the writer-stop must NOT
+#                                              fire when targeting a writer's tag, because the writer-stop is
+#                                              a Garage-restore prerequisite, not a per-writer operation).
+#
+# `any_errors_fatal: true` is HARDCODED at play level (D-185). Restore is
+# destructive; partial restore is worse than no restore. NOTE:
+# `backup_continue_on_failure` does NOT apply to restore_docker.yml -- it is
+# a backup-only knob.
+#
+# Defence-in-depth: each per-role tasks/restore.yml (Phase 13) ALSO carries
+# its own `backup_restore_confirm` gate, so custom playbooks that call
+# `include_role: tasks_from=restore` directly still get the safety check
+# (e.g., roles/grafana/tasks/restore.yml carries its own confirm gate).
+#
+# Usage:
+#   # Default -- restore latest tarball per role:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/restore_docker.yml \
+#                    --ask-vault-pass \
+#                    --extra-vars "backup_restore_confirm=true"
+#
+#   # Pin a specific timestamp across all roles:
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/restore_docker.yml \
+#                    --ask-vault-pass \
+#                    --extra-vars "backup_restore_confirm=true backup_restore_from=YYYYMMDDTHHMMSSZ"
+#
+#   # Per-role restore (writers untouched unless <role>=garage):
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/restore_docker.yml \
+#                    --ask-vault-pass \
+#                    --tags grafana \
+#                    --extra-vars "backup_restore_confirm=true"
+#
+#   # Cross-cutting --tags restore (runs all 4 roles + writer-quiesce):
+#   ansible-playbook -i inventory/example-homelab \
+#                    playbooks/restore_docker.yml \
+#                    --ask-vault-pass \
+#                    --tags restore \
+#                    --extra-vars "backup_restore_confirm=true"
+#
+# The `backup_restore_confirm=true` flag is REQUIRED for ANY restore_docker.yml
+# invocation -- including `--tags <stateless-role>` invocations (e.g.,
+# `--tags loki`) that would otherwise produce an empty 0-task play. The
+# playbook's identity is destructive even when no role is selected; without
+# the confirm flag, the invocation fails at the orchestrator-level gate
+# before any tag-filtering decision is made (D-188 amended by SC4 reconciliation).
+
+- name: Telemetron -- restore Docker host stateful roles from backups (DESTRUCTIVE)
+  hosts: telemetron
+  gather_facts: true
+  become: false
+  any_errors_fatal: true
+
+  collections:
+    - community.docker
+
+  vars:
+    # D-185: confirm-gate default. Operator MUST opt in via `--extra-vars`.
+    backup_restore_confirm: false
+    # D-190: empty default -- each role resolves "latest per role" independently.
+    # Set to an ISO 8601 basic UTC timestamp (e.g. 20260603T143012Z) to pin
+    # all roles to the same backup tarball.
+    backup_restore_from: ""
+
+  pre_tasks:
+    # OPS-V13-01 -- orchestrator-level confirm gate. Mirrors per-role gate
+    # (defence-in-depth per D-185). `tags: [always]` is INTENTIONAL: the
+    # playbook's IDENTITY is destructive, so the gate must fire on ANY
+    # invocation including --tags <stateless-role> invocations that would
+    # otherwise produce an empty 0-task play (D-188 amended by SC4
+    # reconciliation in 14-CONTEXT.md). This task runs FIRST so the operator
+    # does not see the WARN banner if the gate fires.
+    - name: Refuse to run restore without explicit confirm-gate (OPS-V13-01; identity-level safety per D-188 amended)
+      ansible.builtin.fail:
+        msg: |
+          Restore refused.
+          Pass --extra-vars backup_restore_confirm=true to proceed.
+          This flag is required for ANY restore_docker.yml invocation including --tags <stateless-role> invocations -- the playbook's identity is destructive.
+          See docs/quickstart.md#backup-and-restore for the operator opt-in contract.
+      when: not (backup_restore_confirm | default(false) | bool)
+      tags:
+        - always
+
+    # D-187 PLAY-start WARN banner. Verbatim 3-line content. `WARNING:
+    # irreversible --` prefix on line 1 is the D-159 grep target.
+    # `tags: [always]` so the banner displays on `--tags <role>` runs too.
+    - name: WARN -- restore will permanently replace volume contents (D-187)
+      ansible.builtin.debug:
+        msg: |
+          WARNING: irreversible -- restore will PERMANENTLY REPLACE volume contents on all 4 stateful roles (garage, prometheus, grafana, alertmanager)
+          Target timestamp: {{ backup_restore_from | default('<latest per role>') }}
+          Restore order: stop Loki/Tempo/Mimir -> garage -> prometheus -> grafana -> alertmanager -> restart Loki/Tempo/Mimir
+      tags:
+        - always
+
+  # D-193: writer-stop, Garage restore, writer-restart, and the other 3 role
+  # restores ALL live in `tasks:` (NOT post_tasks) so the writer-restart
+  # fires under `--tags garage` AND `--tags restore`. post_tasks runs
+  # regardless of `--tags`, which would break the `--tags garage` symmetry.
+  tasks:
+    # D-181 + D-189 amended: stop the 3 Garage writers sequentially BEFORE
+    # the Garage restore. Container names hardcoded inline in the loop
+    # list-of-dicts per 14-PATTERNS.md "Landmines" Mitigation Option 1 --
+    # no `include_role: name=loki` (or tempo/mimir) anywhere in this
+    # playbook, so the role defaults are NOT auto-loaded. The
+    # `| default('telemetron-<role>')` filter mirrors each role's
+    # defaults/main.yml value; operators can still override via
+    # `--extra-vars loki_container_name=...`.
+    #
+    # Tags `[garage, restore]` (D-189 amended): `--tags garage` runs the
+    # whole bracketed unit; `--tags restore` cross-cutting (SC4) also runs
+    # the bracketed unit. `--tags loki/tempo/mimir/writers/always` matches
+    # nothing here (original D-189 rationale preserved).
+    - name: Stop Garage writers (Loki/Tempo/Mimir) before Garage restore (D-181, D-189)
+      ansible.builtin.command: "docker stop -t {{ backup_stop_timeout }} {{ item.container_name }}"
+      loop:
+        - { role: loki,  container_name: "{{ loki_container_name  | default('telemetron-loki') }}" }
+        - { role: tempo, container_name: "{{ tempo_container_name | default('telemetron-tempo') }}" }
+        - { role: mimir, container_name: "{{ mimir_container_name | default('telemetron-mimir') }}" }
+      loop_control:
+        label: "{{ item.role }}"
+      changed_when: true
+      become: true
+      tags:
+        - garage
+        - restore
+
+    # Poll until each writer reaches stopped state. Verbatim shape from
+    # roles/garage/tasks/backup.yml lines 132-142 (Pattern H). 30 retries
+    # * 2s = 60s ceiling -- mirrors backup_stop_timeout budget.
+    - name: Wait for Garage writers to reach stopped state
+      community.docker.docker_container_info:
+        name: "{{ item.container_name }}"
+      register: writer_stopped_check
+      until: >-
+        writer_stopped_check.container is defined
+        and writer_stopped_check.container.State is defined
+        and writer_stopped_check.container.State.Running == false
+      retries: 30
+      delay: 2
+      changed_when: false
+      loop:
+        - { role: loki,  container_name: "{{ loki_container_name  | default('telemetron-loki') }}" }
+        - { role: tempo, container_name: "{{ tempo_container_name | default('telemetron-tempo') }}" }
+        - { role: mimir, container_name: "{{ mimir_container_name | default('telemetron-mimir') }}" }
+      loop_control:
+        label: "{{ item.role }}"
+      tags:
+        - garage
+        - restore
+
+    # Garage restore (D-189 amended: `[garage, restore]`). Defence-in-depth
+    # per-role gate in roles/garage/tasks/restore.yml re-validates
+    # backup_restore_confirm at the role layer.
+    - name: Invoke garage restore
+      ansible.builtin.include_role:
+        name: garage
+        tasks_from: restore
+      tags:
+        - garage
+        - restore
+
+    # D-183 + D-189 amended: restart the 3 Garage writers sequentially AFTER
+    # the Garage restore. Symmetric with the stop step (same loop shape,
+    # opposite verb). Garage S3 endpoint and credentials haven't changed
+    # (Phase 13's Garage restore restores the s3-credentials host file), so
+    # the writers come back pointing at the same buckets they were
+    # configured for -- no config re-render needed.
+    - name: Start Garage writers (Loki/Tempo/Mimir) after Garage restore (D-183, D-189)
+      ansible.builtin.command: "docker start {{ item.container_name }}"
+      loop:
+        - { role: loki,  container_name: "{{ loki_container_name  | default('telemetron-loki') }}" }
+        - { role: tempo, container_name: "{{ tempo_container_name | default('telemetron-tempo') }}" }
+        - { role: mimir, container_name: "{{ mimir_container_name | default('telemetron-mimir') }}" }
+      loop_control:
+        label: "{{ item.role }}"
+      changed_when: true
+      become: true
+      tags:
+        - garage
+        - restore
+
+    # Poll until each writer reports HEALTHCHECK healthy. Verbatim shape from
+    # roles/garage/tasks/backup.yml lines 207-218 (Pattern I) and
+    # roles/grafana/tasks/verify.yml lines 21-32. 60s budget mirrors
+    # writer-stop budget.
+    - name: Wait for Garage writers to report healthy
+      community.docker.docker_container_info:
+        name: "{{ item.container_name }}"
+      register: writer_healthy_check
+      until: >-
+        writer_healthy_check.container is defined
+        and writer_healthy_check.container.State is defined
+        and writer_healthy_check.container.State.Health is defined
+        and writer_healthy_check.container.State.Health.Status == 'healthy'
+      retries: 30
+      delay: 2
+      changed_when: false
+      loop:
+        - { role: loki,  container_name: "{{ loki_container_name  | default('telemetron-loki') }}" }
+        - { role: tempo, container_name: "{{ tempo_container_name | default('telemetron-tempo') }}" }
+        - { role: mimir, container_name: "{{ mimir_container_name | default('telemetron-mimir') }}" }
+      loop_control:
+        label: "{{ item.role }}"
+      tags:
+        - garage
+        - restore
+
+    # Each include_role tagged `[<role>, restore]` (SC4 cross-cutting).
+    # `--tags restore` selects all 4 role include_role calls + the 4
+    # writer-quiesce tasks above.
+    - name: Invoke prometheus restore
+      ansible.builtin.include_role:
+        name: prometheus
+        tasks_from: restore
+      tags:
+        - prometheus
+        - restore
+
+    - name: Invoke grafana restore
+      ansible.builtin.include_role:
+        name: grafana
+        tasks_from: restore
+      tags:
+        - grafana
+        - restore
+
+    - name: Invoke alertmanager restore
+      ansible.builtin.include_role:
+        name: alertmanager
+        tasks_from: restore
+      tags:
+        - alertmanager
+        - restore
