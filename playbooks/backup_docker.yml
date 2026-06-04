@@ -22,10 +22,40 @@
 # fall through to the per-role inline `date` -- Plan 14-01's
 # `backup_timestamp_effective` set_fact resolves the indirection.
 #
-# Bail-out vs continue-on-failure (D-184):
+# Bail-out vs continue-on-failure (D-184 + G-03 closure):
 #   default: any_errors_fatal=true (first role failure aborts the play)
 #   opt-in:  --extra-vars backup_continue_on_failure=true (all 4 roles
 #            attempt their backup; failures aggregated in PLAY RECAP)
+#
+# G-03 CLOSURE (Plan 14-06 -- reversal of D-184 partial design):
+#   D-184's original design used ONLY `any_errors_fatal` to implement
+#   continue-on-failure. Field evidence (UAT scenario 3b on leviathan,
+#   14-HUMAN-UAT.md G-03) showed that on a single-host inventory,
+#   `any_errors_fatal: false` alone does NOT keep the host in the active
+#   set when a role fails. Ansible's default error handling removes the
+#   failed host independently of `any_errors_fatal`. On a single-host
+#   inventory this means all subsequent include_role calls see NO hosts
+#   and are silently skipped -- only the first succeeding role's tarball
+#   is produced, not all 4 as the banner alt-text promised.
+#
+#   Fix: each include_role is wrapped in a block/rescue where the rescue
+#   calls `ansible.builtin.meta: clear_host_errors` to return the host
+#   to the active set. The rescue is guarded by
+#   `when: backup_continue_on_failure | default(false) | bool` so that
+#   under DEFAULT mode (backup_continue_on_failure=false) the rescue is
+#   skipped, the failure propagates, and `any_errors_fatal: true` (from
+#   the line-76 inversion) aborts the play exactly as before (UAT
+#   scenario 3a behavior is PRESERVED). Under opt-in mode the rescue
+#   fires, clears the host, and the next role's include_role runs.
+#
+#   `any_errors_fatal` (line 76) is PRESERVED -- it is COMPLEMENTARY to
+#   the new rescue, not replaced by it. It still controls play-level
+#   abort for the default case.
+#
+#   D-184's "explicit block/rescue rejected" rationale is REVERSED on
+#   the basis of G-03 field evidence. The 4x YAML cost is real but
+#   unavoidable on single-host inventories (the only inventory shape
+#   v1.3.0 targets).
 #
 # Per-role + cross-cutting tag UX (OPS-V13-03; SC4):
 #   --tags <role>  (e.g. --tags garage) -> runs only that role's backup
@@ -128,46 +158,98 @@
   # work; the per-role block-level tags inside each tasks/backup.yml
   # are not visible at play-level tag-selection time for dynamic
   # includes.
+  #
+  # G-03 CLOSURE (Plan 14-06): each include_role is wrapped in a
+  # block/rescue. The rescue calls `meta: clear_host_errors` so that
+  # under opt-in mode (`backup_continue_on_failure=true`) a failed role
+  # does NOT remove the host from the active set; subsequent roles still
+  # run. The rescue `when:` guard ensures default mode is UNCHANGED:
+  # under `backup_continue_on_failure=false` the rescue is skipped, the
+  # failure propagates, and `any_errors_fatal: true` (line 76) aborts
+  # the play (UAT scenario 3a behavior preserved).
+  #
+  # CRITICAL tag note: tags exist on BOTH the wrapping block AND the
+  # inner include_role task. The block-level tags provide inheritance
+  # for the role body; the include-task-level tags are what `--tags
+  # backup` and `--list-tasks --tags backup` actually filter on for
+  # dynamic include_role (per the existing comment above). Both MUST
+  # be present -- do NOT remove the inner include_role tags.
   tasks:
-    - name: Invoke garage backup
-      ansible.builtin.include_role:
-        name: garage
-        tasks_from: backup
-      vars:
-        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+    - name: Garage backup (G-03 -- block/rescue allows continue-on-failure)
       tags:
         - garage
         - backup
+      block:
+        - name: Invoke garage backup
+          ansible.builtin.include_role:
+            name: garage
+            tasks_from: backup
+          vars:
+            backup_timestamp_override: "{{ backup_timestamp_shared }}"
+          tags:
+            - garage
+            - backup
+      rescue:
+        - name: Garage backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
+          ansible.builtin.meta: clear_host_errors
+          when: backup_continue_on_failure | default(false) | bool
 
-    - name: Invoke prometheus backup
-      ansible.builtin.include_role:
-        name: prometheus
-        tasks_from: backup
-      vars:
-        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+    - name: Prometheus backup (G-03 -- block/rescue allows continue-on-failure)
       tags:
         - prometheus
         - backup
+      block:
+        - name: Invoke prometheus backup
+          ansible.builtin.include_role:
+            name: prometheus
+            tasks_from: backup
+          vars:
+            backup_timestamp_override: "{{ backup_timestamp_shared }}"
+          tags:
+            - prometheus
+            - backup
+      rescue:
+        - name: Prometheus backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
+          ansible.builtin.meta: clear_host_errors
+          when: backup_continue_on_failure | default(false) | bool
 
-    - name: Invoke grafana backup
-      ansible.builtin.include_role:
-        name: grafana
-        tasks_from: backup
-      vars:
-        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+    - name: Grafana backup (G-03 -- block/rescue allows continue-on-failure)
       tags:
         - grafana
         - backup
+      block:
+        - name: Invoke grafana backup
+          ansible.builtin.include_role:
+            name: grafana
+            tasks_from: backup
+          vars:
+            backup_timestamp_override: "{{ backup_timestamp_shared }}"
+          tags:
+            - grafana
+            - backup
+      rescue:
+        - name: Grafana backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
+          ansible.builtin.meta: clear_host_errors
+          when: backup_continue_on_failure | default(false) | bool
 
-    - name: Invoke alertmanager backup
-      ansible.builtin.include_role:
-        name: alertmanager
-        tasks_from: backup
-      vars:
-        backup_timestamp_override: "{{ backup_timestamp_shared }}"
+    - name: Alertmanager backup (G-03 -- block/rescue allows continue-on-failure)
       tags:
         - alertmanager
         - backup
+      block:
+        - name: Invoke alertmanager backup
+          ansible.builtin.include_role:
+            name: alertmanager
+            tasks_from: backup
+          vars:
+            backup_timestamp_override: "{{ backup_timestamp_shared }}"
+          tags:
+            - alertmanager
+            - backup
+      rescue:
+        - name: Alertmanager backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
+          ansible.builtin.meta: clear_host_errors
+          when: backup_continue_on_failure | default(false) | bool
 
   # D-193: NO post_tasks. Backup orchestrator does not need shared-
   # resource cleanup; each per-role tasks/backup.yml owns its own
