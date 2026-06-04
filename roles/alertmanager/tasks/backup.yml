@@ -110,6 +110,17 @@
     - alertmanager
     - backup
 
+# D-191 (Phase 14): when invoked from playbooks/backup_docker.yml the
+# orchestrator passes a single shared timestamp so all 4 tarballs in a
+# multi-role run share one filename suffix. Standalone include_role calls
+# (no override set) fall through to the per-role inline backup_timestamp.stdout.
+- name: Resolve effective backup timestamp (D-191 orchestrator override or inline)
+  ansible.builtin.set_fact:
+    backup_timestamp_effective: "{{ backup_timestamp_override | default(backup_timestamp.stdout) }}"
+  tags:
+    - alertmanager
+    - backup
+
 # Cold-quiesce block: stop -> wait-stopped -> tar -> perms.
 # always: clause restarts the container + runs verify.yml whether or
 # not the tar succeeded (AN-2 + D-178).
@@ -148,7 +159,7 @@
         cmd: >-
           umask 0177 &&
           tar --zstd -cpf
-          {{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp.stdout }}.tar.zst
+          {{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp_effective }}.tar.zst
           -C {{ alertmanager_data_volume_info.volume.Mountpoint }}
           .
       become: true
@@ -156,7 +167,7 @@
 
     - name: Set Alertmanager tarball permissions (XP-4)
       ansible.builtin.file:
-        path: "{{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp.stdout }}.tar.zst"
+        path: "{{ backup_dest_root }}/alertmanager/alertmanager-{{ backup_timestamp_effective }}.tar.zst"
         mode: "0600"
         owner: root
         group: root
