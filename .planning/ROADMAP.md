@@ -92,11 +92,16 @@ Tag: `v1.2.0`
   4. Both playbooks honour `--tags <role>` for any of the 4 stateful roles using the same tagging convention as `deploy_docker.yml`; `--tags backup` and `--tags restore` are also valid cross-cutting commands that operate on all 4 roles.
   5. `playbooks/backup_docker.yml` defaults to bail-out on the first role's failure; `--extra-vars backup_continue_on_failure=true` opts into continuing past failed roles.
   6. The `14-HUMAN-UAT.md` 7-step round-trip on leviathan completes with no manual intervention: (1) `deploy_docker.yml`, (2) `smoke_test.yml` records `smoke_trace_id` + `smoke_run_id`, (3) `backup_docker.yml`, (4) `undeploy_docker.yml --extra-vars telemetron_purge_data=true`, (5) `deploy_docker.yml`, (6) `restore_docker.yml --extra-vars backup_restore_confirm=true backup_restore_from=<timestamp>`, (7) `smoke_test.yml` with the same `smoke_trace_id` + `smoke_run_id` asserts the same synthetic OTLP signals are visible in Grafana — the milestone acceptance gate passes.
-**Plans**: 4 plans
+**Plans**: 9 plans
 - [x] 14-01-amend-backup-yml-timestamp-override-PLAN.md — D-191 timestamp_override amendment to 4 backup.yml files (wave 1)
 - [x] 14-02-backup-docker-orchestrator-PLAN.md — backup_docker.yml thin orchestrator with shared timestamp + bail-out knob (wave 2)
 - [x] 14-03-restore-docker-orchestrator-PLAN.md — restore_docker.yml confirm-gated orchestrator with writer-quiesce around Garage (wave 2)
 - [x] 14-04-human-uat-PLAN.md — 14-HUMAN-UAT.md skeleton + live leviathan UAT round-trip (wave 3)
+- [x] 14-05-restore-writer-config-rerender-PLAN.md — Gap closure G-01: writer-config rerender from restored Garage s3-credentials (wave 4)
+- [x] 14-06-backup-continue-on-failure-clear-host-errors-PLAN.md — Gap closure G-03: block/rescue + meta:clear_host_errors for opt-in continue-on-failure (wave 4)
+- [x] 14-07-re-uat-leviathan-PLAN.md — Round-2 leviathan re-UAT post-G-01/G-03 fix; surfaced G-03-addendum + G-04 (wave 5)
+- [x] 14-08-gap-closure-bail-out-and-restore-tags-PLAN.md — Gap closure G-03-addendum + G-04: explicit fail in rescue under default mode + apply: tags on writer-rerender include_role (wave 6)
+- [ ] 14-09-round-3-leviathan-uat-PLAN.md — Round-3 leviathan re-UAT post-G-03-addendum/G-04 fix; behavioral closure for 6/6 must-haves verified (wave 7)
 
 ### Phase 15: Documentation Cascade
 **Goal**: Operators can discover the backup and restore story entirely through documentation — from root README to quickstart to per-role README — without reading source code, and Gate 11 codifies the stateful-role contract for future contributors.
@@ -127,7 +132,7 @@ Tag: `v1.2.0`
 | 11    | v1.2.0    | 6/6            | Complete    | 2026-05-30 |
 | 12    | v1.2.0    | 3/3            | Complete    | 2026-05-30 |
 | 13    | v1.3.0    | 5/5 | Complete    | 2026-06-03 |
-| 14    | v1.3.0    | 7/7 | Complete   | 2026-06-05 |
+| 14    | v1.3.0    | 8/9 | In progress | -          |
 | 15    | v1.3.0    | 0/?            | Not started | -          |
 
 ## Backlog
