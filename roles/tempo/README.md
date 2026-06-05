@@ -153,6 +153,10 @@ Monolithic only (`-target=all`). Distributed Tempo and the
 | `telemetron_tempo_data` (named) | `/var/tempo` | Tempo data root -- covers wal/, traces/, generator/wal, generator/traces. Persistent across container recreates. |
 | `/opt/telemetron/tempo/tempo.yaml` (bind) | `/etc/tempo.yaml` (ro) | Rendered config |
 
+## Backup
+
+Tempo data lives in Garage S3 buckets -- captured by the garage role's backup. See `roles/garage/README.md#backup`.
+
 ## Uninstall
 
 ```bash

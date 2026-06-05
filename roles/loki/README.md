@@ -92,6 +92,10 @@ multi-tenant operation are deferred to a future milestone.
 | `telemetron_loki_data` (named) | `/loki` | Loki data root -- covers tsdb-index, tsdb-cache, chunks, compactor/ (incl. markers/). Persistent across container recreates. Pitfall 12 mitigation -- marker files survive recreate. |
 | `/opt/telemetron/loki/loki.yaml` (bind) | `/etc/loki/loki.yaml` (ro) | Rendered config |
 
+## Backup
+
+Loki data lives in Garage S3 buckets -- captured by the garage role's backup. See `roles/garage/README.md#backup`.
+
 ## Uninstall
 
 ```bash
