@@ -161,6 +161,10 @@ unix-socket bind-mount:
 | `/opt/telemetron/opentelemetry/verify-config.yaml` | `/etc/otelcol-contrib/verify-config.yaml` | ro | Verify-only config; never loaded by production container |
 | `/var/run/docker.sock` | `/var/run/docker.sock` | ro | docker_stats receiver socket (D-52) |
 
+## Backup
+
+No operator state to preserve.
+
 ## Uninstall
 
 ```bash

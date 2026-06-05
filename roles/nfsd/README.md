@@ -189,6 +189,10 @@ cat /etc/exports
 
 If you set `enable_nfsd: true` but `nfsd_exports: []`, `showmount -e` returns an empty list and `/etc/exports` does not contain the marker block (the export-management task is skipped). This is the fail-safe state -- the NFS server is running but exposing nothing.
 
+## Backup
+
+No operator state to preserve.
+
 ## Uninstall
 
 ```bash

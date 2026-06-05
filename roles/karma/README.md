@@ -86,6 +86,10 @@ Single mode: stateless single-instance pointing at one Alertmanager (Phase-4 `al
 
 None. Karma is stateless (in-memory alert cache). Container restart loses cache; Karma re-pulls from Alertmanager on next refresh cycle (30s by default). No named Docker volume, no host-path bind for data.
 
+## Backup
+
+No operator state to preserve.
+
 ## Uninstall
 
 ```bash

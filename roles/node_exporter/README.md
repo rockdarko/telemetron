@@ -85,6 +85,10 @@ Three host RO bind-mounts:
 | `/sys`  | `/host/sys`  (ro) | Required for the `diskstats`/`netdev`/`thermal_zone`/`hwmon` collectors |
 | `/`     | `/host/root` (ro, `propagation: rslave`) | Required for the `filesystem` collector; `rslave` so the container sees post-startup bind-mount table changes |
 
+## Backup
+
+No operator state to preserve.
+
 ## Uninstall
 
 ```bash
