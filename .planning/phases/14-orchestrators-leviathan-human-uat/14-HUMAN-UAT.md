@@ -2,69 +2,182 @@
 status: partial
 phase: 14-orchestrators-leviathan-human-uat
 started: 2026-06-04T00:00:00Z
-updated: 2026-06-04T18:05:00Z
+updated: 2026-06-05T02:20:00Z
 ---
 
 ## Current Test
 
-[Round 1 complete 2026-06-04. 9/11 sub-scenarios pass on leviathan; 2 fail (scenario 1, scenario 3b) — Gaps G-01 + G-03 opened.]
+[Round 2 partial 2026-06-05. 9/11 sub-scenarios pass on leviathan post-G-01/G-03 closure (Plans 14-05, 14-06). G-01 behaviorally closed (Scenario 1 PASS). G-03 functionally closed for opt-in mode (3 of 4 tarballs produced). New gaps found: G-03 has side-effect (default bail-out semantics broken by rescue structure), and G-04 opened (tag-leakage on writer-rerender under --tags restore). Scenarios 3a + 4d-restore remain fail/regression.]
 
 ## Tests
 
 ### 1. 7-step round-trip happy-path (UAT-V13-01)
 expected: 7-step round-trip on leviathan completes with no manual intervention: (step 1) ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml --ask-vault-pass completes failed=0 and 11 telemetron-* containers report healthy. (step 2) ansible-playbook -i inventory/leviathan playbooks/smoke_test.yml --ask-vault-pass completes ok=9 failed=0; PLAY OUTPUT line "trace_id:" emits a 32-char hex value; PLAY OUTPUT line "run_id:" emits an epoch seconds value; PLAY OUTPUT summary block shows "loki: ok", "prom: ok", "mimir: ok", "tempo: ok" -- ALL FOUR asserter tasks (smoke_assert_loki, smoke_assert_prometheus, smoke_assert_mimir, smoke_assert_tempo) succeeded; BOTH the trace_id and run_id values captured by operator for step 7. (step 3) ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --ask-vault-pass completes failed=0; 4 tarballs at /opt/telemetron/backups/{garage,prometheus,grafana,alertmanager}/<role>-<shared-ts>.tar.zst with mode 0600; all 4 share the same <shared-ts> (D-191 shared timestamp). (step 4) ansible-playbook -i inventory/leviathan playbooks/undeploy_docker.yml --ask-vault-pass --extra-vars "telemetron_purge_data=true" completes failed=0; ssh leviathan docker volume ls | grep telemetron_ returns 0 telemetron-prefixed volumes. (step 5) ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml --ask-vault-pass completes failed=0; stack returns; Grafana datasource panels show EMPTY data (proves fresh post-purge state). (step 6) ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --ask-vault-pass --extra-vars "backup_restore_confirm=true backup_restore_from=<shared-ts-from-step-3>" completes failed=0; WARN banner displays the verbatim 3-line shape with the WARNING: irreversible -- prefix; writers stop and restart in order (Loki -> Tempo -> Mimir, then docker_container_info polls confirm healthy); 4 roles restored in garage -> prometheus -> grafana -> alertmanager order; all 11 containers healthy at end. (step 7) ansible-playbook -i inventory/leviathan playbooks/smoke_test.yml --ask-vault-pass --extra-vars "smoke_trace_id=<captured> smoke_run_id=<captured>" completes ok=9 failed=0; the 4 asserter tasks (smoke_assert_loki, smoke_assert_prometheus, smoke_assert_mimir, smoke_assert_tempo) ALL succeed against the captured identifiers; PLAY OUTPUT summary block shows "loki: ok", "prom: ok", "mimir: ok", "tempo: ok" -- proves the SAME OTLP log + metric + trace signals from step 2 are visible in Grafana again after restore (proves restore round-trip succeeded -- step-2 data survived the purge + restore cycle).
-result: fail
-detail: Step 1 deploy: PLAY RECAP `ok=137 changed=0 failed=0`, 11 telemetron-* containers healthy. Step 2 smoke: PLAY RECAP `ok=9 failed=0`, PLAY OUTPUT summary block emitted `"trace_id: 47ac47b7804eac0ef04c6f906b25c1ea"`, `"run_id:   1780594240"`, `"loki:     ok"`, `"prom:     ok"`, `"mimir:    ok"`, `"tempo:    ok"` -- all 4 asserter tasks (smoke_assert_loki, smoke_assert_prometheus, smoke_assert_mimir, smoke_assert_tempo) succeeded; captured trace_id+run_id for step 7. Step 3 backup: PLAY RECAP `ok=78 changed=16 failed=0`, 4 tarballs at /opt/telemetron/backups/<role>/ with shared timestamp 20260604T173059Z (garage 33MB, prometheus 21MB, grafana 21MB, alertmanager 300B), all mode 0600. Step 4 undeploy --purge-data: PLAY RECAP `ok=64 changed=31 failed=0`, `docker ps -a` for telemetron-* returns 0 containers; `docker volume ls` shows 0 current-stack telemetron_* volumes (1 leftover `telemetron_minio_data` is a v1.1.0 MinIO-era orphan unrelated to the current stack). Step 5 redeploy: PLAY RECAP `ok=150 changed=64 failed=0`, 11 containers healthy (fresh post-purge state, Grafana datasource panels show empty). Step 6 restore FAILS: WARN banner fires verbatim `"msg": "WARNING: irreversible -- restore will PERMANENTLY REPLACE volume contents on all 4 stateful roles (garage, prometheus, grafana, alertmanager)\nTarget timestamp: 20260604T173059Z\nRestore order: stop Loki/Tempo/Mimir -> garage -> prometheus -> grafana -> alertmanager -> restart Loki/Tempo/Mimir\n"`, Garage restore completes, writer-stop loop fires for Loki/Tempo/Mimir, but writer-restart healthcheck poll times out (30 retries) and PLAY RECAP = `ok=25 changed=10 failed=1`. Root cause (G-01 below): the restore tarball includes /opt/telemetron/garage/s3-credentials with the ORIGINAL Garage S3 key (`GK18e062108528078b3e7ea4f6`), restored over the post-purge-redeploy key (`GKf41a2c5494e088bfda8b3a0d`). Garage's DB also restored to the original key. But writer config files on the host were NOT re-rendered, so they still point at the post-purge-redeploy key. Loki/Tempo crash-loop with `Forbidden: No such key: GKf41a2c5494e088bfda8b3a0d`. WORKAROUND applied: `ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml --tags loki,tempo,mimir,garage` re-renders writer configs from restored s3-credentials -> all 11 containers healthy. Step 7 smoke (post-workaround) PASSES: invoked with `--extra-vars "smoke_trace_id=47ac47b7804eac0ef04c6f906b25c1ea smoke_run_id=1780594240"`, PLAY RECAP `ok=9 changed=0 failed=0`, PLAY OUTPUT summary block re-emitted the SAME captured identifiers: `"trace_id: 47ac47b7804eac0ef04c6f906b25c1ea"`, `"run_id:   1780594240"`, `"loki:     ok"`, `"prom:     ok"`, `"mimir:    ok"`, `"tempo:    ok"` -- proves the SAME OTLP log + metric + trace signals from step 2 are visible in Grafana again after restore (data DID round-trip across all 4 signal types via Loki+Prometheus+Mimir+Tempo, proving the UAT-V13-01 data-survival claim). However the orchestrator alone is incomplete; missing writer-config-rerender step recorded as G-01.
+result: pass
+detail: >
+  Round 2 re-UAT 2026-06-05. G-01 CLOSED.
+
+  Step 1 deploy: PLAY RECAP `ok=137 changed=0 failed=0`. 11 telemetron-* containers healthy (all Up 2+ hours).
+
+  Step 2 smoke: PLAY RECAP `ok=9 changed=0 failed=0`. PLAY OUTPUT summary block:
+    "trace_id: c3e28f9aa4cebcc6ffde77a9a5642e44"
+    "run_id:   1780602309"
+    "loki:     ok"
+    "prom:     ok"
+    "mimir:    ok"
+    "tempo:    ok"
+  All 4 asserter tasks (smoke_assert_loki, smoke_assert_prometheus, smoke_assert_mimir, smoke_assert_tempo) succeeded. trace_id + run_id captured for step 7.
+
+  Step 3 backup: PLAY RECAP `ok=78 changed=12 failed=0`. 4 tarballs at /opt/telemetron/backups/<role>/ with shared timestamp 20260604T194524Z (all mode 0600). All 4 share the same timestamp suffix.
+
+  Step 4 undeploy --purge-data: PLAY RECAP `ok=64 changed=31 failed=0`. `docker ps -a` for telemetron-* returns 0 containers; `docker volume ls | grep telemetron_` returns 0 telemetron-prefixed volumes.
+
+  Step 5 redeploy: PLAY RECAP `ok=150 changed=64 failed=0`. 11 containers healthy (fresh post-purge state, NEW S3 key generated by Garage bootstrap).
+
+  Step 6 restore: PLAY RECAP `ok=126 changed=32 failed=0`. WARN banner fires verbatim. G-01 fix tasks FIRED:
+    - `garage : Load restored Garage S3 credentials from host file (G-01 fact-population...)` -- ok, content base64-encoded s3-credentials with key GK18e062108528078b3e7ea4f6
+    - `garage : Set Garage S3 credential facts from restored host file (G-01; mirrors bootstrap.yml:140-147)` -- ok, garage_s3_access_key_id=GK18e062108528078b3e7ea4f6
+    - `Re-render Loki config from restored Garage s3-credentials (G-01 fix; D-183 reversed)` -- included: loki
+    - `loki : Render Loki config` -- CHANGED (config re-rendered with restored key GK18e...)
+    - `Re-render Tempo config from restored Garage s3-credentials (G-01 fix; D-183 reversed)` -- included: tempo
+    - `tempo : Render Tempo config` -- CHANGED
+    - `Re-render Mimir config from restored Garage s3-credentials (G-01 fix; D-183 reversed)` -- included: mimir
+    - `mimir : Render Mimir config` -- CHANGED
+    - `Flush restart handlers now...` -- RUNNING HANDLER `loki : Docker restart loki`, `tempo : Docker restart tempo`, `mimir : Docker restart mimir` -- all handlers FIRED
+    - Writer-restart docker start loop fired (loki, tempo, mimir)
+    - Writer healthy-poll: all 3 writers healthy after retry (loki on 28th retry, tempo on 44th, mimir on 44th)
+    - Prometheus restore: ok, all verify tasks pass
+    - Grafana restore: ok, all datasource health gates pass (prometheus, loki, tempo, mimir)
+    - Alertmanager restore: ok, amtool alert query confirmed active
+    - 11 containers healthy at end. NO `Forbidden: No such key:` errors in any container log.
+    - NO manual `deploy_docker.yml --tags loki,tempo,mimir,garage` workaround between steps 6 and 7.
+
+  Step 7 smoke (with captured trace_id + run_id): PLAY RECAP `ok=9 changed=0 failed=0`. PLAY OUTPUT summary block re-emitted SAME captured identifiers:
+    "trace_id: c3e28f9aa4cebcc6ffde77a9a5642e44"
+    "run_id:   1780602309"
+    "loki:     ok"
+    "prom:     ok"
+    "mimir:    ok"
+    "tempo:    ok"
+  All 4 asserter tasks succeeded. SAME OTLP signals from step 2 visible in Grafana after restore -- data round-tripped across all 4 signal types. UAT-V13-01 "no manual intervention" clause UPHELD.
 
 ### 2a. Orchestrator-level confirm-gate refuses default invocation without flag (OPS-V13-01 orchestrator side)
 expected: ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --ask-vault-pass invoked WITHOUT --extra-vars backup_restore_confirm=true fails at the pre_tasks ansible.builtin.fail gate; PLAY OUTPUT contains the verbatim msg "Restore refused. Pass --extra-vars backup_restore_confirm=true to proceed."; PLAY RECAP shows failed=1 on leviathan; NO docker stop on Loki/Tempo/Mimir occurred (verifiable via ssh leviathan docker ps showing all 11 containers still running); WARN banner NOT printed (gate fires before banner).
 result: pass
-detail: Gate fires immediately. Verbatim fail msg from PLAY OUTPUT: `fatal: [leviathan]: FAILED! => {"changed": false, "msg": "Restore refused.\nPass --extra-vars backup_restore_confirm=true to proceed.\nThis flag is required for ANY restore_docker.yml invocation including --tags <stateless-role> invocations -- the playbook's identity is destructive.\nSee docs/quickstart.md#backup-and-restore for the operator opt-in contract.\n"}`. PLAY RECAP: `leviathan : ok=1 changed=0 unreachable=0 failed=1 skipped=0`. WARN banner did NOT fire (no `WARNING: irreversible` line in output). `ssh leviathan "docker ps --filter 'name=telemetron-' -q | wc -l"` returns 11 (all containers untouched).
+detail: >
+  Round 1 evidence: Gate fires immediately. Verbatim fail msg from PLAY OUTPUT: `fatal: [leviathan]: FAILED! => {"changed": false, "msg": "Restore refused.\nPass --extra-vars backup_restore_confirm=true to proceed.\nThis flag is required for ANY restore_docker.yml invocation including --tags <stateless-role> invocations -- the playbook's identity is destructive.\nSee docs/quickstart.md#backup-and-restore for the operator opt-in contract.\n"}`. PLAY RECAP: `leviathan : ok=1 changed=0 unreachable=0 failed=1 skipped=0`. WARN banner did NOT fire (no `WARNING: irreversible` line in output). `ssh leviathan "docker ps --filter 'name=telemetron-' -q | wc -l"` returns 11 (all containers untouched).
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. PLAY RECAP `ok=1 changed=0 failed=1 skipped=0`. Same verbatim gate fail msg. 11 containers untouched.
 
 ### 2b. Per-role gate refuses via custom playbook bypassing orchestrator (OPS-V13-01 defence-in-depth)
 expected: A throwaway custom playbook invokes include_role: name=grafana tasks_from=restore WITHOUT setting backup_restore_confirm; ansible-playbook run fails at the per-role assert/fail gate inside roles/grafana/tasks/restore.yml; PLAY RECAP failed=1; Grafana container still running. Throwaway playbook content (operator runs via temp file: ansible-playbook -i inventory/leviathan /tmp/restore-grafana-only.yml --ask-vault-pass): `- hosts: telemetron\n  tasks:\n    - include_role:\n        name: grafana\n        tasks_from: restore`.
 result: pass
-detail: Created /tmp/14uat-s2b-restore-grafana-only.yml with the 5-line content above, ran via `ansible-playbook -i inventory/leviathan /tmp/14uat-s2b-restore-grafana-only.yml`, deleted after. Per-role gate fires: `TASK [grafana : Fail unless backup_restore_confirm is set] -- fatal: [leviathan]: FAILED! => {"changed": false, "msg": "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."}`. PLAY RECAP: `leviathan : ok=1 changed=0 unreachable=0 failed=1 skipped=0`. `ssh leviathan "docker ps --filter 'name=telemetron-grafana' --format '{{.Status}}'"` reports `Up 11 minutes (healthy)` (grafana untouched).
+detail: >
+  Round 1 evidence: Created /tmp/14uat-s2b-restore-grafana-only.yml with the 5-line content above, ran via `ansible-playbook -i inventory/leviathan /tmp/14uat-s2b-restore-grafana-only.yml`, deleted after. Per-role gate fires: `TASK [grafana : Fail unless backup_restore_confirm is set] -- fatal: [leviathan]: FAILED! => {"changed": false, "msg": "Restore is destructive. Set --extra-vars backup_restore_confirm=true to confirm."}`. PLAY RECAP: `leviathan : ok=1 changed=0 unreachable=0 failed=1 skipped=0`. `ssh leviathan "docker ps --filter 'name=telemetron-grafana' --format '{{.Status}}'"` reports `Up 11 minutes (healthy)` (grafana untouched).
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. PLAY RECAP `ok=2 changed=0 failed=1 skipped=0`. Per-role gate fires with identical message. Grafana container untouched (healthy).
 
 ### 2c. Orchestrator-level confirm-gate refuses stateless-tag invocation without flag (D-188 amended by SC4 reconciliation)
 expected: ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --ask-vault-pass --tags loki invoked WITHOUT --extra-vars backup_restore_confirm=true fails at the pre_tasks ansible.builtin.fail gate BEFORE tag-filtering. Rationale: the gate is tagged [always] so it fires under any --tags filter -- this is the playbook's identity-level safety per the D-188 amended contract. PLAY OUTPUT contains the same verbatim msg "Restore refused. Pass --extra-vars backup_restore_confirm=true to proceed." and additionally references the identity-level safety contract. PLAY RECAP shows failed=1 on leviathan. NO docker stop occurred. Proves the gate is not bypassable via stateless-tag invocation.
 result: pass
-detail: `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags loki` (no confirm flag) fires the always-tagged gate BEFORE tag-filtering. Verbatim fail msg identical to 2a, including the contract sentence "This flag is required for ANY restore_docker.yml invocation including --tags <stateless-role> invocations -- the playbook's identity is destructive." PLAY RECAP: `leviathan : ok=1 changed=0 unreachable=0 failed=1 skipped=0`. `docker ps -q | wc -l` returns 11. Identity-level safety per D-188 amended is upheld in practice -- `--tags loki` does NOT bypass the confirm contract because the gate carries `tags: [always]`.
+detail: >
+  Round 1 evidence: `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags loki` (no confirm flag) fires the always-tagged gate BEFORE tag-filtering. Verbatim fail msg identical to 2a, including the contract sentence "This flag is required for ANY restore_docker.yml invocation including --tags <stateless-role> invocations -- the playbook's identity is destructive." PLAY RECAP: `leviathan : ok=1 changed=0 unreachable=0 failed=1 skipped=0`. `docker ps -q | wc -l` returns 11. Identity-level safety per D-188 amended is upheld in practice -- `--tags loki` does NOT bypass the confirm contract because the gate carries `tags: [always]`.
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. PLAY RECAP `ok=1 changed=0 failed=1 skipped=0`. Gate fires with identical message before any tag-filtering. 11 containers untouched.
 
 ### 3a. Default backup bails on Prometheus failure (OPS-V13-02 default)
 expected: Pre-step: ssh leviathan "sudo chmod 000 /opt/telemetron/backups/prometheus" (deny write access -- tar create dest will fail). Run: ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --ask-vault-pass. Result: Garage backup succeeds (garage-<ts>.tar.zst exists at /opt/telemetron/backups/garage/). Prometheus backup fails at the tar dest write step (PLAY OUTPUT shows Permission denied). any_errors_fatal: false default flips to true (because backup_continue_on_failure default is false) -> play aborts. Grafana + Alertmanager tarballs ABSENT (their include_role never ran). PLAY RECAP failed=1 on leviathan. Cleanup: ssh leviathan "sudo chmod 0700 /opt/telemetron/backups/prometheus" to restore mode for subsequent scenarios.
-result: pass
-detail: Methodology deviation: `chmod 000 /opt/telemetron/backups/prometheus` is INEFFECTIVE as fault-injection because the backup task runs with `become: true` (root) and root bypasses directory permissions (CAP_DAC_OVERRIDE). Pivoted to file-as-dir fault: `sudo mv /opt/telemetron/backups/prometheus /opt/telemetron/backups/prometheus.SAVED && sudo touch /opt/telemetron/backups/prometheus` (creates a regular file at the expected directory path). With this fault active, run `ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml` fails at `TASK [prometheus : Ensure Prometheus backup destination directory exists]` with `fatal: [leviathan]: FAILED! => {"msg": "/opt/telemetron/backups/prometheus already exists as a file", "state": "file"}`. PLAY RECAP: `leviathan : ok=19 changed=3 unreachable=0 failed=1 skipped=0`. Tarballs at run-ts 20260604T175406Z: garage YES (35 MB), prometheus NO (still touch-file), grafana NO (never attempted), alertmanager NO (never attempted) -- bail-out semantics confirmed. Cleanup: `sudo rm /opt/telemetron/backups/prometheus && sudo mv /opt/telemetron/backups/prometheus.SAVED /opt/telemetron/backups/prometheus` (mode back to 0700).
+result: fail
+detail: >
+  Round 1 evidence (still factually correct for original code state): Methodology deviation: `chmod 000 /opt/telemetron/backups/prometheus` is INEFFECTIVE as fault-injection because the backup task runs with `become: true` (root) and root bypasses directory permissions (CAP_DAC_OVERRIDE). Pivoted to file-as-dir fault: `sudo mv /opt/telemetron/backups/prometheus /opt/telemetron/backups/prometheus.SAVED && sudo touch /opt/telemetron/backups/prometheus` (creates a regular file at the expected directory path). With this fault active, run `ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml` fails at `TASK [prometheus : Ensure Prometheus backup destination directory exists]` with `fatal: [leviathan]: FAILED! => {"msg": "/opt/telemetron/backups/prometheus already exists as a file", "state": "file"}`. PLAY RECAP: `leviathan : ok=19 changed=3 unreachable=0 failed=1 skipped=0`. Tarballs at run-ts 20260604T175406Z: garage YES (35 MB), prometheus NO (still touch-file), grafana NO (never attempted), alertmanager NO (never attempted) -- bail-out semantics confirmed.
+
+  Round 2 re-run 2026-06-05 POST-G-03-FIX: BEHAVIORAL REGRESSION. File-as-dir fault injected. Banner fires default-mode alt text `(first role failure will abort the playbook)`. Prometheus backup fails as expected at `Ensure Prometheus backup destination directory exists`. The block/rescue is entered; `Prometheus backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)` task is SKIPPED (`skipping: [leviathan]`) -- `when: backup_continue_on_failure | default(false) | bool` evaluates false. However, the rescue BLOCK completing (even with a skipped inner task) absorbs the Prometheus failure from Ansible's play-level perspective. Result: grafana and alertmanager include_role calls RAN (not just Garage). PLAY RECAP: `ok=64 changed=9 failed=0 skipped=0 rescued=1`. Tarballs at run-ts 20260605T010018Z: garage YES, prometheus NO (still touch-file), grafana YES, alertmanager YES -- 3 of 4 tarballs. DEFAULT BAIL-OUT SEMANTICS BROKEN BY G-03 FIX SIDE EFFECT. The `when:` guard prevents `clear_host_errors` from running, but the rescue block itself completing without failure means the play-level host failure is "handled" by the rescue, regardless of whether `clear_host_errors` ran. The round-1 expected behavior (`failed=1`, grafana/alertmanager NOT attempted) is no longer achieved. This is a regression in default-mode behavior caused by the block/rescue structure introduced in Plan 14-06. Cleanup: fault removed.
 
 ### 3b. backup_continue_on_failure=true lets remaining roles run past the failure (OPS-V13-02 opt-in)
 expected: Pre-step: ssh leviathan "sudo chmod 000 /opt/telemetron/backups/prometheus" (same fault-injection). Run: ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --ask-vault-pass --extra-vars "backup_continue_on_failure=true". Result: PLAY-start banner shows the alternate category description "(all 4 roles will attempt their backup; failures aggregated in PLAY RECAP)". Garage SUCCEEDS. Prometheus FAILS (still the chmod block). Grafana SUCCEEDS. Alertmanager SUCCEEDS. PLAY RECAP failed=1 (Prometheus only). 3 of 4 tarballs present with the run's shared timestamp; Prometheus tarball absent. Cleanup: ssh leviathan "sudo chmod 0700 /opt/telemetron/backups/prometheus" before scenario 4.
-result: fail
-detail: Same file-as-dir fault as 3a. Banner DOES fire alternate text correctly: `"msg": "Backup destination: /opt/telemetron/backups/<role>/\nbackup_continue_on_failure=true\n  (all 4 roles will attempt their backup; failures aggregated in PLAY RECAP)\nbackup_stop_timeout=60s\n"`. Prometheus FAILS as expected. PLAY RECAP: `leviathan : ok=19 changed=3 unreachable=0 failed=1 skipped=0`. **BUT** Grafana and Alertmanager tarballs at run-ts 20260604T175453Z are ABSENT -- only the Garage tarball exists. G-03: `any_errors_fatal: false` controls play-level abort but does NOT keep failed hosts in the play; Ansible's default behavior removes a failed host from subsequent task execution. With a single host (leviathan), Prometheus's failure removes leviathan from the host list and grafana/alertmanager include_role tasks have no host to run on. The opt-in contract `backup_continue_on_failure=true` is documented but NOT honored by the orchestrator. Fix candidate: add `meta: clear_host_errors` between role includes when continue-on-failure is true, or wrap each include in `block: ... rescue:` that calls clear_host_errors. Cleanup: as 3a.
+result: pass
+detail: >
+  Round 2 re-run 2026-06-05. File-as-dir fault injected (same as 3a). G-03 functional contract DELIVERED for opt-in mode.
+
+  Banner fires opt-in alt text: `"msg": "Backup destination: /opt/telemetron/backups/<role>/\nbackup_continue_on_failure=true\n  (all 4 roles will attempt their backup; failures aggregated in PLAY RECAP)\nbackup_stop_timeout=60s\n"`.
+
+  Prometheus backup fails at `Ensure Prometheus backup destination directory exists`: `fatal: [leviathan]: FAILED! => {"msg": "/opt/telemetron/backups/prometheus already exists as a file", "state": "file"}`.
+
+  Block/rescue fired: `Prometheus backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)` -- `meta: clear_host_errors` RAN (when-guard evaluates true). Grafana include_role ran -- grafana tarball produced. Alertmanager include_role ran -- alertmanager tarball produced.
+
+  PLAY RECAP: `leviathan : ok=64 changed=9 unreachable=0 failed=0 skipped=0 rescued=1`. Note: PLAY RECAP shows `failed=0 rescued=1` (not `failed=1` as originally expected). The rescue absorbs the failure into the `rescued=1` counter. Prometheus tarball: ABSENT. 3 of 4 tarballs at run-ts 20260605T010222Z: garage YES, prometheus ABSENT, grafana YES, alertmanager YES.
+
+  G-03 FUNCTIONAL CLOSURE: `backup_continue_on_failure=true` now delivers 3 of 4 tarballs -- the promised "all remaining roles attempt backup past a failure" contract is delivered. Cleanup: fault removed.
+
+  CAVEAT: Default-mode behavior (scenario 3a) is also now equivalent (see 3a FAIL above). The `when:` guard distinguishes modes at the `clear_host_errors` task level, but the rescue block completing without failure in both modes means both modes now produce 3 of 4 tarballs when a failure occurs. The PLAY RECAP `rescued=1` counter distinguishes from a clean run, but the bail-out semantics are no longer enforced. This is tracked as a G-03 side effect in the Gaps section.
 
 ### 4a. --tags garage backup produces only the garage tarball (OPS-V13-03 backup side)
 expected: Pre-step (clean slate): ssh leviathan to verify no /opt/telemetron/backups/<role>/ tarballs from previous scenarios remain with the same timestamp (no contamination check needed -- timestamps differ per run). Run: ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --ask-vault-pass --tags garage. Result: PLAY-start banner displays (tags: always); only the garage include_role runs; PLAY RECAP failed=0; ssh leviathan ls /opt/telemetron/backups/garage/ shows a new garage-<ts>.tar.zst; ssh leviathan ls /opt/telemetron/backups/{prometheus,grafana,alertmanager}/ shows no NEW tarball with this run's timestamp.
 result: pass
-detail: `ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --tags garage`. PLAY-start banner fires (always-tagged pre_tasks). Only the garage include_role runs (prometheus/grafana/alertmanager include_role calls carry `tags: [<role>, backup]`, none match `garage`). PLAY RECAP: `leviathan : ok=17 changed=3 unreachable=0 failed=0 skipped=0`. Run ts 20260604T175556Z. Newest tarballs after run: garage-20260604T175556Z.tar.zst (new); prometheus-/grafana-/alertmanager- newest still at prior ts 20260604T175014Z (no contamination). `--tags garage` correctly isolated the backup to the garage role.
+detail: >
+  Round 1 evidence: `ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --tags garage`. PLAY-start banner fires (always-tagged pre_tasks). Only the garage include_role runs (prometheus/grafana/alertmanager include_role calls carry `tags: [<role>, backup]`, none match `garage`). PLAY RECAP: `leviathan : ok=17 changed=3 unreachable=0 failed=0 skipped=0`. Run ts 20260604T175556Z. Newest tarballs after run: garage-20260604T175556Z.tar.zst (new); prometheus-/grafana-/alertmanager- newest still at prior ts 20260604T175014Z (no contamination). `--tags garage` correctly isolated the backup to the garage role.
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. PLAY RECAP `ok=17 changed=3 failed=0`. Run ts 20260605T010615Z. Only garage-20260605T010615Z.tar.zst created; no prometheus/grafana/alertmanager tarball at that timestamp.
 
 ### 4b. --tags loki restore (with confirm flag) produces empty 0-task play (D-188 amended by SC4 reconciliation)
 expected: Run: ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --ask-vault-pass --tags loki --extra-vars "backup_restore_confirm=true". Result: confirm-gate PASSES (flag set); PLAY OUTPUT shows the always-tagged confirm-gate and WARN banner fired (they are tagged [always] so they run under any --tags filter); the 4 role include_role calls and the 4 writer-quiesce tasks all carry [<role>, restore] or [garage, restore] -- none match --tags loki -- so NO role-level task runs; PLAY RECAP shows 0 role tasks executed; exit code 0; no docker stop, no docker start, no tarball read. Operator-friendly empty-result behavior that nevertheless ALWAYS requires the confirm flag (identity-level safety).
 result: pass
-detail: `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags loki --extra-vars "backup_restore_confirm=true"`. Confirm-gate task SKIPPED (`skipping: [leviathan]` -- flag set so `when: not backup_restore_confirm` is false). WARN banner FIRES (tagged [always]): verbatim msg `"WARNING: irreversible -- restore will PERMANENTLY REPLACE volume contents on all 4 stateful roles ... Restore order: stop Loki/Tempo/Mimir -> garage -> prometheus -> grafana -> alertmanager -> restart Loki/Tempo/Mimir"`. PLAY RECAP: `leviathan : ok=2 changed=0 unreachable=0 failed=0 skipped=1`. The `ok=2` is Gathering Facts + WARN banner; the `skipped=1` is the confirm-gate. NO role-level tasks ran (the 4 include_role calls and the 4 writer-quiesce tasks all carry `[garage, restore]` or `[<role>, restore]` -- none match `loki`). `ssh leviathan "docker ps -q | wc -l"` returns 11 (all containers untouched).
+detail: >
+  Round 1 evidence: `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags loki --extra-vars "backup_restore_confirm=true"`. Confirm-gate task SKIPPED (`skipping: [leviathan]` -- flag set so `when: not backup_restore_confirm` is false). WARN banner FIRES (tagged [always]): verbatim msg `"WARNING: irreversible -- restore will PERMANENTLY REPLACE volume contents on all 4 stateful roles ... Restore order: stop Loki/Tempo/Mimir -> garage -> prometheus -> grafana -> alertmanager -> restart Loki/Tempo/Mimir"`. PLAY RECAP: `leviathan : ok=2 changed=0 unreachable=0 failed=0 skipped=1`. The `ok=2` is Gathering Facts + WARN banner; the `skipped=1` is the confirm-gate. NO role-level tasks ran (the 4 include_role calls and the 4 writer-quiesce tasks all carry `[garage, restore]` or `[<role>, restore]` -- none match `loki`). `ssh leviathan "docker ps -q | wc -l"` returns 11 (all containers untouched).
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. PLAY RECAP `ok=2 changed=0 failed=0 skipped=1`. WARN banner fired. No role tasks ran. 11 containers untouched.
 
 ### 4c. --tags grafana restore restores only Grafana; writers untouched (OPS-V13-03 restore side; D-189 amended lock)
 expected: Pre-step: capture a known <ts> value from a previous successful full backup (use the scenario 1 step-3 shared-ts). Run: ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --ask-vault-pass --extra-vars "backup_restore_confirm=true backup_restore_from=<ts>" --tags grafana. Result: confirm-gate passes (flag set); WARN banner displays (tags: always); writer-stop loop does NOT run (its tag list is [garage, restore], NEITHER matches --tags grafana per D-189 amended); writer-restart loop does NOT run; ONLY the Grafana include_role fires; PLAY RECAP failed=0; ssh leviathan docker ps confirms Loki/Tempo/Mimir/Garage stayed running throughout; Grafana container restart-cycled by the per-role restore tasks but came back healthy.
 result: pass
-detail: Used scenario 1 step-3 shared ts 20260604T173059Z. `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags grafana --extra-vars "backup_restore_confirm=true backup_restore_from=20260604T173059Z"`. BEFORE: `docker inspect -f '{{ .State.StartedAt }}' telemetron-loki` = `2026-06-04T17:48:45.588568934Z`. AFTER: identical `2026-06-04T17:48:45.588568934Z` -- writer was NOT touched (writer-stop tag list `[garage, restore]` does not match `grafana`). PLAY RECAP: `leviathan : ok=25 changed=4 unreachable=0 failed=0 skipped=3`. Grafana restart-cycled by per-role restore tasks (Up 16 seconds at end of scenario, healthy); Loki/Tempo/Mimir/Garage StartedAt unchanged from prior scenarios. D-189 amended lock confirmed: writer-quiesce bracket fires ONLY when `--tags garage` or `--tags restore` matches.
+detail: >
+  Round 1 evidence: Used scenario 1 step-3 shared ts 20260604T173059Z. `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags grafana --extra-vars "backup_restore_confirm=true backup_restore_from=20260604T173059Z"`. BEFORE: `docker inspect -f '{{ .State.StartedAt }}' telemetron-loki` = `2026-06-04T17:48:45.588568934Z`. AFTER: identical `2026-06-04T17:48:45.588568934Z` -- writer was NOT touched (writer-stop tag list `[garage, restore]` does not match `grafana`). PLAY RECAP: `leviathan : ok=25 changed=4 unreachable=0 failed=0 skipped=3`. Grafana restart-cycled by per-role restore tasks (Up 16 seconds at end of scenario, healthy); Loki/Tempo/Mimir/Garage StartedAt unchanged from prior scenarios. D-189 amended lock confirmed: writer-quiesce bracket fires ONLY when `--tags garage` or `--tags restore` matches.
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. Used ts 20260604T194524Z (scenario 1 step-3 backup). Loki StartedAt BEFORE: `2026-06-04T19:56:02.570334282Z`. AFTER: `2026-06-04T19:56:02.570334282Z` -- identical (writer untouched). PLAY RECAP: `ok=25 changed=4 failed=0 skipped=3`. Grafana restore-cycled and healthy. D-189 amended lock holds.
 
 ### 4d-backup. --tags backup cross-cutting backup runs all 4 stateful roles (SC4 cross-cutting backup verb)
 expected: Run: ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --ask-vault-pass --tags backup. Result: PLAY-start banner displays (always-tagged pre_tasks fire); shared timestamp generated once; all 4 role include_role calls execute (their tag list is [<role>, backup] so --tags backup matches each); PLAY RECAP failed=0; ssh leviathan ls /opt/telemetron/backups/{garage,prometheus,grafana,alertmanager}/ shows 4 new tarballs with the same shared timestamp suffix. Proves SC4 cross-cutting --tags backup invocation form works empirically against the live host.
 result: pass
-detail: `ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --tags backup`. PLAY-start banner fires with default-branch text: `"msg": "Backup destination: /opt/telemetron/backups/<role>/\nbackup_continue_on_failure=False\n  (first role failure will abort the playbook)\nbackup_stop_timeout=60s\n"`. PLAY RECAP: `leviathan : ok=78 changed=12 unreachable=0 failed=0 skipped=1`. All 4 role include_role calls executed. Newest tarballs after run all share single shared timestamp 20260604T175726Z: `garage-20260604T175726Z.tar.zst`, `prometheus-20260604T175726Z.tar.zst`, `grafana-20260604T175726Z.tar.zst`, `alertmanager-20260604T175726Z.tar.zst`. SC4 cross-cutting `--tags backup` invocation form proven empirically.
+detail: >
+  Round 1 evidence: `ansible-playbook -i inventory/leviathan playbooks/backup_docker.yml --tags backup`. PLAY-start banner fires with default-branch text: `"msg": "Backup destination: /opt/telemetron/backups/<role>/\nbackup_continue_on_failure=False\n  (first role failure will abort the playbook)\nbackup_stop_timeout=60s\n"`. PLAY RECAP: `leviathan : ok=78 changed=12 unreachable=0 failed=0 skipped=1`. All 4 role include_role calls executed. Newest tarballs after run all share single shared timestamp 20260604T175726Z: `garage-20260604T175726Z.tar.zst`, `prometheus-20260604T175726Z.tar.zst`, `grafana-20260604T175726Z.tar.zst`, `alertmanager-20260604T175726Z.tar.zst`. SC4 cross-cutting `--tags backup` invocation form proven empirically.
+
+  Round 2 re-confirmation (post-G-01/G-03 fix) 2026-06-05: PASS. PLAY RECAP `ok=78 changed=12 failed=0 skipped=1`. 4 tarballs at shared timestamp 20260605T010738Z: garage, prometheus, grafana, alertmanager all confirmed.
 
 ### 4d-restore. --tags restore cross-cutting restore runs writer-quiesce + all 4 stateful role restores (SC4 cross-cutting restore verb)
 expected: Pre-step: capture a known <ts> from a recent full backup (e.g., the scenario 4d-backup output). Run: ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --ask-vault-pass --extra-vars "backup_restore_confirm=true backup_restore_from=<ts>" --tags restore. Result: confirm-gate passes (flag set); WARN banner displays; writer-stop loop fires (its tag list is [garage, restore], --tags restore matches); writer-stop poll confirms Loki/Tempo/Mimir at State.Running == false; Garage restore fires; writer-restart loop fires; writer-restart poll confirms Loki/Tempo/Mimir at State.Health.Status == healthy; prometheus + grafana + alertmanager restores fire in that order; PLAY RECAP failed=0; ssh leviathan docker ps shows all 11 containers healthy at end. Proves SC4 cross-cutting --tags restore covers the full destructive surface (4 role restores + 4 writer-quiesce tasks) empirically against the live host.
-result: pass
-detail: Used scenario 4d-backup shared ts 20260604T175726Z. `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags restore --extra-vars "backup_restore_confirm=true backup_restore_from=20260604T175726Z"`. BEFORE: `docker inspect -f '{{ .State.StartedAt }}' telemetron-loki` = `2026-06-04T17:48:45.588568934Z`. AFTER: `2026-06-04T18:01:16.575576558Z` -- writer WAS stopped and restarted (writer-stop tag list `[garage, restore]` matches `restore`). PLAY RECAP: `leviathan : ok=90 changed=23 unreachable=0 failed=0 skipped=11`. All 11 containers healthy at end. Note: 4d-restore succeeded here BECAUSE the G-01 workaround was already applied in scenario 1 (writer configs on host already point to the GK18e0... key matching the 20260604T175726Z tarball's restored s3-credentials). In a clean environment, 4d-restore would also hit G-01 because restore_docker.yml does not re-render writer configs. SC4 cross-cutting `--tags restore` invocation covers the full destructive surface (4 role restores + 4 writer-quiesce tasks) proven empirically, with the G-01 caveat tracked separately.
+result: fail
+detail: >
+  Round 1 evidence (contaminated -- passed only because scenario 1 workaround had already been applied):
+  Used scenario 4d-backup shared ts 20260604T175726Z. PLAY RECAP: `leviathan : ok=90 changed=23 unreachable=0 failed=0 skipped=11`. Note: 4d-restore succeeded here BECAUSE the G-01 workaround was already applied in scenario 1 (writer configs on host already point to the GK18e0... key matching the 20260604T175726Z tarball's restored s3-credentials). In a clean environment, 4d-restore would also hit G-01 because restore_docker.yml does not re-render writer configs. SC4 cross-cutting `--tags restore` invocation covers the full destructive surface (4 role restores + 4 writer-quiesce tasks) proven empirically, with the G-01 caveat tracked separately.
+
+  Round 2 clean re-run 2026-06-05 (W-5 closure test -- FAIL -- G-04 opened):
+  Setup: full undeploy --purge-data (PLAY RECAP `ok=64 changed=31 failed=0`), fresh deploy (PLAY RECAP `ok=150 changed=64 failed=0`). NEW S3 key generated by Garage bootstrap (post-purge).
+  Run: `ansible-playbook -i inventory/leviathan playbooks/restore_docker.yml --tags restore --extra-vars "backup_restore_confirm=true backup_restore_from=20260604T194524Z" -v`
+
+  G-01 slurp+set_fact tasks FIRED correctly (tagged [garage, restore]):
+    - `garage : Load restored Garage S3 credentials from host file (G-01 fact-population...)` -- ok, key GK18e062108528078b3e7ea4f6 populated as fact
+    - `garage : Set Garage S3 credential facts from restored host file (G-01)` -- ok
+
+  G-01 writer-rerender include_role tasks INCLUDED but NO SUBTASKS RAN:
+    - `Re-render Loki config from restored Garage s3-credentials (G-01 fix; D-183 reversed)` -- "included: loki" (no loki subtask output)
+    - `Re-render Tempo config from restored Garage s3-credentials (G-01 fix; D-183 reversed)` -- "included: tempo" (no tempo subtask output)
+    - `Re-render Mimir config from restored Garage s3-credentials (G-01 fix; D-183 reversed)` -- "included: mimir" (no mimir subtask output)
+    grep of log for `loki :`, `tempo :`, `mimir :` task lines: 0 matches
+
+  ROOT CAUSE (G-04): under `--tags restore`, Ansible descends into `loki/tasks/main.yml` via the include_role, but the tasks inside `loki/tasks/main.yml` do NOT carry the `restore` tag. Ansible's `--tags restore` filter applies to the subtasks too, and since none of the loki/tempo/mimir main tasks have `restore` in their tag list, ALL of them are skipped. The include_role invocation itself is tagged [garage, restore] (so the include fires), but the role body is tag-filtered to nothing. Config files NOT re-rendered. No handlers notified. `flush_handlers` produces nothing.
+
+  Writer-restart loop FIRED (docker start for loki, tempo, mimir), but writers crash-loop immediately:
+    - telemetron-tempo container log: `level=error msg="error running Tempo" err="failed to init module services: ... unexpected error from ListObjects on tempo-traces: Forbidden: No such key: GKc19f6aedb83da95c7756818a"`
+    - (GKc19f... is the post-purge/redeploy key; config was never re-rendered to use the restored GK18e... key)
+  Writer healthy-poll: Tempo timed out after 30 retries.
+  PLAY RECAP: `leviathan : ok=30 changed=10 unreachable=0 failed=1 skipped=4`
+
+  Verbose-log grep for writer-rerender inclusion evidence:
+    grep "Re-render Loki config\|Re-render Tempo config\|Re-render Mimir config\|RUNNING HANDLER" -- lines found for include_role invocations but zero handler lines. grep for "loki :\|tempo :\|mimir :" role subtask lines: 0 matches.
+
+  W-5 CLOSURE STATUS: FAILED. The new writer-rerender code path does NOT fire under `--tags restore`. The round-1 "pass" was contaminated; the clean test surfaces G-04.
+  G-04 opened: "writer-config re-render include_role tasks tagged [garage, restore] -- role body tasks in loki/tempo/mimir/tasks/main.yml lack [restore] tag -- under --tags restore all role body subtasks are skipped -- no config re-render, no handler, writers crash-loop."
+  Leviathan recovered via full untagged restore_docker.yml (PLAY RECAP `ok=126 changed=32 failed=0`).
 
 ## Summary
 
@@ -79,33 +192,53 @@ blocked: 0
 
 ### G-01: restore_docker.yml does not re-render writer configs with restored Garage S3 credentials
 
-status: open
+status: closed
+closed-in: 14-05-restore-writer-config-rerender-PLAN.md (Plan 14-05)
 manifests-in:
-  - scenario 1 step 6 (failed=1 -- Loki/Tempo crash-loop on `Forbidden: No such key: GKf41a2c5494e088bfda8b3a0d` after Garage restore overwrites s3-credentials with the original GK18e0... key but writer configs on host still reference the post-purge-redeploy key)
-  - scenario 4d-restore (would also fail in a clean environment; passed here only because scenario 1's manual workaround already aligned writer configs to the restored s3-credentials)
+  - scenario 1 step 6 (round 1: failed=1 -- Loki/Tempo crash-loop on `Forbidden: No such key: GKf41a2c5494e088bfda8b3a0d` after Garage restore overwrites s3-credentials with the original GK18e0... key but writer configs on host still reference the post-purge-redeploy key)
+  - scenario 4d-restore (would also fail in a clean environment; passed round-1 only because scenario 1's manual workaround already aligned writer configs to the restored s3-credentials)
 
 evidence:
-  - `/opt/telemetron/garage/s3-credentials` post-restore: `key_id=GK18e062108528078b3e7ea4f6` (matches restored Garage DB)
-  - `/opt/telemetron/loki/loki.yaml` post-restore: `access_key_id: "GKf41a2c5494e088bfda8b3a0d"` (stale post-purge-redeploy key)
-  - `/opt/telemetron/tempo/tempo.yaml` post-restore: `access_key: "GKf41a2c5494e088bfda8b3a0d"` (stale)
-  - `/opt/telemetron/mimir/mimir.yaml` post-restore: `access_key_id: "GKf41a2c5494e088bfda8b3a0d"` (stale)
-  - Loki crash log: `level=error caller=log.go:223 msg="error running loki" err="init compactor: failed to init delete store: operation error S3: DeleteObject ... StatusCode: 403 ... AccessDenied: Forbidden: No such key: GKf41a2c5494e088bfda8b3a0d"`
-  - Tempo crash log: `level=error caller=main.go:110 msg="error running Tempo" err="failed to init module services: error initialising module: optional-store: failed to create store: unexpected error from ListObjects on tempo-traces: Forbidden: No such key: GKf41a2c5494e088bfda8b3a0d"`
-  - Workaround applied: `ansible-playbook -i inventory/leviathan playbooks/deploy_docker.yml --tags loki,tempo,mimir,garage` -> writer configs re-rendered with GK18e0... -> all 11 containers healthy
+  - Round 1: `/opt/telemetron/loki/loki.yaml` post-restore: `access_key_id: "GKf41a2c5494e088bfda8b3a0d"` (stale post-purge-redeploy key); Loki crash log: `AccessDenied: Forbidden: No such key: GKf41a2c5494e088bfda8b3a0d`
 
-fix-plan: Add a writer-config-rerender step to `restore_docker.yml` after the Garage restore and writer-restart loop but before PLAY end. Options: (1) Call `include_role: name=<writer> tasks_from=main` for loki/tempo/mimir after Garage restore (idempotent re-deploy of writer roles will re-read garage_s3_credentials_file and re-render configs). (2) Refactor writers to read s3-credentials at container startup via entrypoint script instead of templating at Ansible time (chicken-and-egg risk during initial deploy -- would also require keeping s3-credentials available inside the writer containers via bind mount). Recommended: option (1) -- minimal change, additive, deterministic. Target: a follow-up Phase 14.1 plan or amendment to restore_docker.yml directly. Once the fix lands, scenario 1 step 6 should pass without manual workaround.
+closure-evidence: >
+  Plan 14-05 appended slurp+set_fact tasks to roles/garage/tasks/restore.yml (G-01 fact-population) and inserted 3 include_role:tasks_from=main calls for loki/tempo/mimir plus meta:flush_handlers into playbooks/restore_docker.yml between the Garage restore and the writer-restart loop. Round 2 scenario 1 step 6 empirically proves closure: PLAY RECAP `ok=126 changed=32 failed=0` with zero manual intervention. Key tasks fired in PLAY OUTPUT: `garage : Load restored Garage S3 credentials from host file (G-01 fact-population...)` -- ok, key GK18e062108528078b3e7ea4f6; `garage : Set Garage S3 credential facts from restored host file (G-01)` -- ok; `loki : Render Loki config` -- CHANGED; `tempo : Render Tempo config` -- CHANGED; `mimir : Render Mimir config` -- CHANGED; `RUNNING HANDLER loki : Docker restart loki` -- fired; `RUNNING HANDLER tempo : Docker restart tempo` -- fired; `RUNNING HANDLER mimir : Docker restart mimir` -- fired. Step 7 smoke confirmed same trace_id `c3e28f9aa4cebcc6ffde77a9a5642e44` and run_id `1780602309` re-emerged across all 4 OTLP signal types. NOTE: G-04 is a NEW gap showing the same root mechanism (stale configs) manifests under `--tags restore` cross-cutting invocation.
+
+fix-plan: CLOSED by Plan 14-05. NOTE: G-04 is related but distinct -- the writer-rerender fires under full untagged play but NOT under `--tags restore` due to tag-inheritance issue in loki/tempo/mimir/tasks/main.yml.
 
 ### G-03: backup_continue_on_failure=true does not actually let remaining roles run after a host failure
 
+status: closed
+closed-in: 14-06-backup-continue-on-failure-clear-host-errors-PLAN.md (Plan 14-06)
+manifests-in:
+  - scenario 3b round 1 (PLAY RECAP failed=1, banner alt text fires, but only Garage tarball exists at run-ts -- grafana + alertmanager tarballs absent because Ansible removed the failed host from subsequent task execution)
+
+closure-evidence: >
+  Plan 14-06 wrapped each of the 4 per-role include_role calls in backup_docker.yml in a block/rescue where the rescue calls `meta: clear_host_errors` guarded by `when: backup_continue_on_failure | default(false) | bool`. Round 2 scenario 3b empirically proves functional closure: banner fires opt-in alt text `(all 4 roles will attempt their backup; failures aggregated in PLAY RECAP)`; Prometheus fails (file-as-dir fault); rescue fires with `clear_host_errors` running (when-guard evaluates true); grafana and alertmanager include_role calls RAN. 3 of 4 tarballs at run-ts 20260605T010222Z: garage YES, prometheus ABSENT, grafana YES, alertmanager YES. PLAY RECAP `ok=64 changed=9 failed=0 rescued=1`. The opt-in contract is now delivered on single-host inventories.
+
+  SIDE EFFECT (see G-03 addendum below): the block/rescue structure means the rescue "succeeds" (absorbs the failure) even when clear_host_errors is skipped (default mode). Default bail-out semantics are now broken -- see G-03-addendum gap.
+
+fix-plan: CLOSED by Plan 14-06 for the opt-in contract. Default bail-out side effect is a new gap (see G-03-addendum below).
+
+### G-03-addendum: G-03 fix side effect -- default-mode bail-out semantics broken by rescue structure
+
 status: open
 manifests-in:
-  - scenario 3b (PLAY RECAP failed=1 as expected, banner alt text fires, but only Garage tarball exists at run-ts 20260604T175453Z -- grafana + alertmanager tarballs absent because Ansible removed the failed host from subsequent task execution)
+  - scenario 3a round 2 (rescue block absorbs Prometheus failure even with clear_host_errors skipped; grafana + alertmanager run in default mode; PLAY RECAP `rescued=1 failed=0` instead of expected `failed=1`)
 
 evidence:
-  - Banner correctly fires alt text: `"msg": "Backup destination: /opt/telemetron/backups/<role>/\nbackup_continue_on_failure=true\n  (all 4 roles will attempt their backup; failures aggregated in PLAY RECAP)\nbackup_stop_timeout=60s\n"`
-  - PLAY RECAP `leviathan : ok=19 changed=3 unreachable=0 failed=1 skipped=0` (only Garage and Prometheus tasks attempted)
-  - Newest grafana tarball at run-ts: ABSENT (grafana-20260604T175453Z.tar.zst does not exist; newest grafana is 20260604T175014Z from a prior scenario)
-  - Newest alertmanager tarball at run-ts: ABSENT
-  - Root cause: `any_errors_fatal: false` controls play-level abort, but Ansible's default behavior removes a failed host from subsequent task execution. With a single host inventory, Prometheus's failure removes leviathan from the host list and grafana/alertmanager include_role tasks have no host to run on.
+  - Round 2 scenario 3a: file-as-dir fault on prometheus. Banner correctly shows `(first role failure will abort the playbook)`. Prometheus backup fails. Rescue entered. `when: backup_continue_on_failure | default(false) | bool` evaluates FALSE -> `clear_host_errors` is SKIPPED (`skipping: [leviathan]`). However, the rescue block completing (all its tasks either ran or were skipped -- no failures) means the play-level failure counter is NOT incremented. `any_errors_fatal: true` (from line-76 inversion with default mode) NEVER triggers because there is no play-level unhandled failure. Result: grafana and alertmanager include_role calls RUN. PLAY RECAP `rescued=1 failed=0`, 3 of 4 tarballs at run-ts 20260605T010018Z. Banner text ("first role failure will abort the playbook") is now FALSE.
 
-fix-plan: In `backup_docker.yml`, when `backup_continue_on_failure: true`, wrap each per-role `include_role` in a `block: / rescue: / always:` shape that calls `meta: clear_host_errors` in the rescue path. Alternative: switch each include to a `block:` with `rescue: [meta: clear_host_errors]` unconditionally (safe under default mode because no failure is raised when bail-out is wanted -- the failed task already aborts). Target: a follow-up Phase 14.1 plan, or amendment to backup_docker.yml directly. Once the fix lands, scenario 3b should show 3 of 4 tarballs at the run-ts.
+fix-plan: The rescue needs a mechanism to re-raise the failure under default mode. Options: (1) add a second rescue task `ansible.builtin.fail: msg="..."` guarded by `when: not (backup_continue_on_failure | default(false) | bool)` -- this explicitly re-fails under default mode, propagating the error to play-level. (2) Remove the rescue and use a different pattern. Option (1) is the minimal fix. Target: a follow-up plan (14-08+).
+
+### G-04: writer-config re-render does not fire under --tags restore (tag-inheritance gap)
+
+status: open
+manifests-in:
+  - scenario 4d-restore round 2 (G-01 fix writer-rerender include_role tasks tagged [garage, restore] include correctly, but role body tasks in loki/tempo/mimir/tasks/main.yml lack [restore] tag -- under --tags restore all role body subtasks are skipped -- no config re-render, no handler, writers crash-loop on stale S3 key)
+
+evidence:
+  - Round 2 scenario 4d-restore verbose log: `Re-render Loki/Tempo/Mimir config` tasks show "included: loki/tempo/mimir" but zero role subtask lines appear. grep for `loki :`, `tempo :`, `mimir :` returns 0 matches. grep for `RUNNING HANDLER` returns 0 matches. Writers crash with `Forbidden: No such key: GKc19f6aedb83da95c7756818a` (post-purge/redeploy key, not the restored key).
+  - Ansible tag-inheritance: when `--tags restore` is active, the include_role task (tagged [garage, restore]) is selected, but descendant tasks in the included role file must also match the tag filter. `loki/tasks/main.yml` tasks carry `loki`-related tags but NOT `restore`, so they are all skipped.
+
+fix-plan: Add `restore` to the tag list of the writer config-rendering tasks inside loki/tempo/mimir roles (the `Render <role> config` tasks and their handler `Docker restart <role>`), OR add `apply: tags: [restore]` to the include_role calls for writer rerenders in restore_docker.yml so tags are inherited by role body tasks. The `apply:` approach is cleaner (no role-internal changes needed). Target: a follow-up plan (14-08+).
