@@ -32,6 +32,12 @@ When you're done evaluating,
 documents the symmetric undeploy playbook -- conservative by default
 (volumes preserved); three opt-in flags for irreversible cleanup.
 
+When something goes wrong,
+[`docs/quickstart.md#backup-and-restore`](docs/quickstart.md#backup-and-restore)
+covers the backup playbook (conservative by default -- local dated
+tarballs; operator manages retention) and the restore workflow (with the
+explicit `--extra-vars backup_restore_confirm=true` safety gate).
+
 ## What's included
 
 | Component | Image | Purpose |
