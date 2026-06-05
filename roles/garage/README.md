@@ -122,6 +122,32 @@ future milestone and is not part of this role's variable surface.
 | `telemetron_garage_data` | named | `/var/lib/garage/data` | Garage S3 object data blocks. Persistent across container recreates. |
 | `/opt/telemetron/garage/` | bind (read-only) | `/etc/garage` | Host config directory bind-mounted into container. Garage reads `garage.toml` from `/etc/garage/garage.toml`. |
 
+## Backup
+
+The garage role ships `tasks/backup.yml` and `tasks/restore.yml` for atomic
+cold-quiesce backup and restore of Garage's LMDB metadata, S3 object data,
+and the host-side S3 credentials file.
+
+**Captured (3 entries in the tarball):**
+- `telemetron_garage_meta` volume -- LMDB metadata database (node id,
+  layout, bucket definitions, S3 access keys, ACLs).
+- `telemetron_garage_data` volume -- S3 object data blocks written by
+  Loki, Tempo, and Mimir.
+- `{{ garage_s3_credentials_file }}` host file -- the S3 keypair that
+  Loki/Tempo/Mimir use to authenticate against Garage buckets.
+
+**Not captured:**
+- (nothing -- Garage's S3 credentials are intentionally captured even
+  though they are a host file, so the restored stack reconnects without
+  operator re-bootstrap.)
+
+```bash
+ansible-playbook playbooks/backup_docker.yml --tags garage --ask-vault-pass
+```
+
+See `docs/quickstart.md#backup-and-restore` for the full backup/restore
+story (knobs, restore workflow, manual fallback).
+
 ## Uninstall
 
 ```bash

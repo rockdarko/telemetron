@@ -126,6 +126,10 @@ Monolithic only (`-target=all`). Single-tenant
 | `telemetron_mimir_data` (named) | `/data` | Mimir data root -- covers tsdb/, tsdb-sync/, compactor/, alertmanager/, ruler/. Persistent across recreates. |
 | `/opt/telemetron/mimir/mimir.yaml` (bind) | `/etc/mimir/mimir.yaml` (ro) | Rendered config |
 
+## Backup
+
+Mimir data lives in Garage S3 buckets -- captured by the garage role's backup. See `roles/garage/README.md#backup`.
+
 ## Uninstall
 
 ```bash

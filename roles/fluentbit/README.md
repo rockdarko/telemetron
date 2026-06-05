@@ -268,6 +268,10 @@ milestone.
 | `/opt/telemetron/fluentbit/fluent-bit.conf` (bind) | `/fluent-bit/etc/fluent-bit.conf` (ro) | Rendered main config |
 | `/opt/telemetron/fluentbit/parsers.conf` (bind) | `/fluent-bit/etc/parsers.conf` (ro) | Rendered parsers config |
 
+## Backup
+
+No operator state to preserve.
+
 ## Uninstall
 
 ```bash
