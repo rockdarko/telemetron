@@ -217,26 +217,48 @@
     # stopped writer back up. D-189 tag rationale: writer-rerender is a
     # Garage-restore prerequisite so it shares [garage, restore] tags.
 
-    - name: Re-render Loki config from restored Garage s3-credentials (G-01 fix; D-183 reversed)
+    # G-04 (14-VERIFICATION.md): dynamic `include_role` applies the parent task's
+    # tag filter to descendant role-body tasks BEFORE inheritance. Without
+    # `apply: tags: [garage, restore]`, an invocation with `--tags restore`
+    # selects these include_role tasks but then skips every task loaded from
+    # `roles/<writer>/tasks/main.yml` (none carry `restore`). The `apply:`
+    # keyword propagates the listed tags onto each task loaded by the include,
+    # making the writer config-render task selectable under `--tags restore`
+    # so the config is re-rendered and the restart handler fires. The outer
+    # task-level `tags: [garage, restore]` is preserved for include-task-scope
+    # selection; the two are complementary, not redundant.
+    - name: Re-render Loki config from restored Garage s3-credentials (G-01 fix; D-183 reversed; G-04 tag-propagation)
       ansible.builtin.include_role:
         name: loki
         tasks_from: main
+        apply:
+          tags:
+            - garage
+            - restore
       tags:
         - garage
         - restore
 
-    - name: Re-render Tempo config from restored Garage s3-credentials (G-01 fix; D-183 reversed)
+    - name: Re-render Tempo config from restored Garage s3-credentials (G-01 fix; D-183 reversed; G-04 tag-propagation)
       ansible.builtin.include_role:
         name: tempo
         tasks_from: main
+        apply:
+          tags:
+            - garage
+            - restore
       tags:
         - garage
         - restore
 
-    - name: Re-render Mimir config from restored Garage s3-credentials (G-01 fix; D-183 reversed)
+    - name: Re-render Mimir config from restored Garage s3-credentials (G-01 fix; D-183 reversed; G-04 tag-propagation)
       ansible.builtin.include_role:
         name: mimir
         tasks_from: main
+        apply:
+          tags:
+            - garage
+            - restore
       tags:
         - garage
         - restore
