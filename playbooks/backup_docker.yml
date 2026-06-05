@@ -190,6 +190,13 @@
             - garage
             - backup
       rescue:
+        # G-03-addendum: re-raise under default mode so any_errors_fatal aborts the play (the
+        # rescue otherwise absorbs the failure -- rescued=1 failed=0 -- which makes the
+        # banner's "first role failure will abort the playbook" claim untrue).
+        - name: Garage backup failed -- re-raise under default mode (G-03-addendum)
+          ansible.builtin.fail:
+            msg: "garage backup failed and backup_continue_on_failure is false -- aborting play (default-mode bail-out; set backup_continue_on_failure=true to opt into continue mode)"
+          when: not (backup_continue_on_failure | default(false) | bool)
         - name: Garage backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
           ansible.builtin.meta: clear_host_errors
           when: backup_continue_on_failure | default(false) | bool
@@ -209,6 +216,13 @@
             - prometheus
             - backup
       rescue:
+        # G-03-addendum: re-raise under default mode so any_errors_fatal aborts the play (the
+        # rescue otherwise absorbs the failure -- rescued=1 failed=0 -- which makes the
+        # banner's "first role failure will abort the playbook" claim untrue).
+        - name: Prometheus backup failed -- re-raise under default mode (G-03-addendum)
+          ansible.builtin.fail:
+            msg: "prometheus backup failed and backup_continue_on_failure is false -- aborting play (default-mode bail-out; set backup_continue_on_failure=true to opt into continue mode)"
+          when: not (backup_continue_on_failure | default(false) | bool)
         - name: Prometheus backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
           ansible.builtin.meta: clear_host_errors
           when: backup_continue_on_failure | default(false) | bool
@@ -228,6 +242,13 @@
             - grafana
             - backup
       rescue:
+        # G-03-addendum: re-raise under default mode so any_errors_fatal aborts the play (the
+        # rescue otherwise absorbs the failure -- rescued=1 failed=0 -- which makes the
+        # banner's "first role failure will abort the playbook" claim untrue).
+        - name: Grafana backup failed -- re-raise under default mode (G-03-addendum)
+          ansible.builtin.fail:
+            msg: "grafana backup failed and backup_continue_on_failure is false -- aborting play (default-mode bail-out; set backup_continue_on_failure=true to opt into continue mode)"
+          when: not (backup_continue_on_failure | default(false) | bool)
         - name: Grafana backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
           ansible.builtin.meta: clear_host_errors
           when: backup_continue_on_failure | default(false) | bool
@@ -247,6 +268,13 @@
             - alertmanager
             - backup
       rescue:
+        # G-03-addendum: re-raise under default mode so any_errors_fatal aborts the play (the
+        # rescue otherwise absorbs the failure -- rescued=1 failed=0 -- which makes the
+        # banner's "first role failure will abort the playbook" claim untrue).
+        - name: Alertmanager backup failed -- re-raise under default mode (G-03-addendum)
+          ansible.builtin.fail:
+            msg: "alertmanager backup failed and backup_continue_on_failure is false -- aborting play (default-mode bail-out; set backup_continue_on_failure=true to opt into continue mode)"
+          when: not (backup_continue_on_failure | default(false) | bool)
         - name: Alertmanager backup failed -- clear host errors so subsequent role backups still run (G-03; opt-in only)
           ansible.builtin.meta: clear_host_errors
           when: backup_continue_on_failure | default(false) | bool
