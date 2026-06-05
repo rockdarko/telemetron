@@ -2,41 +2,33 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: — Backup & Restore
-status: planning
-stopped_at: Phase 15 context gathered
-last_updated: "2026-06-05T12:18:04.328Z"
-last_activity: 2026-06-05
+status: Awaiting next milestone
+stopped_at: Milestone v1.3.0 complete + archived
+last_updated: "2026-06-05T15:05:33.545Z"
+last_activity: 2026-06-05 — Milestone v1.3.0 completed and archived
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 14
-  percent: 67
+  completed_phases: 3
+  total_plans: 17
+  completed_plans: 17
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-02 after v1.3.0 milestone scoped)
+See: .planning/PROJECT.md (updated 2026-06-05 after v1.3.0 milestone shipped)
 
 **Core value:** A homelab operator can clone the repo, point the bundled example inventory at one of their own Docker hosts, run a single playbook, and end up with a working observability plane — Prometheus + Mimir for metrics, Loki for logs, Tempo for traces, Grafana on top, Alertmanager + Karma for alerts, all fed by OpenTelemetry Collector. **Shipped in v1.0.0. Extended in v1.3.0: when something goes wrong, the operator has a tested path to restore from a backup.**
-**Current focus:** Phase 15 — documentation cascade
+**Current focus:** Awaiting v1.4.0 scoping via `/gsd-new-milestone`
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-05
-
-```
-[Phase 13] [ ] Per-Role Backup & Restore Tasks   (0/? plans)
-[Phase 14] [ ] Orchestrators + Leviathan UAT      (0/? plans)
-[Phase 15] [ ] Documentation Cascade              (0/? plans)
-```
-
-Progress: [██████████] 100%
+Phase: Milestone v1.3.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-05 — Milestone v1.3.0 completed and archived
 
 ## Performance Metrics
 
@@ -118,17 +110,19 @@ Recent decisions affecting current work (v1.3.0 — Backup & Restore):
 
 ### Pending Todos
 
-None active. Begin with `/gsd:plan-phase 13`.
+None active. v1.3.0 shipped; awaiting v1.4.0 scoping via `/gsd-new-milestone`.
 
 ### Blockers/Concerns
 
 None active.
 
-### Known Debt (carried into v1.3.0+)
+### Known Debt (carried into v1.4.0+)
 
 - **Hook router deferred** (ALERT-V2-01..05). Design preserved in `.planning/milestones/v1.0.0-phases/04-alert-plane/04-DISCUSSION-LOG.md`.
 - **Single-host amd64 only** — distributed-mode + multi-host inventory + arm64 + Kube path all future candidates.
 - **7 deferred docs** (alerts, retention, fluentbit-timestamps, hook-router, instrumentation-otel, migration-from-inspq, metrics) — tracked as DOCS-V2-01..07.
+- **Off-host backup destinations** (BACKUP-V14-01..03), **hot snapshots** (BACKUP-V14-05), **encryption at rest** (BACKUP-V14-04), **cross-version backup compatibility** (BACKUP-V14-07) — deferred from v1.3.0 by design; operator wraps Telemetron's local-disk output with their own tooling for off-host/encryption today.
+- **Preflight / docker_doctor / secrets rotation** (PREFLIGHT-V14-*, DOCTOR-V14-*, SECRETS-V14-*) — operator-experience surfaces deferred from v1.3.0.
 
 ### Quick Tasks Completed
 
@@ -138,13 +132,13 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-06-05T12:18:04.318Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-documentation-cascade/15-CONTEXT.md
+Last session: 2026-06-05T15:05:33Z
+Stopped at: Milestone v1.3.0 complete + archived
+Resume file: .planning/MILESTONES.md (v1.3.0 entry)
 
 ## Operator Next Steps
 
-- Plan Phase 13 with `/gsd:plan-phase 13`
+- Start the next milestone with /gsd-new-milestone
 
 ## Deferred Items
 

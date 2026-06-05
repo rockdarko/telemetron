@@ -5,7 +5,7 @@
 - ✅ **v1.0.0 — M1 — LGTM observability plane on Docker** — Phases 1-6 (shipped 2026-05-19 on leviathan)
 - ✅ **v1.1.0 — Garage migration + backlog sweep** — Phases 7-9 (shipped 2026-05-28 on leviathan)
 - ✅ **v1.2.0 — Operator Undeploy Path** — Phases 10-12 (shipped 2026-05-30 on leviathan)
-- 🚧 **v1.3.0 — Backup & Restore** — Phases 13-15 (in progress)
+- ✅ **v1.3.0 — Backup & Restore** — Phases 13-15 (shipped 2026-06-05 on leviathan)
 
 ## Phases
 
@@ -55,64 +55,19 @@ Tag: `v1.2.0`
 
 </details>
 
-### 🚧 v1.3.0 — Backup & Restore (In Progress)
+<details>
+<summary>✅ v1.3.0 — Backup & Restore (Phases 13-15) — SHIPPED 2026-06-05</summary>
 
-- [x] **Phase 13: Per-Role Backup & Restore Tasks** — `tasks/backup.yml` + `tasks/restore.yml` for the 4 stateful roles (garage, prometheus, grafana, alertmanager); cold-quiesce model; zstd tarballs at `/opt/telemetron/backups/<role>/`; block/rescue/always container-restart guarantee (9 requirements: BACKUP-V13-01..04, RESTORE-V13-01..04, OPS-V13-04) (completed 2026-06-03)
-- [x] **Phase 14: Orchestrators + Leviathan HUMAN-UAT** — `playbooks/backup_docker.yml` + `playbooks/restore_docker.yml`; confirm-gate, bail-out, and `--tags` cross-cutting UX; live 7-step backup → purge-data undeploy → redeploy → restore → re-smoke round-trip on leviathan (6 requirements: BACKUP-V13-05, RESTORE-V13-05, OPS-V13-01..03, UAT-V13-01) (completed 2026-06-04)
-- [ ] **Phase 15: Documentation Cascade** — Gate 11 in `roles/README.md`; `docs/quickstart.md` `## Backup and restore` section + root README cross-ref; per-stateful-role README `## Backup` H2 sections; stateless role README one-liners (3 requirements: DOCS-V13-01..03)
+- [x] **Phase 13: Per-Role Backup & Restore Tasks** — `tasks/backup.yml` + `tasks/restore.yml` for the 4 stateful roles (garage, prometheus, grafana, alertmanager); cold-quiesce model (`docker stop` + `docker_container_info` poll, not `state: stopped`); zstd tarballs at `/opt/telemetron/backups/<role>/<role>-<UTC>.tar.zst`; Garage tarball captures `s3-credentials` host file (D-176); Prometheus restore deletes `/prometheus/lock` after untar; `block:`/`rescue:`/`always:` container-restart guarantee on every backup task (5/5 plans, completed 2026-06-03)
+- [x] **Phase 14: Orchestrators + Leviathan HUMAN-UAT** — `playbooks/backup_docker.yml` + `playbooks/restore_docker.yml` symmetric orchestrators with the same `--ask-vault-pass` + `--tags <role>` UX as deploy/undeploy; `backup_restore_confirm=true` gate at both orchestrator and per-role level (mirrors v1.2.0 `telemetron_purge_data=true`); restore stops Loki/Tempo/Mimir (Garage writers) before Garage restore + restarts after; bail-out default with `backup_continue_on_failure=true` opt-in; D-160-style PLAY-start banner + D-191 timestamp override. 7-step leviathan UAT round-trip (deploy → smoke → backup → purge-data undeploy → deploy → restore → re-smoke with same `smoke_trace_id`/`smoke_run_id`) verified 6/6 must-haves across 3 rounds with G-01/G-03/G-03-addendum/G-04 closed (9/9 plans, completed 2026-06-05)
+- [x] **Phase 15: Documentation Cascade** — Gate 11 in `roles/README.md` codifies "every stateful role ships a tested `tasks/backup.yml` + `tasks/restore.yml` proven on leviathan"; `docs/quickstart.md` `## Backup and restore` H2 with 5 H3s in D-202 order (Backup → Restore → Stop order during Garage restore → Retention → Manual fallback); root README "When something goes wrong" Quick Start cross-ref; 4 stateful role READMEs (garage, prometheus, grafana, alertmanager) gain `## Backup` H2 with full 5-part skeleton; 8 stateless role READMEs (loki, tempo, mimir, fluentbit, karma, node_exporter, opentelemetry, nfsd) gain two-template one-liner (3/3 plans, completed 2026-06-05)
 
-## Phase Details
+Full phase details: `.planning/milestones/v1.3.0-ROADMAP.md`
+Phase artifacts (plans/summaries/UAT/verification): `.planning/milestones/v1.3.0-phases/`
+Requirements outcomes (18/18 v1.3.0 reqs validated): `.planning/milestones/v1.3.0-REQUIREMENTS.md`
+Tag: `v1.3.0`
 
-### Phase 13: Per-Role Backup & Restore Tasks
-**Goal**: Operators have a tested, atomic backup and restore task file for each of the 4 stateful roles, each producing a verified tarball or restoring from one without risk of leaving containers in a stopped state.
-**Depends on**: Nothing (per-role task files are confined to individual role directories and can be written independently of the orchestrators)
-**Requirements**: BACKUP-V13-01, BACKUP-V13-02, BACKUP-V13-03, BACKUP-V13-04, RESTORE-V13-01, RESTORE-V13-02, RESTORE-V13-03, RESTORE-V13-04, OPS-V13-04
-**Success Criteria** (what must be TRUE):
-  1. Eight new task files exist: `roles/{garage,prometheus,grafana,alertmanager}/tasks/{backup,restore}.yml` — 8 files, none empty.
-  2. Each `tasks/backup.yml` stops its container via `ansible.builtin.command: docker stop` (not `community.docker state: stopped`), tars the relevant Docker volume `_data/` path(s) with `--zstd` compression into `/opt/telemetron/backups/<role>/<role>-<UTC-timestamp>.tar.zst` (mode 0600, dest dir mode 0700), then restarts and runs verify — the container is running at the end regardless of tar success or failure (block/rescue/always).
-  3. The Garage `tasks/backup.yml` includes both `telemetron_garage_meta` and `telemetron_garage_data` volumes AND the host-mounted `{{ garage_s3_credentials_file }}` in the single tarball — the `s3-credentials` file is captured.
-  4. Each `tasks/restore.yml` asserts `backup_restore_confirm == true` (fail-fast gate), runs `tar tf` integrity check on the source tarball, wipes volume `_data/` contents, untars, restarts, and runs verify. The Prometheus `tasks/restore.yml` also deletes the `/prometheus/lock` file after untar and before container start.
-  5. Each `tasks/backup.yml` and `tasks/restore.yml` begins with an `ansible.builtin.package: name: zstd state: present` pre-task; a second run on a host that already has `zstd` produces `changed=0` for that task.
-  6. Running `ansible-playbook playbooks/backup_docker.yml --tags garage --ask-vault-pass` (substituting any of the 4 role names) on leviathan completes with `failed=0` and the role's container is in a running/healthy state afterward.
-**Plans**: 5 plans
-- [x] 13-01-PLAN.md — Shared backup vars file + 4 role defaults additions (foundation; wave 1)
-- [x] 13-02-PLAN.md — Garage backup.yml + restore.yml (3-entry tarball: meta + data + s3-credentials per D-176)
-- [x] 13-03-PLAN.md — Prometheus backup.yml + restore.yml (PP-1 lock-file deletion on restore)
-- [x] 13-04-PLAN.md — Grafana backup.yml + restore.yml (entire-volume tar per GR-2; GR-4 password rotation documented)
-- [x] 13-05-PLAN.md — Alertmanager backup.yml + restore.yml (empty-data stat-guard per AP-1)
-
-### Phase 14: Orchestrators + Leviathan HUMAN-UAT
-**Goal**: Operators have two symmetric orchestrator playbooks (`backup_docker.yml` and `restore_docker.yml`) with the same `--tags <role>`, `--ask-vault-pass`, and UX conventions as `deploy_docker.yml` and `undeploy_docker.yml`, proven end-to-end on leviathan via the full backup → purge-data undeploy → redeploy → restore → re-smoke round-trip.
-**Depends on**: Phase 13 (the orchestrators call `include_role: tasks_from=backup` and `tasks_from=restore`, which must exist before the orchestrators can run)
-**Requirements**: BACKUP-V13-05, RESTORE-V13-05, OPS-V13-01, OPS-V13-02, OPS-V13-03, UAT-V13-01
-**Success Criteria** (what must be TRUE):
-  1. `playbooks/backup_docker.yml` exists and includes the 4 stateful roles in forward-deploy order (garage → prometheus → grafana → alertmanager), serial, with a D-160-style PLAY-start banner (`tags: always`) that states the target directory and `backup_continue_on_failure` status without enumerating role names. Stateless-role tag invocations produce an empty 0-task play, not a failure.
-  2. `playbooks/restore_docker.yml` stops the Garage writers (Loki, Tempo, Mimir) before restoring Garage, then restores in garage → prometheus → grafana → alertmanager order, then restarts the writers. Its PLAY-start banner is an escalated D-160 WARN explicitly stating that restore will permanently replace volume contents.
-  3. `playbooks/restore_docker.yml` refuses to run without `--extra-vars backup_restore_confirm=true` — the gate fires at both orchestrator level and inside each per-role `tasks/restore.yml`, so a standalone `include_role: tasks_from=restore` from a custom playbook also enforces the gate.
-  4. Both playbooks honour `--tags <role>` for any of the 4 stateful roles using the same tagging convention as `deploy_docker.yml`; `--tags backup` and `--tags restore` are also valid cross-cutting commands that operate on all 4 roles.
-  5. `playbooks/backup_docker.yml` defaults to bail-out on the first role's failure; `--extra-vars backup_continue_on_failure=true` opts into continuing past failed roles.
-  6. The `14-HUMAN-UAT.md` 7-step round-trip on leviathan completes with no manual intervention: (1) `deploy_docker.yml`, (2) `smoke_test.yml` records `smoke_trace_id` + `smoke_run_id`, (3) `backup_docker.yml`, (4) `undeploy_docker.yml --extra-vars telemetron_purge_data=true`, (5) `deploy_docker.yml`, (6) `restore_docker.yml --extra-vars backup_restore_confirm=true backup_restore_from=<timestamp>`, (7) `smoke_test.yml` with the same `smoke_trace_id` + `smoke_run_id` asserts the same synthetic OTLP signals are visible in Grafana — the milestone acceptance gate passes.
-**Plans**: 9 plans
-- [x] 14-01-amend-backup-yml-timestamp-override-PLAN.md — D-191 timestamp_override amendment to 4 backup.yml files (wave 1)
-- [x] 14-02-backup-docker-orchestrator-PLAN.md — backup_docker.yml thin orchestrator with shared timestamp + bail-out knob (wave 2)
-- [x] 14-03-restore-docker-orchestrator-PLAN.md — restore_docker.yml confirm-gated orchestrator with writer-quiesce around Garage (wave 2)
-- [x] 14-04-human-uat-PLAN.md — 14-HUMAN-UAT.md skeleton + live leviathan UAT round-trip (wave 3)
-- [x] 14-05-restore-writer-config-rerender-PLAN.md — Gap closure G-01: writer-config rerender from restored Garage s3-credentials (wave 4)
-- [x] 14-06-backup-continue-on-failure-clear-host-errors-PLAN.md — Gap closure G-03: block/rescue + meta:clear_host_errors for opt-in continue-on-failure (wave 4)
-- [x] 14-07-re-uat-leviathan-PLAN.md — Round-2 leviathan re-UAT post-G-01/G-03 fix; surfaced G-03-addendum + G-04 (wave 5)
-- [x] 14-08-gap-closure-bail-out-and-restore-tags-PLAN.md — Gap closure G-03-addendum + G-04: explicit fail in rescue under default mode + apply: tags on writer-rerender include_role (wave 6)
-- [x] 14-09-round-3-leviathan-uat-PLAN.md — Round-3 leviathan re-UAT post-G-03-addendum/G-04 fix; behavioral closure for 6/6 must-haves verified (wave 7)
-
-### Phase 15: Documentation Cascade
-**Goal**: Operators can discover the backup and restore story entirely through documentation — from root README to quickstart to per-role README — without reading source code, and Gate 11 codifies the stateful-role contract for future contributors.
-**Depends on**: Phase 14 (the doc cascade references final playbook flags and the operator UX surface, which must be settled before docs are written — mirrors the v1.2.0 Phase 12 → Phase 11 dependency shape)
-**Requirements**: DOCS-V13-01, DOCS-V13-02, DOCS-V13-03
-**Success Criteria** (what must be TRUE):
-  1. `roles/README.md` documents Gate 11 ("every stateful role ships `tasks/backup.yml` and `tasks/restore.yml` with a tested leviathan round-trip; every stateless role's README documents that it carries no operator state; the 4 stateful roles are: garage, prometheus, grafana, alertmanager") in the same style and detail level as Gates 1-10.
-  2. `docs/quickstart.md` contains a `## Backup and restore` section covering: the default backup command line, the restore workflow including the `backup_restore_confirm=true` gate, the stop-order expectation (Loki/Tempo/Mimir stop before Garage restore), the local-disk destination and retention model (Telemetron writes dated tarballs; operator manages retention), and the manual tarball-extraction fallback. The root README Quick Start section contains a "When something goes wrong" line linking to `docs/quickstart.md#backup-and-restore`.
-  3. All 4 stateful role READMEs (garage, prometheus, grafana, alertmanager) contain a new `## Backup` H2 section documenting what is and is not captured in the tarball (e.g., Garage `s3-credentials` IS captured; Grafana provisioning is NOT because it re-renders from version-controlled config) and the per-role tag invocation.
-  4. All 8 stateless role READMEs (loki, tempo, mimir, fluentbit, karma, node_exporter, opentelemetry, nfsd) contain a one-line note in the vicinity of their `## Uninstall` section explaining why the role has no `tasks/backup.yml` (e.g., "Loki data lives in Garage S3 buckets — backed up via the garage role"; "Karma is stateless — no operator state to preserve").
-**Plans**: TBD
+</details>
 
 ## Progress
 
@@ -131,9 +86,9 @@ Tag: `v1.2.0`
 | 10    | v1.2.0    | 6/6            | Complete    | 2026-05-29 |
 | 11    | v1.2.0    | 6/6            | Complete    | 2026-05-30 |
 | 12    | v1.2.0    | 3/3            | Complete    | 2026-05-30 |
-| 13    | v1.3.0    | 5/5 | Complete    | 2026-06-03 |
-| 14    | v1.3.0    | 9/9 | Complete    | 2026-06-05 |
-| 15    | v1.3.0    | 0/?            | Not started | -          |
+| 13    | v1.3.0    | 5/5            | Complete    | 2026-06-03 |
+| 14    | v1.3.0    | 9/9            | Complete    | 2026-06-05 |
+| 15    | v1.3.0    | 3/3            | Complete    | 2026-06-05 |
 
 ## Backlog
 

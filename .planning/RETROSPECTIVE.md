@@ -124,6 +124,55 @@ A symmetric `playbooks/undeploy_docker.yml` that mirrors `deploy_docker.yml` in 
 
 ---
 
+## Milestone: v1.3.0 — Backup & Restore
+
+**Shipped:** 2026-06-05 on leviathan
+**Phases:** 3 (13, 14, 15) | **Plans:** 17 | **Tasks:** ~30 | **Timeline:** 3 days (2026-06-03 → 2026-06-05)
+
+### What Was Built
+
+A symmetric pair of orchestrator playbooks (`playbooks/backup_docker.yml` + `playbooks/restore_docker.yml`) that complete the deploy → undeploy → backup → restore quadrant. The 4 stateful Telemetron roles (garage, prometheus, grafana, alertmanager) each ship a `tasks/backup.yml` + `tasks/restore.yml` using a cold-quiesce model: stop container with `docker stop` (not `state: stopped` which strips volume specs), tar to `/opt/telemetron/backups/<role>/<role>-<UTC>.tar.zst`, restart. `block:`/`rescue:`/`always:` guarantees the container is restarted even on tar failure. Three component-specific invariants codified: Garage tarball captures `s3-credentials` host file (without it, post-restore deploy regenerates a fresh S3 key and Loki/Tempo/Mimir lose connectivity); Prometheus restore deletes `/prometheus/lock` after untar (PID-based lock from backup-time process); Grafana provisioning is NOT captured (re-renders from version-controlled config). Restore brackets Garage with stop/restart of Loki/Tempo/Mimir (crash-loop mitigation). `backup_restore_confirm=true` gate at both orchestrator and per-role level (mirrors v1.2.0 `telemetron_purge_data=true` D-159 precedent). Bail-out default; `backup_continue_on_failure=true` opt-in. Gate 11 added to `roles/README.md`. Doc cascade across 14 Markdown files: 144-line `docs/quickstart.md` `## Backup and restore` with 5 H3s in D-202 order, root README "When something goes wrong" cross-ref, 4 stateful README `## Backup` skeletons, 8 stateless README two-template one-liners.
+
+### What Worked
+
+- **3-phase shape mirrored v1.2.0 cleanly.** Phase 13 (per-role tasks — independent per-role mechanical work, parallelizable), Phase 14 (orchestrators + heavyweight live UAT — single playbook + 9 plans including 4 gap-closure waves), Phase 15 (pure doc cascade — 3 plans across disjoint files, fully parallel). Same dependency shape as Phases 10 → 11 → 12; no rescoping.
+- **Wave-based parallel execution in Phase 15.** 3 plans across 14 files (1 quickstart + 12 role READMEs + 2 root/contributor READMEs) ran concurrently in 3 separate worktrees with zero file overlap. Wall time: ~5 minutes vs. ~25 estimated serial. The dispatch-one-Agent-per-message pattern (to avoid `.git/config.lock` races on `git worktree add`) held perfectly.
+- **The Garage `s3-credentials` invariant was caught at design time.** Phase 13 research explicitly flagged that re-generating an S3 key post-restore would leave Loki/Tempo/Mimir holding a stale key. Plan 13-02 baked the 3-entry tarball (`_meta` + `_data` + `s3-credentials`) before any UAT cycle. v1.1.0 spent an entire milestone fighting Garage S3 key drift; v1.3.0 anticipated it.
+- **Live leviathan UAT caught real gotchas across 3 rounds.** Round 1 surfaced G-01 (writer-config rerender from restored credentials wasn't wired). Round 2 surfaced G-03 (block/rescue absorbing failure in default mode so `backup_continue_on_failure=false` wasn't actually bailing out) + G-04 (dynamic `include_role` for writer-rerender didn't propagate the orchestrator's `--tags` filter without explicit `apply: tags:`). Round 3 closed everything with 6/6 must-haves verified. Without live UAT, these would have shipped silently — exactly the pattern that v1.0.0 / v1.1.0 / v1.2.0 retros all called out.
+- **CONTEXT.md decisions held end-to-end.** D-176..D-203 (28 decisions) cited verbatim in plans and surfaced in SUMMARY-level deviations. The `gsd-sdk query check.decision-coverage-plan` gate ensured no decision was orphaned — when a planner missed a citation, the gate refused to mark the phase planned.
+
+### What Was Inefficient
+
+- **The `block:/rescue:` semantics in Phase 14 took 2 UAT rounds to nail down.** G-03 (rescue absorbing failure when continue-on-failure should bail out) and G-03-addendum (explicit `fail:` re-raise in rescue under default mode) were two separate fixes to the same code path. The plan-checker reads the YAML and assumes `rescue` is symmetric to `block`/`always`; in fact `rescue` is success-on-handle. Encoded into [[project_ansible_tag_and_rescue_gotchas]] for future plans that use `block:/rescue:`.
+- **`apply: tags:` on dynamic `include_role` is a class of Ansible gotcha the planner can't catch.** G-04 fixed the writer-config rerender silently skipping when restore was invoked with `--tags garage` — because the rerender used `include_role` (dynamic) without `apply: tags:`, the orchestrator's tag filter didn't propagate into the role body. Static `import_role` would have inherited; dynamic `include_role` requires explicit propagation. Same memory file documents it.
+- **Worktree force-removal still requires explicit unlock.** Same v1.2.0 finding — Claude Code agent harness locks worktrees with `pid: claude agent ...`; `gsd-sdk query worktree.cleanup-wave` still fails on the first locked worktree even after the agent returns. Fell back to manual `git worktree unlock` loop then per-worktree merge + remove. The SDK helper's `unlock-then-remove` path should be the default, not "remove first, unlock on failure."
+- **`milestone.complete` auto-generated MILESTONES.md accomplishments were unusable, again.** Same v1.2.0 finding — auto-extractor picks up raw `One-liner:` placeholders and Rule-3 deviation notes verbatim. Treated as a "create draft entry" only; the prose-style milestone entry was written manually after.
+- **REQUIREMENTS.md DOCS-V13-* rows stayed `[ ]` Pending through phase 15 close** even after verifier confirmed end-to-end. Required manual bump at milestone-close time. The phase verifier should optionally flip REQUIREMENTS.md traceability rows when it passes — the data is already structured.
+
+### Patterns Established
+
+- **Per-component invariant capture in backup design.** Garage `s3-credentials` IS captured because absence causes silent breakage; Grafana provisioning is NOT captured because version-controlled config re-renders on startup; Prometheus restore deletes `/prometheus/lock` because PID-based locks are stale on restored data. Pattern: enumerate each stateful component's "what the operator would forget" surface during design, not during UAT.
+- **`docker stop` + `docker_container_info` poll over `community.docker state: stopped`.** `state: stopped` strips volume/mount specs from the container record; subsequent `state: started` silently orphans data. Use native `docker stop` unconditionally. Codified in CLAUDE.md and the per-role tasks.
+- **Writer-quiesce around the storage backend during restore.** Loki/Tempo/Mimir are Garage S3 writers; they crash-loop if Garage's data disappears mid-write. Restore brackets the Garage restore step with stop/restart of the writers. Future restore paths for shared storage backends inherit this pattern.
+- **`block:/rescue:` requires explicit `fail:` re-raise under default mode.** Without an explicit `fail:` in `rescue:`, the orchestrator sees `rescued=1 failed=0` and continues as if the role succeeded. Pattern: every `rescue:` block must gate `fail:` on the user-facing opt-in knob (e.g., `when: backup_continue_on_failure | bool == false`). Encoded into the memory file.
+- **`apply: tags:` is mandatory on dynamic `include_role`.** Static `import_role` inherits the orchestrator's tag filter automatically; dynamic `include_role` does not. Any orchestrator that uses `include_role` with conditional execution must pass `apply: tags: [<tag>]` to propagate the filter into the role body.
+
+### Key Lessons
+
+1. **Live UAT remains the only gate that catches Ansible-semantic regressions.** v1.0 caught auto_remove races; v1.1 caught Garage bootstrap regressions; v1.2 caught `garage key list` regex assumptions; v1.3 caught `block:/rescue:` absorption + dynamic `include_role` tag propagation. The pattern is unbroken across 4 milestones. Plan-checker / static-verifier alone is insufficient for ansible deploy phases.
+2. **Anticipate the invariant capture surface at design time, not during UAT.** Phase 13's Garage `s3-credentials` capture was an explicit research output that fed into D-176; if it had emerged during UAT it would have cost a round-trip cycle. Future stateful-role work should enumerate "what would the operator forget?" during research.
+3. **`block:/rescue:` semantics are non-intuitive — codify the gotcha into a memory file the moment it surfaces.** [[project_ansible_tag_and_rescue_gotchas]] now documents both the rescue-absorption pattern and the `apply: tags:` requirement. Future plans that touch dynamic `include_role` or `block:/rescue:` should be force-read against this file.
+4. **The verifier-passes-end-to-end signal is enough for milestone close without a separate audit.** v1.3.0 close ran without a formal `v1.3.0-MILESTONE-AUDIT.md` because the Phase 15 verifier had just confirmed 3/3 must-haves end-to-end ~10 minutes prior. The audit step is belt-and-suspenders when verifier coverage is fresh; consider making it skip-able with explicit acknowledgment when the last verifier ran within the same session.
+5. **The phase-execution wave + worktree merge dance is now well-understood enough to be uneventful.** v1.0 → v1.3 saw progressive improvement: v1.0 had dispatch races, v1.1 had merge conflicts, v1.2 had cwd drift + locked worktrees, v1.3 had only the locked-worktree-must-be-unlocked pattern (already documented). The next mechanical loss surface is the SDK helper itself — making it unlock-by-default.
+
+### Cost Observations
+
+- Model mix: predominantly Sonnet for executors + verifier (config default); Opus for the orchestrator + milestone close. Sonnet handled the 17-plan workload comfortably.
+- Sessions: 2 long-running sessions over 3 days (~4 hours wall time total: Phase 13 design + execution; Phase 14 execution + 3 UAT rounds + 4 gap-closure waves; Phase 15 execution + verification + milestone close).
+- Notable: Phase 15 was the cheapest milestone-close phase by a wide margin — 3 docs-only plans + verification + close in a single ~30-minute session. The pattern of "ship the docs cascade as a Phase-N+2 sweep after the heavy lift" continues to work efficiently.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -133,6 +182,7 @@ A symmetric `playbooks/undeploy_docker.yml` that mirrors `deploy_docker.yml` in 
 | v1.0.0 | ~30-40 | 7 (+ 4 backlog) | Established 8 cross-cutting port-acceptance gates; decimal-phase pattern (04.1) for mid-milestone convention drift; live-UAT-on-leviathan as the validation surface |
 | v1.1.0 | ~10-15 | 3 | Garage migration with live-UAT-as-only-gate; three mid-UAT regex regressions caught only on the live host; introduced the principle that ansible deploy phases need a live-deploy gate beyond static verification |
 | v1.2.0 | ~5-8 | 3 | Symmetric undeploy playbook with three opt-in purge flags; D-159 WARN template + D-160 PLAY-start banner as the destructive-action contract; Gate 10 for per-role uninstall surface; 3-layer doc cascade pattern for cross-cutting operator concerns |
+| v1.3.0 | ~4-6 | 3 | Symmetric backup/restore orchestrator pair completing the deploy/undeploy/backup/restore quadrant; cold-quiesce model + per-component invariant capture (Garage s3-credentials, Prometheus /prometheus/lock, Grafana provisioning-NOT-captured); Gate 11 for stateful-role backup contract; 3 rounds of leviathan UAT closing G-01/G-03/G-04 with block:/rescue: + dynamic-include_role tag gotchas encoded into memory |
 
 ### Cumulative Quality
 
@@ -141,6 +191,7 @@ A symmetric `playbooks/undeploy_docker.yml` that mirrors `deploy_docker.yml` in 
 | v1.0.0 | "Boots on leviathan" + smoke test playbook (3 OTLP signals, 60s budget) | n/a (no unit-test surface in M1 — manual UAT) | 0 (no JS/Python runtime deps shipped; everything is upstream pinned container images + role configs) |
 | v1.1.0 | "Boots on leviathan" + smoke test + 3rd-deploy idempotency check (`ok=135, changed=0, failed=0`) | n/a (still manual UAT) | 0 (Garage replaces MinIO; same zero-runtime-dep profile) |
 | v1.2.0 | "Boots + uninstalls on leviathan" — 7-scenario UAT covering conservative undeploy, idempotency, each purge flag, all-3-flags fresh-start | n/a (still manual UAT; ansible idempotency `changed=0` on already-clean host) | 0 (no new components; same zero-runtime-dep profile) |
+| v1.3.0 | "Boots + backups + restores on leviathan" — 7-step round-trip UAT (deploy → smoke record → backup → purge-data undeploy → deploy → restore → smoke replay) across 3 rounds with 4 gap closures; 6/6 must-haves verified in Round 3 | n/a (still manual UAT; ansible idempotency holds across backup/restore cycle) | 0 (no new components; same zero-runtime-dep profile) |
 
 ### Top Lessons (Verified Across Milestones)
 

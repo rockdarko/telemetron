@@ -1,5 +1,149 @@
 # Milestones
 
+## v1.3.0 — Backup & Restore (Shipped: 2026-06-05 on leviathan)
+
+**Phases:** 3 (13, 14, 15) | **Plans:** 17 | **Timeline:** 2026-06-03 → 2026-06-05 (3 days)
+
+### What shipped
+
+A homelab operator who deployed Telemetron with `playbooks/deploy_docker.yml`
+can now back up the 4 stateful roles (garage, prometheus, grafana,
+alertmanager) with `playbooks/backup_docker.yml` and restore from any of
+those tarballs with `playbooks/restore_docker.yml` — completing the deploy
+→ undeploy → backup → restore operator quadrant. Backups use a cold-quiesce
+model: stop the container, tar the Docker volume(s) + relevant host files
+into `/opt/telemetron/backups/<role>/<role>-<UTC>.tar.zst`, restart. Brief
+downtime per role (~30-60s) is acceptable for homelab. `block:`/`rescue:`/
+`always:` guarantees the container is restarted even on tar failure. The
+restore path is symmetric and gated by `--extra-vars backup_restore_confirm=true`
+(mirroring v1.2.0's `telemetron_purge_data=true` precedent), with the gate
+enforced at both orchestrator and per-role task level. The full round-trip
+(deploy → smoke → backup → purge-data undeploy → deploy → restore → re-smoke
+with the same `smoke_trace_id` + `smoke_run_id`) was proven on leviathan
+across 3 UAT rounds. Discoverable end-to-end through a documentation
+cascade across 14 Markdown files.
+
+### Key accomplishments
+
+- **Per-role backup + restore surface (Phase 13)** — every stateful role
+  (garage, prometheus, grafana, alertmanager) ships a `tasks/backup.yml`
+  + `tasks/restore.yml`. Each backup file stops its container via native
+  `docker stop` (not `community.docker state: stopped`, which strips
+  volume specs and silently orphans data), tars with `--zstd`, restarts,
+  and runs verify. Each restore file asserts `backup_restore_confirm == true`,
+  integrity-checks the tarball, wipes the volume, untars, restarts. Three
+  component-specific invariants are codified: Garage's tarball captures
+  the `s3-credentials` host file alongside `_meta` + `_data` volumes
+  (without it, post-restore deploy regenerates a fresh S3 key and
+  Loki/Tempo/Mimir lose connectivity); Prometheus restore deletes
+  `/prometheus/lock` after untar (PID-based lock from backup-time
+  process); Grafana provisioning is NOT captured (re-renders from
+  version-controlled config). Each task also `ansible.builtin.package`-
+  ensures `zstd` is present (not pre-installed on Ubuntu 22.04 / Debian
+  12 / RHEL 9).
+
+- **Symmetric orchestrator pair (Phase 14)** — `playbooks/backup_docker.yml`
+  iterates the 4 stateful roles in forward-deploy order (garage →
+  prometheus → grafana → alertmanager) with a D-160-style PLAY-start banner
+  reporting target directory + `backup_continue_on_failure` status.
+  `playbooks/restore_docker.yml` brackets the Garage restore with
+  stop/restart of Loki/Tempo/Mimir (Garage writers — they crash-loop if
+  Garage's data disappears mid-write), then runs garage → prometheus →
+  grafana → alertmanager restore, then restarts the writers and
+  rerenders writer-side config from the restored `s3-credentials`. Bail-out
+  by default; `--extra-vars backup_continue_on_failure=true` opts into
+  continuing past failed roles. Both playbooks honour `--tags <role>`
+  for any of the 4 stateful roles and `--tags backup` / `--tags restore`
+  as cross-cutting commands.
+
+- **Three rounds of leviathan HUMAN-UAT closing 4 gap requirements (Phase 14)** —
+  Round 1 surfaced G-01 (writer-config rerender from restored `s3-credentials`
+  wasn't wired into the restore orchestrator). Round 2 surfaced G-03
+  (`block:`/`rescue:` was absorbing failure so `backup_continue_on_failure=false`
+  wasn't actually bailing out) and G-04 (dynamic `include_role` for
+  writer-rerender silently skipped when restore was invoked with `--tags
+  garage` — required explicit `apply: tags:` to propagate the orchestrator's
+  tag filter into the role body). Round 3 closed everything; the 7-step
+  round-trip (deploy → smoke record → backup → `undeploy --extra-vars
+  telemetron_purge_data=true` → deploy → restore → smoke replay) verified
+  6/6 must-haves end-to-end with no manual intervention. Both Ansible
+  gotchas (block/rescue semantics + dynamic-include_role tag propagation)
+  were encoded into the per-project memory file for future work.
+
+- **Documentation cascade (Phase 15)** — `docs/quickstart.md` gains a
+  144-line `## Backup and restore` section with 5 H3s in the locked
+  D-202 order (Backup → Restore → Stop order during Garage restore →
+  Retention → Manual fallback), quoting D-186 backup banner and D-187
+  restore WARN banner verbatim from `playbooks/{backup,restore}_docker.yml`.
+  Root README Quick Start gains a "When something goes wrong" cross-ref
+  paragraph next to the existing v1.2.0 "When you're done evaluating"
+  line. Each of the 4 stateful role READMEs (garage, prometheus,
+  grafana, alertmanager) gains a `## Backup` H2 with the full 5-part
+  skeleton documenting what is and is not captured in the tarball. Each
+  of the 8 stateless role READMEs (loki, tempo, mimir, fluentbit, karma,
+  node_exporter, opentelemetry, nfsd) gains a `## Backup` two-template
+  one-liner — 3 Garage-backed (Loki/Tempo/Mimir) hand off to
+  `roles/garage/README.md#backup`; 5 truly-stateless (Fluent Bit, Karma,
+  node_exporter, OTel Collector, nfsd) say "No operator state to
+  preserve." nfsd preserves its divergent post-Verification placement
+  per v1.2.0 precedent. **Gate 11** in `roles/README.md` codifies "every
+  stateful role ships a tested `tasks/backup.yml` + `tasks/restore.yml`,
+  proven on leviathan end-to-end" in the same style as Gates 1-10.
+
+- **Live-UAT lesson reinforced for the 4th milestone running** — v1.0
+  caught the auto_remove race; v1.1 caught 3 Garage bootstrap regressions;
+  v1.2 caught 2 `garage key list` regex assumptions; v1.3 caught
+  `block:/rescue:` failure absorption and dynamic-`include_role` tag
+  silence. The pattern is unbroken: every Ansible deploy/undeploy/backup/
+  restore phase needs a live-UAT-on-leviathan gate as the last step. The
+  static plan-checker and code-reviewer alone never catch Ansible
+  semantic surprises that emerge only when the playbook executes against
+  real container output.
+
+### Requirements traceability
+
+18 / 18 v1.3.0 requirements validated across Phases 13/14/15. Full
+traceability table preserved in the archived
+`milestones/v1.3.0-REQUIREMENTS.md`. Three documentation requirements
+(DOCS-V13-01/02/03) closed by Phase 15 verifier end-to-end immediately
+before milestone close.
+
+### Known deferred items at close: 1
+
+(see STATE.md `## Deferred Items` section — the single open item is the
+v1.0.1-era PromLens quick-task descriptor, status-field drift from an
+already-archived milestone; no v1.3.0 work was deferred.)
+
+### Known debt carried forward (tracked for v1.4.0 milestone)
+
+- **Off-host backup destinations** (`BACKUP-V14-01..03`) — rsync/SSH push,
+  S3-pluggable for restic/rclone, per-role retention via
+  `backup_retention_keep_last_N`. Today operator wraps Telemetron's
+  local-disk output with their own tooling.
+
+- **Hot snapshot mechanisms** (`BACKUP-V14-05`) — Garage
+  `garage meta snapshot --all`, Prometheus
+  `/api/v1/admin/tsdb/snapshot`, Grafana SQLite `.backup`, Alertmanager
+  state-file copy. Today v1.3.0's cold-quiesce model imposes ~30-60s
+  downtime per role; for zero-downtime homelab operators want hot.
+
+- **Encryption at rest** (`BACKUP-V14-04`) — opt-in `age` recipient.
+  Today operators wrap with age/gpg/restic/LUKS externally.
+
+- **Preflight + docker_doctor + secrets rotation** (`PREFLIGHT-V14-*`,
+  `DOCTOR-V14-*`, `SECRETS-V14-*`) — operator-experience surfaces
+  carried forward from prior milestones; still open candidates for
+  v1.4.0+.
+
+- **Hook router** (`ALERT-V14-01..05` aka original `ALERT-V2-01..05`) —
+  Flask + per-rule allowlist + per-tuple rate limit + Jenkins
+  `buildWithParameters` auth. Still deferred from v1.0.
+
+- **Distributed / scale-out + multi-arch + doc deep-dives** (`DIST-V14-*`,
+  `ARCH-V14-*`, `DOCS-V14-*`) — all still deferred per PROJECT.md.
+
+---
+
 ## v1.2.0 Operator Undeploy Path (Shipped: 2026-05-30 on leviathan)
 
 **Phases:** 3 (10 + 11 + 12) | **Plans:** 15 | **Commits:** 76 since v1.1.0 |
