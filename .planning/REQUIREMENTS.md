@@ -26,9 +26,9 @@
 
 ### Operator experience
 
-- [ ] **OPS-V13-01**: `playbooks/restore_docker.yml` refuses to run without `--extra-vars backup_restore_confirm=true`. The confirm-gate fires both in the orchestrator AND in each per-role `tasks/restore.yml` (so a standalone `include_role: tasks_from=restore` from a custom playbook also enforces it). Mirrors the v1.2.0 `telemetron_purge_data=true` opt-in safety contract (D-159 precedent).
+- [x] **OPS-V13-01**: `playbooks/restore_docker.yml` refuses to run without `--extra-vars backup_restore_confirm=true`. The confirm-gate fires both in the orchestrator AND in each per-role `tasks/restore.yml` (so a standalone `include_role: tasks_from=restore` from a custom playbook also enforces it). Mirrors the v1.2.0 `telemetron_purge_data=true` opt-in safety contract (D-159 precedent).
 - [x] **OPS-V13-02**: `playbooks/backup_docker.yml` defaults to bail-out on the first role's failure (operator sees the problem immediately, partial backups don't accumulate silently). `--extra-vars backup_continue_on_failure=true` opts into "continue past failed roles" for partial-backup operators. Each per-role `tasks/backup.yml` wraps its quiesce-tar-restart sequence in `block:`/`rescue:`/`always:` so the container is always restarted, even on tar failure (no half-state where a role is stopped and not restarted).
-- [ ] **OPS-V13-03**: `playbooks/backup_docker.yml --tags <role>` and `playbooks/restore_docker.yml --tags <role>` work for any of the 4 stateful roles (garage, prometheus, grafana, alertmanager) using the same `--tags <role>` convention established by `deploy_docker.yml` and `undeploy_docker.yml`. Each per-role task carries tags `[<role>, backup]` (or `[<role>, restore]`) so `--tags backup` and `--tags restore` are also legitimate cross-cutting operator commands.
+- [x] **OPS-V13-03**: `playbooks/backup_docker.yml --tags <role>` and `playbooks/restore_docker.yml --tags <role>` work for any of the 4 stateful roles (garage, prometheus, grafana, alertmanager) using the same `--tags <role>` convention established by `deploy_docker.yml` and `undeploy_docker.yml`. Each per-role task carries tags `[<role>, backup]` (or `[<role>, restore]`) so `--tags backup` and `--tags restore` are also legitimate cross-cutting operator commands.
 - [x] **OPS-V13-04**: Each per-role `tasks/backup.yml` and `tasks/restore.yml` includes a pre-task that ensures the `zstd` package is present via `ansible.builtin.package: name: zstd, state: present, become: true`. Idempotent — second-run produces `changed=0` on hosts that already have `zstd`. Works on Debian 12, Ubuntu 22.04 LTS, RHEL 9 / AlmaLinux / Rocky (the three Telemetron-supported distro families).
 
 ### End-to-end acceptance
@@ -99,9 +99,9 @@ Explicit exclusions with reasoning so they're not re-added.
 | RESTORE-V13-03 | 13 | Complete |
 | RESTORE-V13-04 | 13 | Complete |
 | RESTORE-V13-05 | 14 | Complete |
-| OPS-V13-01 | 14 | Pending |
+| OPS-V13-01 | 14 | Complete |
 | OPS-V13-02 | 14 | Complete |
-| OPS-V13-03 | 14 | Pending |
+| OPS-V13-03 | 14 | Complete |
 | OPS-V13-04 | 13 | Complete |
 | UAT-V13-01 | 14 | Complete |
 | DOCS-V13-01 | 15 | Pending |
