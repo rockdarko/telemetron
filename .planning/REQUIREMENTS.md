@@ -14,7 +14,7 @@
 - [x] **BACKUP-V13-02**: Operator can run the same orchestrator with `--tags prometheus` and Prometheus's `tasks/backup.yml` produces a single tarball at `/opt/telemetron/backups/prometheus/prometheus-<UTC-timestamp>.tar.zst` (mode 0600) containing the `telemetron_prometheus_data` volume contents (including `wal/`, `chunks_head/`, all compacted blocks). The container is `docker stop`'d before tar and `docker start`'d after; verify confirms health post-restart.
 - [x] **BACKUP-V13-03**: Operator can run the orchestrator with `--tags grafana` and Grafana's `tasks/backup.yml` produces a single tarball at `/opt/telemetron/backups/grafana/grafana-<UTC-timestamp>.tar.zst` (mode 0600) containing the `telemetron_grafana_data` volume (`grafana.db` + `plugins/`). The container is `docker stop`'d before tar; verify confirms health post-restart.
 - [x] **BACKUP-V13-04**: Operator can run the orchestrator with `--tags alertmanager` and Alertmanager's `tasks/backup.yml` produces a single tarball at `/opt/telemetron/backups/alertmanager/alertmanager-<UTC-timestamp>.tar.zst` (mode 0600) containing the `telemetron_alertmanager_data` volume (which may include `data/silences` + `data/nflog` protobuf files or be empty on fresh deploys — both cases handled cleanly). The container is `docker stop`'d before tar; verify confirms health post-restart.
-- [ ] **BACKUP-V13-05**: Operator can run `ansible-playbook playbooks/backup_docker.yml --ask-vault-pass` with no `--tags` flag and the orchestrator iterates the 4 stateful roles in forward-deploy order (garage → prometheus → grafana → alertmanager), serial (one role at a time, minimising combined downtime). PLAY-start banner (`tags: always`, D-160 style) summarises the target directory + `backup_continue_on_failure` status without enumerating role names. Stateless-role tag invocations (`--tags loki`, `--tags fluentbit`, etc.) produce an empty 0-task play — no failure.
+- [x] **BACKUP-V13-05**: Operator can run `ansible-playbook playbooks/backup_docker.yml --ask-vault-pass` with no `--tags` flag and the orchestrator iterates the 4 stateful roles in forward-deploy order (garage → prometheus → grafana → alertmanager), serial (one role at a time, minimising combined downtime). PLAY-start banner (`tags: always`, D-160 style) summarises the target directory + `backup_continue_on_failure` status without enumerating role names. Stateless-role tag invocations (`--tags loki`, `--tags fluentbit`, etc.) produce an empty 0-task play — no failure.
 
 ### Restore (per-role tasks + orchestrator)
 
@@ -22,18 +22,18 @@
 - [x] **RESTORE-V13-02**: Operator can run the orchestrator with `--tags prometheus --extra-vars backup_restore_confirm=true` and Prometheus's `tasks/restore.yml` does the symmetric inverse of BACKUP-V13-02, with one Prometheus-specific safety step: after untar but before `docker start`, the stale `/prometheus/lock` file (PID-based, left over from the backup-time process) is explicitly deleted. Verify confirms Prometheus serves `/metrics` post-restart.
 - [x] **RESTORE-V13-03**: Operator can run the orchestrator with `--tags grafana --extra-vars backup_restore_confirm=true` and Grafana's `tasks/restore.yml` does the symmetric inverse of BACKUP-V13-03. Provisioned dashboards/datasources are re-rendered from `{{ grafana_config_dir }}/provisioning/` on container start (Grafana's normal behaviour); UI-only state in the restored `grafana.db` is preserved. Verify confirms the 4 datasource UIDs resolve.
 - [x] **RESTORE-V13-04**: Operator can run the orchestrator with `--tags alertmanager --extra-vars backup_restore_confirm=true` and Alertmanager's `tasks/restore.yml` does the symmetric inverse of BACKUP-V13-04. Empty backups (fresh-deploy state with no `data/` dir) restore cleanly to fresh-deploy state. Verify confirms Alertmanager API serves `/api/v2/status`.
-- [ ] **RESTORE-V13-05**: Operator can run `ansible-playbook playbooks/restore_docker.yml --extra-vars backup_restore_confirm=true --ask-vault-pass` with no `--tags` flag and the orchestrator iterates the 4 stateful roles in the order required by Garage dependencies: **first stop Loki + Tempo + Mimir (Garage writers)**, then garage → prometheus → grafana → alertmanager restore, then restart Loki + Tempo + Mimir against the restored Garage. PLAY-start banner is an escalated D-160 WARN (`tags: always`) explicitly stating that restore will PERMANENTLY REPLACE volume contents.
+- [x] **RESTORE-V13-05**: Operator can run `ansible-playbook playbooks/restore_docker.yml --extra-vars backup_restore_confirm=true --ask-vault-pass` with no `--tags` flag and the orchestrator iterates the 4 stateful roles in the order required by Garage dependencies: **first stop Loki + Tempo + Mimir (Garage writers)**, then garage → prometheus → grafana → alertmanager restore, then restart Loki + Tempo + Mimir against the restored Garage. PLAY-start banner is an escalated D-160 WARN (`tags: always`) explicitly stating that restore will PERMANENTLY REPLACE volume contents.
 
 ### Operator experience
 
 - [ ] **OPS-V13-01**: `playbooks/restore_docker.yml` refuses to run without `--extra-vars backup_restore_confirm=true`. The confirm-gate fires both in the orchestrator AND in each per-role `tasks/restore.yml` (so a standalone `include_role: tasks_from=restore` from a custom playbook also enforces it). Mirrors the v1.2.0 `telemetron_purge_data=true` opt-in safety contract (D-159 precedent).
-- [ ] **OPS-V13-02**: `playbooks/backup_docker.yml` defaults to bail-out on the first role's failure (operator sees the problem immediately, partial backups don't accumulate silently). `--extra-vars backup_continue_on_failure=true` opts into "continue past failed roles" for partial-backup operators. Each per-role `tasks/backup.yml` wraps its quiesce-tar-restart sequence in `block:`/`rescue:`/`always:` so the container is always restarted, even on tar failure (no half-state where a role is stopped and not restarted).
+- [x] **OPS-V13-02**: `playbooks/backup_docker.yml` defaults to bail-out on the first role's failure (operator sees the problem immediately, partial backups don't accumulate silently). `--extra-vars backup_continue_on_failure=true` opts into "continue past failed roles" for partial-backup operators. Each per-role `tasks/backup.yml` wraps its quiesce-tar-restart sequence in `block:`/`rescue:`/`always:` so the container is always restarted, even on tar failure (no half-state where a role is stopped and not restarted).
 - [ ] **OPS-V13-03**: `playbooks/backup_docker.yml --tags <role>` and `playbooks/restore_docker.yml --tags <role>` work for any of the 4 stateful roles (garage, prometheus, grafana, alertmanager) using the same `--tags <role>` convention established by `deploy_docker.yml` and `undeploy_docker.yml`. Each per-role task carries tags `[<role>, backup]` (or `[<role>, restore]`) so `--tags backup` and `--tags restore` are also legitimate cross-cutting operator commands.
 - [x] **OPS-V13-04**: Each per-role `tasks/backup.yml` and `tasks/restore.yml` includes a pre-task that ensures the `zstd` package is present via `ansible.builtin.package: name: zstd, state: present, become: true`. Idempotent — second-run produces `changed=0` on hosts that already have `zstd`. Works on Debian 12, Ubuntu 22.04 LTS, RHEL 9 / AlmaLinux / Rocky (the three Telemetron-supported distro families).
 
 ### End-to-end acceptance
 
-- [ ] **UAT-V13-01**: The full backup ↔ restore round-trip is proven on leviathan via `14-HUMAN-UAT.md`'s 7-step scenario: (1) `deploy_docker.yml`, (2) `smoke_test.yml` records `smoke_trace_id` + `smoke_run_id`, (3) `backup_docker.yml`, (4) `undeploy_docker.yml --extra-vars telemetron_purge_data=true`, (5) `deploy_docker.yml` (fresh containers, new D-146 bootstrap path), (6) `restore_docker.yml --extra-vars backup_restore_confirm=true backup_restore_from=<timestamp>`, (7) `smoke_test.yml --extra-vars smoke_trace_id=<recorded> smoke_run_id=<recorded>` asserts the same synthetic OTLP signals are visible in Grafana. Round-trip ends with no manual intervention required.
+- [x] **UAT-V13-01**: The full backup ↔ restore round-trip is proven on leviathan via `14-HUMAN-UAT.md`'s 7-step scenario: (1) `deploy_docker.yml`, (2) `smoke_test.yml` records `smoke_trace_id` + `smoke_run_id`, (3) `backup_docker.yml`, (4) `undeploy_docker.yml --extra-vars telemetron_purge_data=true`, (5) `deploy_docker.yml` (fresh containers, new D-146 bootstrap path), (6) `restore_docker.yml --extra-vars backup_restore_confirm=true backup_restore_from=<timestamp>`, (7) `smoke_test.yml --extra-vars smoke_trace_id=<recorded> smoke_run_id=<recorded>` asserts the same synthetic OTLP signals are visible in Grafana. Round-trip ends with no manual intervention required.
 
 ### Documentation cascade
 
@@ -93,17 +93,17 @@ Explicit exclusions with reasoning so they're not re-added.
 | BACKUP-V13-02 | 13 | Complete |
 | BACKUP-V13-03 | 13 | Complete |
 | BACKUP-V13-04 | 13 | Complete |
-| BACKUP-V13-05 | 14 | Pending |
+| BACKUP-V13-05 | 14 | Complete |
 | RESTORE-V13-01 | 13 | Complete |
 | RESTORE-V13-02 | 13 | Complete |
 | RESTORE-V13-03 | 13 | Complete |
 | RESTORE-V13-04 | 13 | Complete |
-| RESTORE-V13-05 | 14 | Pending |
+| RESTORE-V13-05 | 14 | Complete |
 | OPS-V13-01 | 14 | Pending |
-| OPS-V13-02 | 14 | Pending |
+| OPS-V13-02 | 14 | Complete |
 | OPS-V13-03 | 14 | Pending |
 | OPS-V13-04 | 13 | Complete |
-| UAT-V13-01 | 14 | Pending |
+| UAT-V13-01 | 14 | Complete |
 | DOCS-V13-01 | 15 | Pending |
 | DOCS-V13-02 | 15 | Pending |
 | DOCS-V13-03 | 15 | Pending |
