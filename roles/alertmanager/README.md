@@ -79,6 +79,31 @@ Single mode: single-instance monolithic (`--cluster.listen-address=""`). HA clus
 | `telemetron_alertmanager_data` (named) | `/alertmanager` | Silences + notification log (nflog) + active-alert state. Persistent -- losing this volume loses silences and dedup memory across restart (Pitfall 7 replay-storm risk). |
 | `/opt/telemetron/alertmanager/alertmanager.yml` (bind, ro) | `/etc/alertmanager/alertmanager.yml` | Rendered config |
 
+## Backup
+
+The alertmanager role ships `tasks/backup.yml` and `tasks/restore.yml`
+for atomic cold-quiesce backup and restore of Alertmanager's silences
+and dedup state.
+
+**Captured (1 entry in the tarball):**
+- `telemetron_alertmanager_data` volume -- silences, notification log
+  (nflog), and active-alert state (length-prefixed protobuf files that
+  hold dedup memory across restart). A fresh deploy that has never
+  fired or silenced an alert will have no `data/` subdirectory yet; the
+  backup task stat-guards this case and still produces a valid (small)
+  tarball with whatever bookkeeping files exist.
+
+**Not captured:**
+- The rendered `alertmanager.yml` -- re-renders from version-controlled
+  config on the next deploy.
+
+```bash
+ansible-playbook playbooks/backup_docker.yml --tags alertmanager --ask-vault-pass
+```
+
+See `docs/quickstart.md#backup-and-restore` for the full backup/restore
+story (knobs, restore workflow, manual fallback).
+
 ## Uninstall
 
 ```bash

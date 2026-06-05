@@ -172,6 +172,31 @@ modes (federation, hierarchical) are deferred to a future milestone.
 | `/opt/telemetron/prometheus/rules/baseline.yml` (bind) | `/etc/prometheus/rules/baseline.yml` (ro) | Rendered baseline rule group |
 | `/opt/telemetron/prometheus/rules/extra.yml` (bind) | `/etc/prometheus/rules/extra.yml` (ro) | Rendered operator-extras rule group |
 
+## Backup
+
+The prometheus role ships `tasks/backup.yml` and `tasks/restore.yml` for
+atomic cold-quiesce backup and restore of Prometheus's TSDB volume.
+
+**Captured (1 entry in the tarball):**
+- `telemetron_prometheus_data` volume -- TSDB blocks, `chunks_head/`, and
+  the write-ahead log (`wal/`). The clean SIGTERM from `docker stop`
+  flushes the WAL before tar runs.
+
+**Not captured:**
+- Nothing host-side. The rendered `prometheus.yml` and rule files
+  re-render from version-controlled templates on the next deploy.
+- Note: `tasks/restore.yml` deletes `/prometheus/lock` after untar and
+  before `docker start`. The lock file is PID-based and the restored
+  tarball carries a stale entry from the backup-time process; removing
+  it prevents a `Locked by other process` startup failure.
+
+```bash
+ansible-playbook playbooks/backup_docker.yml --tags prometheus --ask-vault-pass
+```
+
+See `docs/quickstart.md#backup-and-restore` for the full backup/restore
+story (knobs, restore workflow, manual fallback).
+
 ## Uninstall
 
 ```bash

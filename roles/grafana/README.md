@@ -105,6 +105,34 @@ Postgres-backed HA Grafana is deferred to a future milestone per PROJECT.md (no 
 
 ---
 
+## Backup
+
+The grafana role ships `tasks/backup.yml` and `tasks/restore.yml` for
+atomic cold-quiesce backup and restore of Grafana's embedded SQLite store.
+
+**Captured (1 entry in the tarball):**
+- `telemetron_grafana_data` volume -- embedded `grafana.db` (dashboards,
+  organizations, users, sessions) plus the `plugins/` cache of
+  operator-installed plugin binaries.
+
+**Not captured:**
+- The provisioning tree under `{{ grafana_config_dir }}/provisioning/` --
+  datasources and dashboard JSON re-render from version-controlled
+  config on container start (override any matching `grafana.db` rows).
+- Admin password rotation: if `GF_SECURITY_ADMIN_PASSWORD` changed
+  between backup and restore, the in-DB hash silently reverts to the
+  backup-time value. Reset post-restore with `docker exec
+  telemetron-grafana grafana-cli admin reset-admin-password '<new>'`.
+
+```bash
+ansible-playbook playbooks/backup_docker.yml --tags grafana --ask-vault-pass
+```
+
+See `docs/quickstart.md#backup-and-restore` for the full backup/restore
+story (knobs, restore workflow, manual fallback).
+
+---
+
 ## Uninstall
 
 ```bash
