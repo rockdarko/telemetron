@@ -101,7 +101,7 @@ Tag: `v1.2.0`
 - [x] 14-06-backup-continue-on-failure-clear-host-errors-PLAN.md — Gap closure G-03: block/rescue + meta:clear_host_errors for opt-in continue-on-failure (wave 4)
 - [x] 14-07-re-uat-leviathan-PLAN.md — Round-2 leviathan re-UAT post-G-01/G-03 fix; surfaced G-03-addendum + G-04 (wave 5)
 - [x] 14-08-gap-closure-bail-out-and-restore-tags-PLAN.md — Gap closure G-03-addendum + G-04: explicit fail in rescue under default mode + apply: tags on writer-rerender include_role (wave 6)
-- [ ] 14-09-round-3-leviathan-uat-PLAN.md — Round-3 leviathan re-UAT post-G-03-addendum/G-04 fix; behavioral closure for 6/6 must-haves verified (wave 7)
+- [x] 14-09-round-3-leviathan-uat-PLAN.md — Round-3 leviathan re-UAT post-G-03-addendum/G-04 fix; behavioral closure for 6/6 must-haves verified (wave 7)
 
 ### Phase 15: Documentation Cascade
 **Goal**: Operators can discover the backup and restore story entirely through documentation — from root README to quickstart to per-role README — without reading source code, and Gate 11 codifies the stateful-role contract for future contributors.
@@ -132,7 +132,7 @@ Tag: `v1.2.0`
 | 11    | v1.2.0    | 6/6            | Complete    | 2026-05-30 |
 | 12    | v1.2.0    | 3/3            | Complete    | 2026-05-30 |
 | 13    | v1.3.0    | 5/5 | Complete    | 2026-06-03 |
-| 14    | v1.3.0    | 8/9 | In progress | -          |
+| 14    | v1.3.0    | 9/9 | Complete   | 2026-06-05 |
 | 15    | v1.3.0    | 0/?            | Not started | -          |
 
 ## Backlog
