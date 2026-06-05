@@ -269,6 +269,150 @@ that set both `service.namespace` and `service.name` do not see them
 concatenated into the `service_name` Loki label (upstream issue #32497).
 This is on by default and requires no inventory configuration.
 
+## Backup and restore
+
+Backup is the symmetric inverse of restore. The playbook is conservative
+by default: it stops each stateful role briefly, tars the role's named
+volume(s) into a local dated tarball, and restarts. Only the four
+stateful roles (`garage`, `prometheus`, `grafana`, `alertmanager`) are
+touched -- the eight stateless roles either carry no operator state or
+keep their data inside Garage (Loki/Tempo/Mimir). Backup runs are
+non-destructive; restore runs are explicitly opt-in via a confirmation
+flag.
+
+### Backup
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/backup_docker.yml \
+                 --ask-vault-pass
+```
+
+Expected PLAY OUTPUT at the start of every run:
+
+```text
+Backup destination: /opt/telemetron/backups/<role>/
+backup_continue_on_failure=False
+  (first role failure will abort the playbook)
+backup_stop_timeout=60s
+```
+
+Tarballs are written to `/opt/telemetron/backups/<role>/` as
+`<role>-<UTC-timestamp>.tar.zst` (mode 0600; per-role parent dir mode
+0700). The four tarballs from a single orchestrator run share one
+timestamp suffix, so a lexicographic sort is chronological. Defaults
+come from `inventory/example-homelab/group_vars/all/backup.yml`:
+`backup_dest_root=/opt/telemetron/backups` and `backup_stop_timeout=60`.
+
+Add `--extra-vars backup_continue_on_failure=true` to attempt all four
+roles even if one fails (failures aggregated in PLAY RECAP). The default
+is fail-fast on the first role's first failure.
+
+To back up a single role, add `--tags <role>` (any of: `garage`,
+`prometheus`, `grafana`, `alertmanager`).
+
+### Restore
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/restore_docker.yml \
+                 --ask-vault-pass \
+                 --extra-vars "backup_restore_confirm=true"
+```
+
+The playbook refuses to run without `--extra-vars
+backup_restore_confirm=true`. The gate is identity-level: it fires for
+ANY restore invocation, including `--tags <role>` targeted runs. This
+mirrors the v1.2.0 `telemetron_purge_data=true` safety contract.
+
+Expected PLAY OUTPUT at the start of every run:
+
+```text
+WARNING: irreversible -- restore will PERMANENTLY REPLACE volume contents on all 4 stateful roles (garage, prometheus, grafana, alertmanager)
+Target timestamp: <latest per role>
+Restore order: stop Loki/Tempo/Mimir -> garage -> prometheus -> grafana -> alertmanager -> restart Loki/Tempo/Mimir
+```
+
+By default each role restores from the most recent tarball it finds in
+`/opt/telemetron/backups/<role>/`. To pin all four roles to a specific
+backup, set `backup_restore_from` to a UTC timestamp string (the
+ISO 8601 basic form Telemetron writes, e.g. `20260603T143012Z`):
+
+```bash
+ansible-playbook -i inventory/example-homelab \
+                 playbooks/restore_docker.yml \
+                 --ask-vault-pass \
+                 --extra-vars "backup_restore_confirm=true backup_restore_from=20260603T143012Z"
+```
+
+Restore has no `continue_on_failure` equivalent. `any_errors_fatal: true`
+is hardcoded so a partial-restore half-state cannot accumulate silently:
+the first failing role halts the playbook.
+
+### Stop order during Garage restore
+
+`restore_docker.yml` automatically stops Loki, Tempo, and Mimir before
+the Garage restore step and restarts them after Garage is back up. The
+three are Garage S3 writers and would crash-loop if Garage went away
+while they were writing; the writer-quiesce is therefore mandatory, not
+optional. Operators do not intervene -- the orchestrator owns the full
+sequence.
+
+The same writer-quiesce fires under `--tags garage`. Adding `--tags
+garage` to a restore invocation triggers the entire stop-Loki/Tempo/Mimir
+-> restore-Garage -> restart-Loki/Tempo/Mimir cycle, not just the Garage
+step in isolation.
+
+### Retention
+
+Telemetron writes dated tarballs and never deletes them: the
+operator manages retention with the tool of their choice. Examples:
+
+```bash
+# Delete tarballs older than 30 days
+find /opt/telemetron/backups/ -name '*.tar.zst' -mtime +30 -delete
+# Push tarballs off-host via rsync
+rsync -av /opt/telemetron/backups/ backup-host:/srv/telemetron/
+# Wrap with restic for encrypted, deduplicated off-host storage
+restic -r /srv/restic backup /opt/telemetron/backups/
+```
+
+Telemetron is opinion-free on the off-host destination layer (the same
+posture it takes on reverse proxies). Operators who want encryption at
+rest wrap the local tarballs with age, gpg, restic, or LUKS-on-block.
+
+### Manual fallback
+
+Operators who refuse to use `restore_docker.yml` can extract a tarball
+into a Docker volume by hand. The recipe below restores `grafana` (the
+simplest layout -- one volume, no host files). Replace `<file>.tar.zst`
+with the actual filename from `/opt/telemetron/backups/grafana/`.
+
+```bash
+docker stop telemetron-grafana
+```
+
+```bash
+docker run --rm -v telemetron_grafana_data:/d alpine sh -c 'rm -rf /d/*'
+```
+
+```bash
+docker run --rm \
+  -v telemetron_grafana_data:/d \
+  -v /opt/telemetron/backups/grafana:/b \
+  alpine sh -c 'tar --use-compress-program=unzstd -xf /b/<file>.tar.zst -C /d'
+```
+
+```bash
+docker start telemetron-grafana
+```
+
+Garage's tarball has three entries (`telemetron_garage_meta` volume,
+`telemetron_garage_data` volume, and the host-mounted `s3-credentials`
+file) and therefore needs three extraction targets, not one -- see
+`roles/garage/README.md#backup` for the path map. Prometheus and
+Alertmanager mirror the grafana shape (one volume each).
+
 ## Removing Telemetron
 
 Undeploy is the symmetric inverse of deploy. The playbook is
